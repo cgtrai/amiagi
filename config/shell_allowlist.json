@@ -1,0 +1,33 @@
+{
+  "no_arg_commands": [
+    "lscpu",
+    "mount",
+    "whoami",
+    "id",
+    "pwd",
+    "date",
+    "uptime",
+    "nproc"
+  ],
+  "arg_subset_commands": {
+    "uname": ["-a", "-r", "-s", "-m", "-n", "-v"],
+    "free": ["-h", "-m", "-g"],
+    "df": ["-h", "-T"],
+    "lsblk": ["-a", "-f"],
+    "ss": ["-tulpen", "-tulpn", "-tulp", "-tuna", "-lntup"]
+  },
+  "exact_commands": [
+    ["ps", "aux"],
+    ["ps", "-ef"],
+    ["ollama", "list"]
+  ],
+  "ip_allowed_subcommands": ["addr", "route", "link"],
+  "cat_allowed_files": [
+    "/proc/cpuinfo",
+    "/proc/meminfo",
+    "/proc/loadavg",
+    "/proc/uptime",
+    "/proc/version",
+    "/etc/os-release"
+  ]
+}

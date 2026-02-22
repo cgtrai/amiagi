@@ -1,0 +1,34 @@
+AMIAGI NON-COMMERCIAL RESEARCH LICENSE
+Version 1.0
+
+Copyright (c) 2026 amiagi contributors: Jerzy Lukasiewicz, gpt-5.3-codex
+
+1. Scope
+This software and associated documentation (the "Software") are licensed exclusively for non-commercial, scientific, and research purposes.
+
+2. Permitted Use
+You may use, copy, modify, and distribute the Software only for:
+- academic research,
+- scientific experimentation,
+- non-commercial educational activities.
+
+3. Prohibited Use
+You may NOT:
+- use the Software for commercial purposes,
+- sell, sublicense, rent, or offer paid services based on the Software,
+- integrate the Software into commercial production systems.
+
+4. Attribution
+Redistributions of source or modified versions must preserve this license text and provide attribution to the original project.
+
+5. No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+6. Limitation of Liability
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+7. Safety and High-Risk Notice
+This Software may execute model-generated code and commands. It must be used with extreme caution and in isolated environments.
+
+8. Acceptance
+By using, copying, modifying, or distributing this Software, you agree to the terms of this license.

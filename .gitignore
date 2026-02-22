@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+
+# Python packaging/build artifacts
+*.egg-info/
+build/
+dist/
+
+# Test/coverage artifacts
+.coverage
+htmlcov/
+
+# Runtime artifacts
+data/*.db
+logs/*.jsonl
+
+# User work artifacts (keep templates/docs in amiagi-my-work)
+amiagi-my-work/artifacts/
+amiagi-my-work/notes/
+amiagi-my-work/state/

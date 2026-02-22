@@ -1,0 +1,2 @@
+# Runtime dependencies for amiagi
+# The project currently relies on Python standard library only.
