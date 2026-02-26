@@ -115,6 +115,17 @@ def test_build_system_prompt_contains_runtime_guide(tmp_path: Path) -> None:
     assert "Kontekst z pamięci" in prompt or "Brak zapisanych wspomnień" in prompt
 
 
+def test_build_system_prompt_uses_autonomous_executor_role(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, ollama_client=client)
+
+    prompt = service.build_system_prompt("kontynuuj")
+
+    assert "autonomicznym modelem wykonawczym" in prompt
+    assert "lokalnym asystentem programistycznym" not in prompt
+
+
 def test_build_system_prompt_contains_work_dir_protocol(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
