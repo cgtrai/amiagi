@@ -312,3 +312,38 @@ def test_main_cold_start_clears_supervision_dialogue_log(tmp_path: Path, monkeyp
     app_main.main(["-cs", "--startup_dialogue_path", str(tmp_path / "missing.md")])
 
     assert settings.supervisor_dialogue_log_path.read_text(encoding="utf-8") == ""
+
+
+def test_main_ui_textual_dispatches_to_textual_runner(tmp_path: Path, monkeypatch) -> None:
+    settings = app_main.Settings(
+        work_dir=tmp_path / "amiagi-my-work",
+        db_path=tmp_path / "amiagi.db",
+        executor_model_io_log_path=tmp_path / "model_io_executor.jsonl",
+        supervisor_model_io_log_path=tmp_path / "model_io_supervisor.jsonl",
+        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
+        model_io_log_path=tmp_path / "model_io.jsonl",
+        activity_log_path=tmp_path / "activity.jsonl",
+        shell_policy_path=tmp_path / "shell_allowlist.json",
+        supervisor_enabled=False,
+        autonomous_mode=False,
+    )
+    textual_kwargs: dict = {}
+
+    monkeypatch.setattr(app_main.Settings, "from_env", staticmethod(lambda: settings))
+    monkeypatch.setattr(app_main, "MemoryRepository", FakeMemoryRepository)
+    monkeypatch.setattr(app_main, "ModelIOLogger", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "ActivityLogger", lambda _path: FakeActivityLogger(settings.activity_log_path))
+    monkeypatch.setattr(app_main, "ModelQueuePolicy", lambda **kwargs: object())
+    monkeypatch.setattr(app_main, "VramAdvisor", lambda: object())
+    monkeypatch.setattr(app_main, "OllamaClient", FakeOllamaClient)
+    monkeypatch.setattr(app_main, "ChatService", FakeChatService)
+    monkeypatch.setattr(app_main, "run_cli", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(
+        app_main,
+        "run_textual_cli",
+        lambda **kwargs: textual_kwargs.update(kwargs),
+    )
+
+    app_main.main(["--ui", "textual", "--startup_dialogue_path", str(tmp_path / "missing.md")])
+
+    assert textual_kwargs.get("supervisor_dialogue_log_path") == settings.supervisor_dialogue_log_path

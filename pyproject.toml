@@ -9,7 +9,7 @@ description = "Local framework for evaluating LLM autonomy with controlled tool-
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-dependencies = []
+dependencies = ["textual==0.89.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

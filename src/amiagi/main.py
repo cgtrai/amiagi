@@ -15,6 +15,7 @@ from amiagi.infrastructure.model_io_logger import ModelIOLogger
 from amiagi.infrastructure.ollama_client import OllamaClient
 from amiagi.infrastructure.vram_advisor import VramAdvisor
 from amiagi.interfaces.cli import run_cli
+from amiagi.interfaces.textual_cli import run_textual_cli
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -41,6 +42,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--startup_dialogue_path",
         default="wprowadzenie.md",
         help="Ścieżka do pliku instrukcji startowych (markdown).",
+    )
+    parser.add_argument(
+        "--ui",
+        choices=("cli", "textual"),
+        default="cli",
+        help="Tryb interfejsu: klasyczny CLI lub Textual (podział ekranu).",
     )
     return parser.parse_args(argv)
 
@@ -241,6 +248,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Polityka shell: {settings.shell_policy_path}")
     print(f"Katalog roboczy modelu: {settings.work_dir}")
     print(f"Tryb autonomiczny: {'ON' if settings.autonomous_mode else 'OFF'}")
+    print(f"Interfejs: {args.ui}")
     print(f"Kontrola VRAM runtime: {'OFF' if args.vram_off else 'ON'}")
     print(f"Limit autowzbudzeń IDLE: {max_idle_autoreactivations}")
     if runtime_vram_control_enabled:
@@ -260,12 +268,18 @@ def main(argv: list[str] | None = None) -> None:
             "Uruchom `ollama serve` i upewnij się, że model jest dostępny."
         )
     try:
-        run_cli(
-            chat_service,
-            shell_policy_path=settings.shell_policy_path,
-            autonomous_mode=settings.autonomous_mode,
-            max_idle_autoreactivations=max_idle_autoreactivations,
-        )
+        if args.ui == "textual":
+            run_textual_cli(
+                chat_service=chat_service,
+                supervisor_dialogue_log_path=settings.supervisor_dialogue_log_path,
+            )
+        else:
+            run_cli(
+                chat_service,
+                shell_policy_path=settings.shell_policy_path,
+                autonomous_mode=settings.autonomous_mode,
+                max_idle_autoreactivations=max_idle_autoreactivations,
+            )
     except KeyboardInterrupt:
         print("\nZamknięto sesję (Ctrl+C).")
         activity_logger.log(
