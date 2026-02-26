@@ -337,7 +337,10 @@ def test_main_ui_textual_dispatches_to_textual_runner(tmp_path: Path, monkeypatc
     monkeypatch.setattr(app_main, "VramAdvisor", lambda: object())
     monkeypatch.setattr(app_main, "OllamaClient", FakeOllamaClient)
     monkeypatch.setattr(app_main, "ChatService", FakeChatService)
-    monkeypatch.setattr(app_main, "run_cli", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError()))
+    def fail_run_cli(*_args, **_kwargs):
+        raise AssertionError("run_cli should not be called in textual mode")
+
+    monkeypatch.setattr(app_main, "run_cli", fail_run_cli)
     monkeypatch.setattr(
         app_main,
         "run_textual_cli",

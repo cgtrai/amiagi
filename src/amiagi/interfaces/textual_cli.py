@@ -4,15 +4,19 @@ import json
 from pathlib import Path
 
 from amiagi.application.chat_service import ChatService
+from amiagi.infrastructure.ollama_client import OllamaClientError
 
 try:
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
     from textual.widgets import Input, RichLog, Static
-except Exception as error:  # pragma: no cover - runtime import guard
+except (ImportError, ModuleNotFoundError) as error:  # pragma: no cover - runtime import guard
     raise RuntimeError(
         "Tryb textual wymaga biblioteki 'textual'. Zainstaluj zależności runtime."
     ) from error
+
+
+SUPERVISION_POLL_INTERVAL_SECONDS = 0.75
 
 
 class _AmiagiTextualApp(App[None]):
@@ -52,7 +56,7 @@ class _AmiagiTextualApp(App[None]):
 
     def on_mount(self) -> None:
         self.query_one("#user_model_log", RichLog).write("[bold]Tryb Textual aktywny[/bold]")
-        self.set_interval(0.75, self._poll_supervision_dialogue)
+        self.set_interval(SUPERVISION_POLL_INTERVAL_SECONDS, self._poll_supervision_dialogue)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         user_model_log = self.query_one("#user_model_log", RichLog)
@@ -67,10 +71,15 @@ class _AmiagiTextualApp(App[None]):
         user_model_log.write(f"[bold cyan]Użytkownik:[/bold cyan] {text}")
         try:
             answer = self._chat_service.ask(text)
-        except Exception as error:  # pragma: no cover - defensive UI handling
-            user_model_log.write(f"[bold red]Błąd:[/bold red] {error}")
+        except OllamaClientError as error:
+            user_model_log.write(
+                f"[bold red]Błąd modelu/Ollama:[/bold red] {error}. "
+                "Sprawdź połączenie i dostępność modelu."
+            )
             return
-
+        except OSError as error:
+            user_model_log.write(f"[bold red]Błąd systemowy:[/bold red] {error}")
+            return
         user_model_log.write(f"[bold magenta]Model:[/bold magenta] {answer}")
         self._poll_supervision_dialogue()
 
@@ -82,7 +91,7 @@ class _AmiagiTextualApp(App[None]):
                 handle.seek(self._dialogue_log_offset)
                 lines = handle.readlines()
                 self._dialogue_log_offset = handle.tell()
-        except Exception:
+        except OSError:
             return
 
         if not lines:
@@ -114,7 +123,6 @@ class _AmiagiTextualApp(App[None]):
                 supervisor_log.write(
                     f"[green][{stage}:{kind}][/green] {supervisor_output}"
                 )
-                continue
 
             status = str(payload.get("status", "")).strip()
             reason = str(payload.get("reason_code", "")).strip()
@@ -133,4 +141,3 @@ def run_textual_cli(*, chat_service: ChatService, supervisor_dialogue_log_path: 
         chat_service=chat_service,
         supervisor_dialogue_log_path=supervisor_dialogue_log_path,
     ).run()
-
