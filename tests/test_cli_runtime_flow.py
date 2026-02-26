@@ -129,6 +129,24 @@ class WaitingDecisionSupervisor:
         )
 
 
+class IdleRepairSupervisor:
+    def refine(self, *, user_message: str, model_answer: str, stage: str) -> SupervisionResult:
+        _ = (user_message, model_answer)
+        if stage == "idle_reactivation":
+            return SupervisionResult(
+                answer='```tool_call\n{"tool":"list_dir","args":{"path":"."},"intent":"idle_repair"}\n```',
+                repairs_applied=1,
+                status="repair",
+                reason_code="NO_TOOL_CALL",
+            )
+        return SupervisionResult(
+            answer=model_answer,
+            repairs_applied=0,
+            status="ok",
+            reason_code="OK",
+        )
+
+
 class FakeTTYInput:
     def __init__(self, lines: list[str]) -> None:
         self._lines = iter(lines)
@@ -668,6 +686,47 @@ def test_run_cli_caps_idle_reactivation_after_two_attempts(tmp_path: Path, monke
 
     output = capsys.readouterr().out
     assert "Wstrzymuję kolejne autowzbudzenia po 2 próbach." in output
+    assert chat_service.ask_calls == 3
+
+
+def test_run_cli_idle_reactivation_resets_passive_turns_after_supervisor_repair(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    responses = [
+        "Plan gotowy, ale bez kroku narzędziowego.",
+        "Nadal bez realnego działania.",
+        "Auto-reaktywacja zakończona.",
+    ]
+    chat_service = FakeChatService(work_dir=work_dir, responses=responses)
+    chat_service.supervisor_service = IdleRepairSupervisor()
+    monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+
+    fake_tty = FakeTTYInput(["ok\n", "/exit\n"])
+    monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)
+
+    select_outcomes = iter([True, False, False, True])
+
+    def fake_select(read, write, err, timeout):
+        _ = (write, err, timeout)
+        is_ready = next(select_outcomes)
+        if is_ready:
+            return (read, [], [])
+        return ([], [], [])
+
+    monkeypatch.setattr(cli_module.select, "select", fake_select)
+    monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "Model> Auto-reaktywacja zakończona." in output
     assert chat_service.ask_calls == 3
 
 

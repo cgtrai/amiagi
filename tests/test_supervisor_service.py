@@ -136,3 +136,20 @@ def test_supervisor_service_writes_dialogue_log(tmp_path) -> None:
     types = {item.get("type") for item in payloads}
     assert "review_exchange" in types
     assert "review_result" in types
+
+
+def test_supervisor_review_prompt_demands_hard_evidence_not_declarations() -> None:
+    client = FakeSupervisorClient(
+        responses=['{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}']
+    )
+    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+
+    prompt = service._build_review_prompt(
+        user_message="kontynuuj",
+        model_answer="Zrobione, wszystko działa.",
+        stage="user_turn",
+        attempt=1,
+    )
+
+    assert "Nie ufaj samym deklaracjom wykonawcy" in prompt
+    assert "wymagaj twardego dowodu" in prompt

@@ -1924,13 +1924,12 @@ def run_cli(
         )
 
         answer = chat_service.ask(idle_prompt)
+        answer = apply_supervisor(idle_prompt, answer, stage="idle_reactivation")
+        answer = enforce_actionable_autonomy(last_user_message or "kontynuuj", answer)
         if _has_supported_tool_call(answer):
             passive_turns = 0
         else:
             passive_turns += 1
-
-        answer = apply_supervisor(idle_prompt, answer, stage="idle_reactivation")
-        answer = enforce_actionable_autonomy(last_user_message or "kontynuuj", answer)
         answer = resolve_tool_calls(answer)
         answer = ensure_plan_persisted(last_user_message or "kontynuuj", answer)
         print(f"\nModel> {answer}")
@@ -2058,12 +2057,12 @@ def run_cli(
                         continue
 
                 answer = chat_service.ask(planning_prompt)
+                answer = apply_supervisor(planning_prompt, answer, stage="goal_planning")
+                answer = enforce_actionable_autonomy(confirmed_goal, answer)
                 if _has_supported_tool_call(answer):
                     passive_turns = 0
                 else:
                     passive_turns += 1
-                answer = apply_supervisor(planning_prompt, answer, stage="goal_planning")
-                answer = enforce_actionable_autonomy(confirmed_goal, answer)
                 answer = resolve_tool_calls(answer)
                 answer = ensure_plan_persisted(confirmed_goal, answer)
                 user_turns_without_plan_update = 0
@@ -2557,12 +2556,12 @@ def run_cli(
             plan_fingerprint_before = _main_plan_fingerprint(work_dir)
 
             answer = chat_service.ask(raw)
+            answer = apply_supervisor(raw, answer, stage="user_turn")
+            answer = enforce_actionable_autonomy(raw, answer)
             if _has_supported_tool_call(answer):
                 passive_turns = 0
             else:
                 passive_turns += 1
-            answer = apply_supervisor(raw, answer, stage="user_turn")
-            answer = enforce_actionable_autonomy(raw, answer)
             answer = resolve_tool_calls(answer)
             answer = ensure_plan_persisted(raw, answer)
 

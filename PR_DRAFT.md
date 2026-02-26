@@ -2,6 +2,14 @@
 
 This PR improves repository consistency, onboarding quality, and GitHub maintainability for `amiagi`.
 
+### Update (v0.1.1 scope)
+
+- Aligned executor role prompt with autonomous runtime role.
+- Fixed passive-state accounting after supervisor/autonomy repairs.
+- Hardened supervisor evidence criteria against declarative completion claims.
+- Added optional Textual tri-pane UI (`--ui textual`) for user/supervisor/executor dialogue visibility.
+- Added release notes for `v0.1.1` and bumped project version to `0.1.1`.
+
 ### What changed
 
 - Removed hard dependency in docs on a specific Conda environment name (`deeplob`), replacing it with neutral instructions for user-defined environment names.
