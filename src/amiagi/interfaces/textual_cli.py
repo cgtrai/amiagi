@@ -48,8 +48,53 @@ except (ImportError, ModuleNotFoundError) as error:  # pragma: no cover - runtim
 
 SUPERVISION_POLL_INTERVAL_SECONDS = 0.75
 SUPERVISOR_WATCHDOG_INTERVAL_SECONDS = 5.0
-SUPERVISOR_IDLE_THRESHOLD_SECONDS = 30.0
-SUPERVISOR_WATCHDOG_MAX_ATTEMPTS = 3
+SUPERVISOR_IDLE_THRESHOLD_SECONDS = 45.0
+SUPERVISOR_WATCHDOG_MAX_ATTEMPTS = 5
+
+
+def _adaptive_watchdog_idle_threshold_seconds(
+    *,
+    activity_log_path: Path,
+    default_seconds: float,
+    min_samples: int = 50,
+) -> float:
+    try:
+        with activity_log_path.open("r", encoding="utf-8") as file:
+            timestamps: list[float] = []
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                raw_timestamp = str(payload.get("timestamp", "")).strip()
+                if not raw_timestamp:
+                    continue
+                if raw_timestamp.endswith("Z"):
+                    raw_timestamp = raw_timestamp[:-1] + "+00:00"
+                try:
+                    parsed = datetime.fromisoformat(raw_timestamp)
+                except Exception:
+                    continue
+                timestamps.append(parsed.timestamp())
+    except OSError:
+        return default_seconds
+
+    if len(timestamps) < min_samples:
+        return default_seconds
+
+    timestamps.sort()
+    deltas = [next_ts - prev_ts for prev_ts, next_ts in zip(timestamps, timestamps[1:]) if next_ts >= prev_ts]
+    if len(deltas) < max(10, min_samples // 2):
+        return default_seconds
+
+    deltas.sort()
+    p99_index = int((len(deltas) - 1) * 0.99)
+    p99 = deltas[p99_index]
+    adaptive = max(default_seconds, p99 * 1.5)
+    return float(max(default_seconds, min(180.0, round(adaptive, 1))))
 
 _TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
     ("/help", "pokaż pełną pomoc CLI"),
@@ -285,6 +330,10 @@ class _AmiagiTextualApp(App[None]):
         self._last_progress_monotonic = time.monotonic()
         self._watchdog_attempts = 0
         self._watchdog_capped_notified = False
+        self._watchdog_idle_threshold_seconds = _adaptive_watchdog_idle_threshold_seconds(
+            activity_log_path=Path("./logs/activity.jsonl"),
+            default_seconds=SUPERVISOR_IDLE_THRESHOLD_SECONDS,
+        )
         self._router_cycle_in_progress = False
         self._supervisor_outbox: list[dict[str, str]] = []
         self._actor_states: dict[str, str] = {
@@ -1025,7 +1074,7 @@ class _AmiagiTextualApp(App[None]):
             self._idle_until_source = ""
         idle_seconds = now - self._last_progress_monotonic
         plan_required = self._plan_requires_update()
-        if idle_seconds < SUPERVISOR_IDLE_THRESHOLD_SECONDS:
+        if idle_seconds < self._watchdog_idle_threshold_seconds:
             return
         if self._passive_turns <= 0 and not plan_required:
             return
@@ -1049,6 +1098,7 @@ class _AmiagiTextualApp(App[None]):
 
         context = {
             "idle_seconds": round(idle_seconds, 2),
+            "idle_threshold_seconds": self._watchdog_idle_threshold_seconds,
             "passive_turns": self._passive_turns,
             "plan_persistence": {"required": plan_required},
             "watchdog_attempt": self._watchdog_attempts,
