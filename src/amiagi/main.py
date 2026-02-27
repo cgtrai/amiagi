@@ -181,6 +181,28 @@ def main(argv: list[str] | None = None) -> None:
         vram_advisor=vram_advisor,
     )
 
+    default_executor_models: list[str] = []
+    list_models = getattr(ollama, "list_models", None)
+    if callable(list_models):
+        try:
+            default_executor_models = list_models()
+        except Exception as error:
+            activity_logger.log(
+                action="models.default.error",
+                intent="Nie udało się pobrać listy modeli z Ollama podczas ustawiania modelu domyślnego.",
+                details={"error": str(error)},
+            )
+
+    if default_executor_models:
+        first_model = default_executor_models[0]
+        if first_model != getattr(ollama, "model", ""):
+            ollama = replace(ollama, model=first_model)
+            activity_logger.log(
+                action="models.default.selected",
+                intent="Ustawiono domyślny model wykonawczy na pierwszy model zwrócony przez Ollama.",
+                details={"model": first_model, "models_count": len(default_executor_models)},
+            )
+
     supervisor_service: SupervisorService | None = None
     if settings.supervisor_enabled:
         supervisor_io_logger = ModelIOLogger(supervisor_log_path, model_role="supervisor")
@@ -233,8 +255,9 @@ def main(argv: list[str] | None = None) -> None:
         supervisor_service=supervisor_service,
     )
     max_idle_autoreactivations = getattr(settings, "max_idle_autoreactivations", 2)
+    router_mailbox_log_path = getattr(settings, "router_mailbox_log_path", Path("./logs/router_mailbox.jsonl"))
 
-    print(f"Model: {settings.ollama_model}")
+    print(f"Model: {getattr(ollama, 'model', settings.ollama_model)}")
     print(
         "Ollama timeout/retry: "
         f"{settings.ollama_request_timeout_seconds}s, retries={settings.ollama_max_retries}, "
@@ -245,6 +268,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Log I/O modelu (nadzorca): {supervisor_log_path}")
     print(f"Log dialogu nadzoru: {settings.supervisor_dialogue_log_path}")
     print(f"Log czynności: {settings.activity_log_path}")
+    print(f"Log skrzynki routera: {router_mailbox_log_path}")
     print(f"Polityka shell: {settings.shell_policy_path}")
     print(f"Katalog roboczy modelu: {settings.work_dir}")
     print(f"Tryb autonomiczny: {'ON' if settings.autonomous_mode else 'OFF'}")
@@ -272,6 +296,8 @@ def main(argv: list[str] | None = None) -> None:
             run_textual_cli(
                 chat_service=chat_service,
                 supervisor_dialogue_log_path=settings.supervisor_dialogue_log_path,
+                shell_policy_path=settings.shell_policy_path,
+                router_mailbox_log_path=router_mailbox_log_path,
             )
         else:
             run_cli(
@@ -279,6 +305,7 @@ def main(argv: list[str] | None = None) -> None:
                 shell_policy_path=settings.shell_policy_path,
                 autonomous_mode=settings.autonomous_mode,
                 max_idle_autoreactivations=max_idle_autoreactivations,
+                router_mailbox_log_path=router_mailbox_log_path,
             )
     except KeyboardInterrupt:
         print("\nZamknięto sesję (Ctrl+C).")

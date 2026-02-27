@@ -87,6 +87,23 @@ class OllamaClient:
         except OllamaClientError:
             return False
 
+    def list_models(self) -> list[str]:
+        payload = self._get_json("/api/tags")
+        models = payload.get("models", [])
+        if not isinstance(models, list):
+            return []
+        names: list[str] = []
+        seen: set[str] = set()
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            names.append(name)
+        return names
+
     def chat(self, messages: list[dict[str, str]], system_prompt: str, num_ctx: int | None = None) -> str:
         endpoint = "/api/chat"
         request_id = str(uuid.uuid4())

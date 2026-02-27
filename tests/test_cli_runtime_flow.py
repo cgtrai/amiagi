@@ -69,10 +69,43 @@ class TrackingPermissionManager:
         return self.allow_all
 
 
+class MutablePermissionManager:
+    last_instance: "MutablePermissionManager | None" = None
+
+    def __init__(self) -> None:
+        self.allow_all = False
+        self.granted_once: set[str] = {"network.local"}
+        MutablePermissionManager.last_instance = self
+
+    def request_local_network(self, reason: str) -> bool:
+        _ = reason
+        return self.allow_all
+
+    def request_internet(self, reason: str) -> bool:
+        _ = reason
+        return self.allow_all
+
+    def request_disk_read(self, reason: str) -> bool:
+        _ = reason
+        return self.allow_all
+
+    def request_disk_write(self, reason: str) -> bool:
+        _ = reason
+        return self.allow_all
+
+    def request_process_exec(self, reason: str) -> bool:
+        _ = reason
+        return self.allow_all
+
+
 class FakeOllamaClient:
     base_url = "http://127.0.0.1:11434"
     queue_policy = None
     vram_advisor = None
+    model = "test-model"
+
+    def list_models(self) -> list[str]:
+        return []
 
 
 class FakeChatService:
@@ -147,6 +180,28 @@ class IdleRepairSupervisor:
         )
 
 
+class PassiveStreakSupervisor:
+    def __init__(self) -> None:
+        self.stages: list[str] = []
+
+    def refine(self, *, user_message: str, model_answer: str, stage: str) -> SupervisionResult:
+        _ = user_message
+        self.stages.append(stage)
+        if stage == "user_turn_passive_streak":
+            return SupervisionResult(
+                answer='```tool_call\n{"tool":"list_dir","args":{"path":"."},"intent":"passive_streak_recovery"}\n```',
+                repairs_applied=1,
+                status="repair",
+                reason_code="NO_TOOL_CALL",
+            )
+        return SupervisionResult(
+            answer=model_answer,
+            repairs_applied=0,
+            status="ok",
+            reason_code="OK",
+        )
+
+
 class FakeTTYInput:
     def __init__(self, lines: list[str]) -> None:
         self._lines = iter(lines)
@@ -183,6 +238,119 @@ def test_run_cli_does_not_print_none_and_forces_tool_flow(tmp_path: Path, monkey
     output = capsys.readouterr().out
     assert "Model> None" not in output
     assert "Model> Wykonano listowanie." in output
+
+
+def test_run_cli_models_show_and_chose_switches_executor_model(tmp_path: Path, monkeypatch, capsys) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    class _SelectableOllamaClient:
+        base_url = "http://127.0.0.1:11434"
+        queue_policy = None
+        vram_advisor = None
+
+        def __init__(self) -> None:
+            self.model = "legacy-model"
+
+        def list_models(self) -> list[str]:
+            return ["model-a", "model-b"]
+
+    class _ChatServiceWithSelectableModels(FakeChatService):
+        def __init__(self, work_dir: Path) -> None:
+            super().__init__(work_dir=work_dir, responses=[])
+            self.ollama_client = _SelectableOllamaClient()
+
+    chat_service = _ChatServiceWithSelectableModels(work_dir=work_dir)
+
+    user_inputs = iter(["/models show", "/models chose 2", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
+    monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "--- MODELE OLLAMA ---" in output
+    assert "1. model-a" in output
+    assert "2. model-b" in output
+    assert "Aktywny model wykonawczy: model-b" in output
+    assert chat_service.ollama_client.model == "model-b"
+
+
+def test_run_cli_models_current_prints_active_model(tmp_path: Path, monkeypatch, capsys) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    class _CurrentModelClient:
+        base_url = "http://127.0.0.1:11434"
+        queue_policy = None
+        vram_advisor = None
+
+        def __init__(self) -> None:
+            self.model = "model-current-test"
+
+        def list_models(self) -> list[str]:
+            return ["model-current-test"]
+
+    class _ChatServiceWithCurrentModel(FakeChatService):
+        def __init__(self, work_dir: Path) -> None:
+            super().__init__(work_dir=work_dir, responses=[])
+            self.ollama_client = _CurrentModelClient()
+
+    chat_service = _ChatServiceWithCurrentModel(work_dir=work_dir)
+
+    user_inputs = iter(["/models current", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
+    monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "Aktywny model wykonawczy: model-current-test" in output
+
+
+def test_run_cli_cls_and_cls_all_emit_clear_sequences(tmp_path: Path, monkeypatch, capsys) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    class _CurrentModelClient:
+        base_url = "http://127.0.0.1:11434"
+        queue_policy = None
+        vram_advisor = None
+
+        def __init__(self) -> None:
+            self.model = "model-current-test"
+
+        def list_models(self) -> list[str]:
+            return ["model-current-test"]
+
+    class _ChatServiceWithCurrentModel(FakeChatService):
+        def __init__(self, work_dir: Path) -> None:
+            super().__init__(work_dir=work_dir, responses=[])
+            self.ollama_client = _CurrentModelClient()
+
+    chat_service = _ChatServiceWithCurrentModel(work_dir=work_dir)
+
+    user_inputs = iter(["/cls", "/cls all", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
+    monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "\x1b[2J\x1b[H" in output
+    assert "\x1b[3J\x1b[2J\x1b[H" in output
 
 
 def test_run_cli_does_not_leak_unresolved_python_pseudo_tool_call(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -497,6 +665,46 @@ def test_run_cli_autonomous_mode_enables_global_permissions(tmp_path: Path, monk
     assert instance.local_network_requests >= 1
 
 
+def test_run_cli_permissions_command_toggles_and_resets_state(tmp_path: Path, monkeypatch, capsys) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    responses = ["Tryb zgód zaktualizowany."]
+    chat_service = FakeChatService(work_dir=work_dir, responses=responses)
+
+    user_inputs = iter(
+        [
+            "/permissions",
+            "/permissions all",
+            "/permissions",
+            "kontynuuj",
+            "/permissions ask",
+            "/permissions reset",
+            "/permissions",
+            "/exit",
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
+    monkeypatch.setattr(cli_module, "PermissionManager", MutablePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "--- PERMISSIONS ---" in output
+    assert "allow_all: False" in output
+    assert "allow_all: True" in output
+    assert "Wyczyszczono zapamiętane zgody per zasób." in output
+
+    instance = MutablePermissionManager.last_instance
+    assert instance is not None
+    assert instance.allow_all is False
+    assert instance.granted_once == set()
+
+
 def test_run_cli_capabilities_command_prints_capability_snapshot(tmp_path: Path, monkeypatch, capsys) -> None:
     work_dir = tmp_path / "amiagi-my-work"
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -574,6 +782,34 @@ def test_run_cli_does_not_start_tool_flow_for_plain_text_answer(tmp_path: Path, 
     assert "Model> To zwykła odpowiedź bez działań narzędziowych." in output
     assert chat_service.ask_calls == 1
     assert supervisor.tool_flow_calls == 0
+
+
+def test_run_cli_passive_streak_triggers_supervisor_corrective_stage(tmp_path: Path, monkeypatch, capsys) -> None:
+    work_dir = tmp_path / "amiagi-my-work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    responses = [
+        "Pierwsza odpowiedź pasywna.",
+        "Druga odpowiedź pasywna.",
+        "Aktywacja wykonana.",
+    ]
+    chat_service = FakeChatService(work_dir=work_dir, responses=responses)
+    supervisor = PassiveStreakSupervisor()
+    chat_service.supervisor_service = supervisor
+
+    user_inputs = iter(["hej", "kontynuuj", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
+    monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
+
+    shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
+    cli_module.run_cli(
+        chat_service=cast(ChatService, chat_service),
+        shell_policy_path=shell_policy_path,
+    )
+
+    output = capsys.readouterr().out
+    assert "user_turn_passive_streak" in supervisor.stages
+    assert "Model> Aktywacja wykonana." in output
 
 
 def test_run_cli_reactivates_after_idle_timeout_without_new_user_message(tmp_path: Path, monkeypatch, capsys) -> None:

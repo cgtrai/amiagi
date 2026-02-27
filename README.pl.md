@@ -40,6 +40,26 @@ Pełne warunki: [LICENSE](LICENSE).
 - Polityka zgód dla zasobów (`disk.*`, `network.*`, `process.exec`)
 - Polityka `run-shell` oparta o allowlistę
 - Dostosowanie zachowania runtime do dostępnego VRAM
+- Przełączanie modelu wykonawczego w runtime (`/models show`, `/models chose <nr>`, `/models current`)
+- Automatyczne ustawienie modelu domyślnego (pierwszy model z lokalnej listy Ollama)
+- Czytelniejsze odpowiedzi użytkownikowe (bez surowych payloadów `tool_call`/JSON)
+- Spójne komendy modeli i onboarding zarówno w CLI, jak i w UI Textual
+
+## Komendy runtime (CLI i Textual)
+
+Komendy zarządzania modelem:
+
+- `/cls` — czyści ekran główny terminala
+- `/cls all` — czyści ekran terminala i historię przewijania
+- `/models current` — pokazuje aktywny model wykonawczy
+- `/models show` — wyświetla listę modeli z lokalnego Ollama (z numeracją)
+- `/models chose <nr>` — przełącza model wykonawczy na pozycję z `/models show`
+
+Uwagi:
+
+- Przy starcie runtime próbuje automatycznie ustawić domyślny model wykonawczy (pozycja `1/x` z listy Ollama).
+- Gdy pobranie listy modeli się nie powiedzie, runtime pozostawia bieżący model i zwraca ostrzeżenie.
+- Warstwa użytkownika dostaje odpowiedź tekstową; surowe ślady narzędzi pozostają w logach technicznych (JSONL/panele).
 
 ## Wymagania
 
@@ -185,3 +205,4 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Proces wydania
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+Najnowsze release notes: [RELEASE_NOTES_v0.1.3.md](RELEASE_NOTES_v0.1.3.md).

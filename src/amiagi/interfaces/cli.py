@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import is_dataclass, replace
 import shlex
 import re
 import shutil
@@ -29,6 +30,15 @@ from amiagi.interfaces.permission_manager import PermissionManager
 
 _HELP_COMMANDS: list[tuple[str, str]] = [
         ("/help", "pokaż pomoc"),
+    ("/cls", "wyczyść ekran główny terminala"),
+    ("/cls all", "wyczyść ekran i historię przewijania terminala"),
+    ("/models current", "pokaż aktualnie aktywny model wykonawczy"),
+    ("/models show", "pokaż modele dostępne w Ollama (1..x)"),
+    ("/models chose <nr>", "wybierz model wykonawczy po numerze z /models show"),
+    ("/permissions", "pokaż aktualny tryb zgód na zasoby"),
+    ("/permissions all", "włącz globalną zgodę na zasoby"),
+    ("/permissions ask", "wyłącz globalną zgodę (pytaj per zasób)"),
+    ("/permissions reset", "wyczyść zapamiętane zgody per zasób"),
         ("/show-system-context [tekst]", "pokaż kontekst systemowy przekazywany do modelu"),
     ("/goal-status", "pokaż cel główny i etap z notes/main_plan.json"),
     ("/goal", "alias: pokaż cel główny i etap z notes/main_plan.json"),
@@ -55,6 +65,12 @@ def _build_help_text() -> str:
 
 
 HELP_TEXT = _build_help_text()
+
+
+def _clear_cli_screen(*, clear_scrollback: bool) -> None:
+    sequence = "\033[3J\033[2J\033[H" if clear_scrollback else "\033[2J\033[H"
+    sys.stdout.write(sequence)
+    sys.stdout.flush()
 
 _ALLOWED_TOOLS_TEXT = (
     "read_file, list_dir, run_shell, run_python, check_python_syntax, fetch_web, search_web, capture_camera_frame, record_microphone_clip, check_capabilities, write_file, append_file"
@@ -254,6 +270,79 @@ def _is_goal_rejection_message(user_message: str) -> bool:
     return normalized in rejections
 
 
+def _fetch_ollama_models(chat_service: ChatService) -> tuple[list[str], str | None]:
+    client = getattr(chat_service, "ollama_client", None)
+    list_models = getattr(client, "list_models", None)
+    if not callable(list_models):
+        return [], "Aktywny klient modelu nie obsługuje listowania modeli."
+
+    try:
+        raw_models = list_models()
+    except Exception as error:
+        return [], str(error)
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in raw_models or []:
+        name = str(item).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names, None
+
+
+def _set_executor_model(chat_service: ChatService, model_name: str) -> tuple[bool, str]:
+    client = getattr(chat_service, "ollama_client", None)
+    if client is None:
+        return False, "Brak aktywnego klienta modelu."
+
+    current = str(getattr(client, "model", "") or "").strip()
+    if current == model_name:
+        return True, current
+
+    if is_dataclass(client):
+        try:
+            chat_service.ollama_client = replace(client, model=model_name)
+            return True, current
+        except Exception:
+            pass
+
+    try:
+        setattr(client, "model", model_name)
+    except Exception as error:
+        return False, str(error)
+    return True, current
+
+
+def _ensure_default_executor_model(chat_service: ChatService) -> tuple[str | None, list[str], str | None]:
+    models, error = _fetch_ollama_models(chat_service)
+    if error is not None or not models:
+        return None, models, error
+
+    default_model = models[0]
+    ok, switch_error = _set_executor_model(chat_service, default_model)
+    if not ok:
+        return None, models, switch_error
+    return default_model, models, None
+
+
+def _select_executor_model_by_index(chat_service: ChatService, one_based_index: int) -> tuple[bool, str, list[str]]:
+    models, error = _fetch_ollama_models(chat_service)
+    if error is not None:
+        return False, f"Nie udało się pobrać listy modeli: {error}", []
+    if not models:
+        return False, "Brak modeli dostępnych w Ollama.", []
+    if one_based_index < 1 or one_based_index > len(models):
+        return False, f"Nieprawidłowy numer modelu: {one_based_index}. Dostępny zakres: 1..{len(models)}.", models
+
+    selected_model = models[one_based_index - 1]
+    ok, error_message = _set_executor_model(chat_service, selected_model)
+    if not ok:
+        return False, f"Nie udało się przełączyć modelu: {error_message}", models
+    return True, selected_model, models
+
+
 def _upsert_main_plan_goal(work_dir: Path, goal: str) -> Path:
     plan_path = work_dir / _PLAN_TRACKING_RELATIVE_PATH
     plan_path.parent.mkdir(parents=True, exist_ok=True)
@@ -349,6 +438,27 @@ def _canonicalize_tool_calls(calls: list[ToolCall]) -> str:
         }
         blocks.append("```tool_call\n" + json.dumps(payload, ensure_ascii=False) + "\n```")
     return "\n".join(blocks)
+
+
+def _format_user_facing_answer(answer: str) -> str:
+    stripped = (answer or "").strip()
+    if not stripped:
+        return "Wykonałem krok operacyjny i kontynuuję pracę."
+
+    tool_calls = parse_tool_calls(stripped)
+    contains_tool_payload = bool(tool_calls) or "[TOOL_CALL]" in stripped or "```tool_call" in stripped
+    if not contains_tool_payload:
+        return answer
+
+    if tool_calls:
+        first_call = tool_calls[0]
+        intent = (first_call.intent or "krok roboczy").strip()
+        return (
+            "Wykonałem krok operacyjny narzędziem "
+            f"'{first_call.tool}' ({intent}) i kontynuuję realizację zadania."
+        )
+
+    return "Wykonałem krok operacyjny i kontynuuję realizację zadania."
 
 
 def _resolve_tool_path(raw_path: str, work_dir: Path) -> Path:
@@ -692,6 +802,7 @@ def run_cli(
     shell_policy_path: Path,
     autonomous_mode: bool = False,
     max_idle_autoreactivations: int = 2,
+    router_mailbox_log_path: Path | None = None,
 ) -> None:
     permission_manager = PermissionManager()
     if autonomous_mode:
@@ -708,10 +819,12 @@ def run_cli(
     code_path_failure_streak = 0
     user_turns_without_plan_update = 0
     pending_goal_candidate: str | None = None
+    supervisor_outbox: list[dict[str, str]] = []
     work_dir = chat_service.work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     workspace_root = Path.cwd()
     last_referenced_file: Path | None = None
+    mailbox_log_path = router_mailbox_log_path if router_mailbox_log_path is not None else Path("./logs/router_mailbox.jsonl")
 
     file_ref_pattern = re.compile(r"(?P<path>[\w./-]+\.[A-Za-z0-9]+)")
     read_this_file_pattern = re.compile(
@@ -1010,6 +1123,69 @@ def run_cli(
         if chat_service.activity_logger is not None:
             chat_service.activity_logger.log(action=action, intent=intent, details=details)
 
+    def _append_router_mailbox_log(event: str, payload: dict) -> None:
+        try:
+            mailbox_log_path.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "event": event,
+                "payload": payload,
+            }
+            with mailbox_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:
+            return
+
+    def _enqueue_supervisor_message(*, stage: str, reason_code: str, notes: str, answer: str) -> None:
+        tool_calls = parse_tool_calls(answer)
+        suggested_step = ""
+        if tool_calls:
+            first_call = tool_calls[0]
+            suggested_step = f"{first_call.tool} ({first_call.intent})"
+        payload = {
+            "stage": stage,
+            "reason_code": reason_code,
+            "notes": notes[:500],
+            "suggested_step": suggested_step,
+        }
+        supervisor_outbox.append(payload)
+        if len(supervisor_outbox) > 10:
+            del supervisor_outbox[:-10]
+        _append_router_mailbox_log("enqueue", payload)
+
+    def _drain_supervisor_outbox_context() -> str:
+        if not supervisor_outbox:
+            return ""
+        queued_messages = [dict(message) for message in supervisor_outbox]
+        lines = ["[ROUTER_MAILBOX_FROM_SUPERVISOR]"]
+        for index, message in enumerate(supervisor_outbox, start=1):
+            lines.append(
+                f"{index}) stage={message.get('stage','')}; reason={message.get('reason_code','')}; "
+                f"notes={message.get('notes','')}; suggested_step={message.get('suggested_step','')}"
+            )
+        lines.append("[/ROUTER_MAILBOX_FROM_SUPERVISOR]")
+        supervisor_outbox.clear()
+        _append_router_mailbox_log(
+            "deliver",
+            {
+                "messages_count": len(queued_messages),
+                "messages": queued_messages,
+            },
+        )
+        return "\n".join(lines)
+
+    def ask_executor_with_router_mailbox(message: str) -> str:
+        mailbox_context = _drain_supervisor_outbox_context()
+        if mailbox_context:
+            enriched_message = message + "\n\n" + mailbox_context
+            log_action(
+                "router.mailbox.deliver",
+                "Router dostarczył Twórcy wiadomości z kolejki Nadzorcy.",
+                {"mailbox_lines": mailbox_context.count("\n") + 1},
+            )
+            return chat_service.ask(enriched_message)
+        return chat_service.ask(message)
+
     def emit_runtime_notice(action: str, message: str, details: dict | None = None) -> None:
         print(f"\nSystem> {message}")
         log_action(action, message, details)
@@ -1032,6 +1208,15 @@ def run_cli(
         )
         last_work_state = result.work_state
         if result.repairs_applied > 0:
+            notes = ""
+            if result.reason_code != "OK":
+                notes = f"Korekta nadzorcza ({result.reason_code})."
+            _enqueue_supervisor_message(
+                stage=stage,
+                reason_code=result.reason_code,
+                notes=notes,
+                answer=result.answer,
+            )
             log_action(
                 "supervisor.repair.applied",
                 "Zastosowano poprawkę odpowiedzi modelu wykonawczego przez nadzorcę.",
@@ -1054,6 +1239,12 @@ def run_cli(
                 )
                 return model_answer
         else:
+            _enqueue_supervisor_message(
+                stage=stage,
+                reason_code=result.reason_code,
+                notes="Ocena bez korekty.",
+                answer=result.answer,
+            )
             log_action(
                 "supervisor.review.done",
                 "Nadzorca ocenił odpowiedź bez konieczności poprawek.",
@@ -1633,7 +1824,7 @@ def run_cli(
                 )
                 + "\nNa podstawie tego wyniku odpowiedz użytkownikowi."
             )
-            post_fallback_answer = chat_service.ask(followup)
+            post_fallback_answer = ask_executor_with_router_mailbox(followup)
             post_fallback_calls = parse_tool_calls(post_fallback_answer)
             if post_fallback_calls and not _has_unknown_tool_calls(post_fallback_answer):
                 return resolve_tool_calls(
@@ -1653,7 +1844,7 @@ def run_cli(
                 if _looks_like_unparsed_tool_call(current):
                     _log_rejected_pseudo_call("unparsed_tool_call", current)
                     corrective_prompt = _build_unparsed_tool_call_corrective_prompt()
-                    corrected = chat_service.ask(corrective_prompt)
+                    corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(
                         corrective_prompt,
                         corrected,
@@ -1668,7 +1859,7 @@ def run_cli(
                     corrective_prompt = _build_no_action_corrective_prompt(
                         "kontynuuj", str(work_dir / "wprowadzenie.md")
                     )
-                    corrected = chat_service.ask(corrective_prompt)
+                    corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="empty_answer_corrective")
                     corrected_calls = parse_tool_calls(corrected)
                     if corrected_calls and not _has_unknown_tool_calls(corrected):
@@ -1679,7 +1870,7 @@ def run_cli(
                 if python_code_block_pattern.search(current):
                     _log_rejected_pseudo_call("python_code_block", current)
                     corrective_prompt = _build_python_code_corrective_prompt()
-                    corrected = chat_service.ask(corrective_prompt)
+                    corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="python_code_corrective")
                     corrected_calls = parse_tool_calls(corrected)
                     if corrected_calls and not _has_unknown_tool_calls(corrected):
@@ -1690,7 +1881,7 @@ def run_cli(
                 if pseudo_tool_usage_pattern.search(current):
                     _log_rejected_pseudo_call("pseudo_tool_usage", current)
                     corrective_prompt = _build_pseudo_tool_corrective_prompt()
-                    corrected = chat_service.ask(corrective_prompt)
+                    corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="pseudo_tool_corrective")
                     corrected_calls = parse_tool_calls(corrected)
                     if corrected_calls and not _has_unknown_tool_calls(corrected):
@@ -1762,7 +1953,7 @@ def run_cli(
                         },
                     )
                     abort_prompt = _build_code_path_abort_prompt(last_user_message or "kontynuuj")
-                    redirected = chat_service.ask(abort_prompt)
+                    redirected = ask_executor_with_router_mailbox(abort_prompt)
                     redirected = apply_supervisor(
                         abort_prompt,
                         redirected,
@@ -1814,7 +2005,7 @@ def run_cli(
                     + f"utrzymuj i aktualizuj plan w pliku '{_PLAN_TRACKING_RELATIVE_PATH}'. "
                     + "Po zakończeniu etapu zaktualizuj current_stage oraz statusy zadań."
                 )
-            current = chat_service.ask(followup)
+            current = ask_executor_with_router_mailbox(followup)
 
         if parse_tool_calls(current):
             if not allow_safe_fallback:
@@ -1923,7 +2114,7 @@ def run_cli(
             },
         )
 
-        answer = chat_service.ask(idle_prompt)
+        answer = ask_executor_with_router_mailbox(idle_prompt)
         answer = apply_supervisor(idle_prompt, answer, stage="idle_reactivation")
         answer = enforce_actionable_autonomy(last_user_message or "kontynuuj", answer)
         if _has_supported_tool_call(answer):
@@ -1932,11 +2123,12 @@ def run_cli(
             passive_turns += 1
         answer = resolve_tool_calls(answer)
         answer = ensure_plan_persisted(last_user_message or "kontynuuj", answer)
-        print(f"\nModel> {answer}")
+        display_answer = _format_user_facing_answer(answer)
+        print(f"\nModel> {display_answer}")
         log_action(
             "idle.reactivation.done",
             "Zakończono cykl auto-reaktywacji po bezczynności.",
-            {"answer_chars": len(answer)},
+            {"answer_chars": len(answer), "display_chars": len(display_answer)},
         )
         last_idle_reactivation_monotonic = time.monotonic()
 
@@ -1950,7 +2142,7 @@ def run_cli(
         plan_snapshot = _read_plan_tracking_snapshot(work_dir)
         if not bool(plan_snapshot.get("exists")):
             corrective_prompt = _build_plan_tracking_corrective_prompt(user_message)
-            forced_answer = chat_service.ask(corrective_prompt)
+            forced_answer = ask_executor_with_router_mailbox(corrective_prompt)
             forced_answer = apply_supervisor(corrective_prompt, forced_answer, stage="plan_tracking_init")
             if _has_only_supported_tool_calls(forced_answer):
                 return forced_answer
@@ -1962,7 +2154,7 @@ def run_cli(
         forced_answer = model_answer
         for _ in range(2):
             corrective_prompt = _build_no_action_corrective_prompt(user_message, intro_hint)
-            forced_answer = chat_service.ask(corrective_prompt)
+            forced_answer = ask_executor_with_router_mailbox(corrective_prompt)
             forced_answer = apply_supervisor(corrective_prompt, forced_answer, stage="no_action_corrective")
             if _has_only_supported_tool_calls(forced_answer):
                 return forced_answer
@@ -1989,11 +2181,40 @@ def run_cli(
         },
     )
 
+    selected_default_model, discovered_models, default_model_error = _ensure_default_executor_model(chat_service)
+    if selected_default_model is not None:
+        print(
+            f"Domyślny model wykonawczy: {selected_default_model} "
+            f"(pozycja 1/{len(discovered_models)} z listy Ollama)."
+        )
+        log_action(
+            "models.default.selected",
+            "Ustawiono domyślny model wykonawczy na pierwszy model z listy Ollama.",
+            {
+                "selected_model": selected_default_model,
+                "models_count": len(discovered_models),
+            },
+        )
+    else:
+        fallback_model = str(getattr(chat_service.ollama_client, "model", ""))
+        print(f"Domyślny model wykonawczy: {fallback_model} (fallback).")
+        if default_model_error:
+            print(f"Uwaga: nie udało się pobrać listy modeli z Ollama: {default_model_error}")
+            log_action(
+                "models.default.fallback",
+                "Pozostawiono model fallback z powodu błędu listowania modeli.",
+                {"error": default_model_error, "fallback_model": fallback_model},
+            )
+
     try:
         readiness = chat_service.bootstrap_runtime_readiness()
         print("\n--- MODEL READINESS ---")
         print(readiness)
-        print("\nModel gotowy. Wpisz /help, aby zobaczyć komendy.")
+        print("\nModel gotowy.")
+        print("Witaj w terminalu amiagi 👋")
+        print("- Wpisz /help, aby zobaczyć komendy.")
+        print("- Wpisz /models show, aby wyświetlić modele z Ollama.")
+        print("- Wpisz /models chose X, aby wybrać model do testów (X = numer z listy).")
         log_action(
             "session.readiness",
             "Model potwierdził gotowość po automatycznym bootstrapie.",
@@ -2007,7 +2228,10 @@ def run_cli(
             "Nie udało się uzyskać komunikatu gotowości podczas bootstrapu.",
             {"error": str(error)},
         )
-        print("Wpisz /help, aby zobaczyć komendy.")
+        print("Witaj w terminalu amiagi 👋")
+        print("- Wpisz /help, aby zobaczyć komendy.")
+        print("- Wpisz /models show, aby wyświetlić modele z Ollama.")
+        print("- Wpisz /models chose X, aby wybrać model do testów (X = numer z listy).")
 
     while True:
         try:
@@ -2018,6 +2242,157 @@ def run_cli(
             break
 
         if not raw:
+            continue
+
+        raw = raw.strip()
+        if not raw:
+            continue
+        raw_lower = raw.lower()
+
+        if raw_lower == "/help":
+            print(HELP_TEXT)
+            log_action("help.show", "Wyświetlenie listy dostępnych komend.")
+            continue
+
+        if raw_lower == "/cls":
+            _clear_cli_screen(clear_scrollback=False)
+            log_action("screen.clear.main", "Wyczyszczono ekran główny terminala.")
+            continue
+
+        if raw_lower == "/cls all":
+            _clear_cli_screen(clear_scrollback=True)
+            log_action("screen.clear.all", "Wyczyszczono ekran i historię przewijania terminala.")
+            continue
+
+        if raw_lower.startswith("/models"):
+            parts = raw.split()
+            if len(parts) < 2:
+                print("Użycie: /models show | /models chose <nr>")
+                continue
+
+            action = parts[1].lower()
+            if action == "current":
+                current_model = str(getattr(chat_service.ollama_client, "model", ""))
+                print(f"Aktywny model wykonawczy: {current_model}")
+                log_action(
+                    "models.current",
+                    "Wyświetlono aktualnie aktywny model wykonawczy.",
+                    {"model": current_model},
+                )
+                continue
+            if action == "show":
+                models, error = _fetch_ollama_models(chat_service)
+                if error is not None:
+                    print(f"Nie udało się pobrać listy modeli: {error}")
+                    log_action(
+                        "models.show.error",
+                        "Błąd pobierania listy modeli z Ollama.",
+                        {"error": error},
+                    )
+                    continue
+                if not models:
+                    print("Brak modeli dostępnych w Ollama.")
+                    log_action("models.show.empty", "Lista modeli Ollama jest pusta.")
+                    continue
+
+                current_model = str(getattr(chat_service.ollama_client, "model", ""))
+                print("\n--- MODELE OLLAMA ---")
+                for index, model_name in enumerate(models, start=1):
+                    marker = "  [aktywny]" if model_name == current_model else ""
+                    print(f"{index}. {model_name}{marker}")
+                print("Użycie: /models chose <nr>")
+                log_action(
+                    "models.show",
+                    "Wyświetlono listę modeli dostępnych przez Ollama.",
+                    {"count": len(models), "current_model": current_model},
+                )
+                continue
+
+            if action in {"chose", "choose"}:
+                if len(parts) < 3:
+                    print("Użycie: /models chose <nr>")
+                    continue
+                try:
+                    index = int(parts[2])
+                except ValueError:
+                    print("Nieprawidłowy numer modelu. Użyj wartości całkowitej, np. /models chose 1")
+                    continue
+
+                ok, payload, models = _select_executor_model_by_index(chat_service, index)
+                if not ok:
+                    print(payload)
+                    log_action(
+                        "models.choose.error",
+                        "Nie udało się przełączyć modelu wykonawczego.",
+                        {"error": payload, "index": index, "available_count": len(models)},
+                    )
+                    continue
+
+                print(f"Aktywny model wykonawczy: {payload}")
+                log_action(
+                    "models.choose",
+                    "Przełączono model wykonawczy na wskazany numer listy Ollama.",
+                    {"selected_model": payload, "index": index},
+                )
+                continue
+
+            print("Użycie: /models show | /models chose <nr>")
+            continue
+
+        if raw_lower.startswith("/permissions"):
+            parts = raw_lower.split()
+            action = parts[1] if len(parts) > 1 else "status"
+
+            if action in {"status", "show"}:
+                granted_once_count = len(getattr(permission_manager, "granted_once", set()))
+                print("\n--- PERMISSIONS ---")
+                print(f"allow_all: {bool(getattr(permission_manager, 'allow_all', False))}")
+                print(f"granted_once_count: {granted_once_count}")
+                log_action(
+                    "permissions.status",
+                    "Wyświetlono aktualny stan trybu zgód na zasoby.",
+                    {
+                        "allow_all": bool(getattr(permission_manager, "allow_all", False)),
+                        "granted_once_count": granted_once_count,
+                    },
+                )
+                continue
+
+            if action in {"all", "on", "global"}:
+                permission_manager.allow_all = True
+                print("Włączono globalną zgodę na zasoby.")
+                log_action("permissions.mode.global", "Włączono globalną zgodę na zasoby.")
+                continue
+
+            if action in {"ask", "off", "interactive"}:
+                permission_manager.allow_all = False
+                print("Włączono tryb pytań o zgodę per zasób.")
+                log_action("permissions.mode.ask", "Włączono interakcyjny tryb zgód per zasób.")
+                continue
+
+            if action in {"reset", "clear"}:
+                granted_once = getattr(permission_manager, "granted_once", None)
+                if isinstance(granted_once, set):
+                    granted_once.clear()
+                    print("Wyczyszczono zapamiętane zgody per zasób.")
+                    log_action(
+                        "permissions.reset",
+                        "Wyczyszczono zapamiętane zgody per zasób.",
+                    )
+                else:
+                    print("Brak zapamiętanych zgód do wyczyszczenia.")
+                    log_action(
+                        "permissions.reset.unavailable",
+                        "Brak obsługi listy zapamiętanych zgód w aktywnym menedżerze uprawnień.",
+                    )
+                continue
+
+            print("Użycie: /permissions [status|all|ask|reset]")
+            log_action(
+                "permissions.invalid",
+                "Niepoprawne użycie komendy zarządzania zgodami.",
+                {"raw": raw},
+            )
             continue
 
         if pending_goal_candidate is not None:
@@ -2056,7 +2431,7 @@ def run_cli(
                         log_action("goal.plan.denied", "Odmowa dostępu do sieci zewnętrznej podczas planowania celu.")
                         continue
 
-                answer = chat_service.ask(planning_prompt)
+                answer = ask_executor_with_router_mailbox(planning_prompt)
                 answer = apply_supervisor(planning_prompt, answer, stage="goal_planning")
                 answer = enforce_actionable_autonomy(confirmed_goal, answer)
                 if _has_supported_tool_call(answer):
@@ -2066,11 +2441,12 @@ def run_cli(
                 answer = resolve_tool_calls(answer)
                 answer = ensure_plan_persisted(confirmed_goal, answer)
                 user_turns_without_plan_update = 0
-                print(f"\nModel> {answer}")
+                display_answer = _format_user_facing_answer(answer)
+                print(f"\nModel> {display_answer}")
                 log_action(
                     "goal.plan.done",
                     "Uruchomiono planowanie i realizację po potwierdzeniu głównego celu.",
-                    {"goal": confirmed_goal, "answer_chars": len(answer)},
+                    {"goal": confirmed_goal, "answer_chars": len(answer), "display_chars": len(display_answer)},
                 )
                 continue
 
@@ -2111,7 +2487,7 @@ def run_cli(
             )
             continue
 
-        if raw == "/bye":
+        if raw_lower == "/bye":
             log_action(
                 "session.bye.request",
                 "Zakończenie sesji z podsumowaniem i zapisem punktu startowego.",
@@ -2147,17 +2523,12 @@ def run_cli(
             )
             break
 
-        if raw == "/exit":
+        if raw_lower == "/exit":
             print("Do zobaczenia.")
             log_action("session.exit", "Zakończenie sesji bez tworzenia podsumowania.")
             break
 
-        if raw == "/help":
-            print(HELP_TEXT)
-            log_action("help.show", "Wyświetlenie listy dostępnych komend.")
-            continue
-
-        if raw == "/queue-status":
+        if raw_lower == "/queue-status":
             policy = chat_service.ollama_client.queue_policy
             vram_advisor = chat_service.ollama_client.vram_advisor
             if policy is None:
@@ -2200,7 +2571,7 @@ def run_cli(
             )
             continue
 
-        if raw.startswith("/capabilities"):
+        if raw_lower.startswith("/capabilities"):
             check_network = "--network" in raw.split()
             capabilities = collect_capabilities(check_network=check_network)
             print("\n--- CAPABILITIES ---")
@@ -2212,7 +2583,7 @@ def run_cli(
             )
             continue
 
-        if raw.startswith("/show-system-context"):
+        if raw_lower.startswith("/show-system-context"):
             parts = raw.split(maxsplit=1)
             sample_message = parts[1].strip() if len(parts) == 2 else "kontekst diagnostyczny"
             prompt = chat_service.build_system_prompt(sample_message)
@@ -2225,7 +2596,7 @@ def run_cli(
             )
             continue
 
-        if raw in {"/goal-status", "/goal"}:
+        if raw_lower in {"/goal-status", "/goal"}:
             snapshot = _read_plan_tracking_snapshot(work_dir)
             repair_info: dict | None = None
             if snapshot.get("parse_error"):
@@ -2326,7 +2697,7 @@ def run_cli(
                 )
                 continue
 
-        if raw.startswith("/import-dialog"):
+        if raw_lower.startswith("/import-dialog"):
             log_action("import_dialog.request", "Import treści dyskusji bez kodu do pamięci.")
             if not permission_manager.request_disk_read(
                 "Import dialogu wymaga odczytu pliku z dysku.",
@@ -2348,7 +2719,7 @@ def run_cli(
             log_action("import_dialog.done", "Zapisano kontekst dyskusji do pamięci.", {"path": str(path)})
             continue
 
-        if raw.startswith("/create-python"):
+        if raw_lower.startswith("/create-python"):
             log_action("create_python.request", "Generowanie i zapis kodu Python.")
             parts = raw.split(maxsplit=2)
             if len(parts) < 3:
@@ -2393,7 +2764,7 @@ def run_cli(
             )
             continue
 
-        if raw.startswith("/run-python"):
+        if raw_lower.startswith("/run-python"):
             log_action("run_python.request", "Uruchomienie skryptu Python.")
             parts = shlex.split(raw)
             if len(parts) < 2:
@@ -2442,7 +2813,7 @@ def run_cli(
             )
             continue
 
-        if raw.startswith("/run-shell"):
+        if raw_lower.startswith("/run-shell"):
             log_action("run_shell.request", "Uruchomienie polecenia shell z polityką whitelist.")
             parts = raw.split(maxsplit=1)
             if len(parts) < 2 or not parts[1].strip():
@@ -2488,7 +2859,7 @@ def run_cli(
             )
             continue
 
-        if raw.startswith("/history"):
+        if raw_lower.startswith("/history"):
             log_action("history.show", "Odczyt historii wiadomości z pamięci.")
             parts = raw.split(maxsplit=1)
             limit = 10
@@ -2505,7 +2876,7 @@ def run_cli(
                 )
             continue
 
-        if raw.startswith("/remember"):
+        if raw_lower.startswith("/remember"):
             log_action("remember.request", "Zapis notatki użytkownika.")
             parts = raw.split(maxsplit=1)
             if len(parts) < 2:
@@ -2516,7 +2887,7 @@ def run_cli(
             print("Zapisano notatkę.")
             continue
 
-        if raw.startswith("/memories"):
+        if raw_lower.startswith("/memories"):
             log_action("memories.search", "Przegląd zawartości pamięci.")
             parts = raw.split(maxsplit=1)
             query = parts[1].strip() if len(parts) == 2 else None
@@ -2555,8 +2926,23 @@ def run_cli(
                     continue
             plan_fingerprint_before = _main_plan_fingerprint(work_dir)
 
-            answer = chat_service.ask(raw)
+            answer = ask_executor_with_router_mailbox(raw)
             answer = apply_supervisor(raw, answer, stage="user_turn")
+            if passive_turns >= 1 and not _has_supported_tool_call(answer):
+                intro_candidates = [workspace_root / "wprowadzenie.md", work_dir.parent / "wprowadzenie.md"]
+                intro_path = next((path for path in intro_candidates if path.exists()), None)
+                intro_hint = str(intro_path.resolve()) if intro_path is not None else "wprowadzenie.md"
+                corrective_prompt = _build_no_action_corrective_prompt(raw, intro_hint)
+                answer = apply_supervisor(
+                    corrective_prompt,
+                    answer,
+                    stage="user_turn_passive_streak",
+                )
+                log_action(
+                    "chat.passive_streak.corrective",
+                    "Uruchomiono nadzorczą korektę po kolejnych pasywnych turach użytkownika.",
+                    {"passive_turns_before": passive_turns},
+                )
             answer = enforce_actionable_autonomy(raw, answer)
             if _has_supported_tool_call(answer):
                 passive_turns = 0
@@ -2589,8 +2975,13 @@ def run_cli(
                 if refreshed_fingerprint and refreshed_fingerprint != plan_fingerprint_after:
                     user_turns_without_plan_update = 0
 
-            print(f"\nModel> {answer}")
-            log_action("chat.response", "Zwrócono odpowiedź modelu użytkownikowi.", {"chars": len(answer)})
+            display_answer = _format_user_facing_answer(answer)
+            print(f"\nModel> {display_answer}")
+            log_action(
+                "chat.response",
+                "Zwrócono odpowiedź modelu użytkownikowi.",
+                {"chars": len(answer), "display_chars": len(display_answer)},
+            )
         except Exception as error:
             print(f"Błąd: {error}")
             log_action("chat.error", "Błąd podczas obsługi wiadomości użytkownika.", {"error": str(error)})

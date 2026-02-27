@@ -350,3 +350,4 @@ def test_main_ui_textual_dispatches_to_textual_runner(tmp_path: Path, monkeypatc
     app_main.main(["--ui", "textual", "--startup_dialogue_path", str(tmp_path / "missing.md")])
 
     assert textual_kwargs.get("supervisor_dialogue_log_path") == settings.supervisor_dialogue_log_path
+    assert textual_kwargs.get("shell_policy_path") == settings.shell_policy_path

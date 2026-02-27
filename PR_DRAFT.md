@@ -2,13 +2,18 @@
 
 This PR improves repository consistency, onboarding quality, and GitHub maintainability for `amiagi`.
 
-### Update (v0.1.1 scope)
+### Update (v0.1.3 scope)
 
 - Aligned executor role prompt with autonomous runtime role.
 - Fixed passive-state accounting after supervisor/autonomy repairs.
 - Hardened supervisor evidence criteria against declarative completion claims.
 - Added optional Textual tri-pane UI (`--ui textual`) for user/supervisor/executor dialogue visibility.
 - Added release notes for `v0.1.1` and bumped project version to `0.1.1`.
+- Added runtime model management commands in CLI and Textual (`/models show`, `/models chose <nr>`, `/models current`).
+- Added automatic default executor model selection from local Ollama list on startup.
+- Normalized user-facing model output to plain text (raw `tool_call` payloads remain in technical logs).
+- Added runtime clear-screen commands (`/cls`, `/cls all`) in both CLI and Textual.
+- Added dedicated release notes for `v0.1.3` and bumped project version to `0.1.3`.
 
 ### What changed
 
@@ -35,17 +40,24 @@ This PR improves repository consistency, onboarding quality, and GitHub maintain
 - `.gitignore`
 - `README.md`
 - `README.pl.md`
+- `RELEASE_NOTES_v0.1.3.md`
 - `src/amiagi/main.py`
 - `tests/test_main_interrupt.py`
 - `CONTRIBUTING.md`
 - `RELEASE_CHECKLIST.md`
 - `.github/pull_request_template.md`
+- `src/amiagi/interfaces/cli.py`
+- `src/amiagi/interfaces/textual_cli.py`
+- `src/amiagi/infrastructure/ollama_client.py`
+- `tests/test_cli_runtime_flow.py`
+- `tests/test_textual_cli.py`
+- `pyproject.toml`
 
 ## Validation
 
 - Full test suite run locally:
   - `pytest -q`
-  - Result: **135 passed**
+  - Result: **168 passed**
 - No diagnostics errors in modified documentation/config files.
 
 ## Risk assessment

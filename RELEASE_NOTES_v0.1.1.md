@@ -25,3 +25,16 @@ Incremental release focused on supervisor-worker runtime reliability and observa
 
 No permission model or tool policy changes were introduced.  
 Use in isolated/sandboxed environments as described in `SECURITY.md`.
+
+## Post-release updates (2026-02-27)
+
+- Textual runtime now applies supervisor refinement directly in the user-turn path, not only in auxiliary flows.
+- Added passive-streak corrective stage in both Textual and standard CLI (`user_turn_passive_streak`) to reduce repeated non-actionable model replies.
+- Added full tool-call continuation in Textual (`tool_call -> TOOL_RESULT -> follow-up ask`) to enforce execution continuity.
+- Added unknown-tool recovery path in Textual (e.g., unsupported tool names) with supervisor corrective stage and safe fallback.
+- Added progress guard in Textual to detect stale/invalid plan state and request a concrete next action.
+- Added periodic supervisor watchdog in Textual to trigger nudges after inactivity and force next operational steps.
+- Extended regression coverage for the above scenarios in:
+  - `tests/test_textual_cli.py`
+  - `tests/test_cli_runtime_flow.py`
+  - `tests/test_main_interrupt.py`

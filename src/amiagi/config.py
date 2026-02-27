@@ -35,6 +35,7 @@ class Settings:
     supervisor_model_io_log_path: Path = Path("./logs/model_io_supervisor.jsonl")
     supervisor_dialogue_log_path: Path = Path("./logs/supervision_dialogue.jsonl")
     activity_log_path: Path = Path("./logs/activity.jsonl")
+    router_mailbox_log_path: Path = Path("./logs/router_mailbox.jsonl")
     shell_policy_path: Path = Path("./config/shell_allowlist.json")
     work_dir: Path = Path("./amiagi-my-work")
     max_context_memories: int = 5
@@ -94,6 +95,9 @@ class Settings:
             ),
             activity_log_path=Path(
                 os.getenv("AMIAGI_ACTIVITY_LOG_PATH", "./logs/activity.jsonl")
+            ),
+            router_mailbox_log_path=Path(
+                os.getenv("AMIAGI_ROUTER_MAILBOX_LOG_PATH", "./logs/router_mailbox.jsonl")
             ),
             shell_policy_path=Path(
                 os.getenv("AMIAGI_SHELL_POLICY_PATH", "./config/shell_allowlist.json")

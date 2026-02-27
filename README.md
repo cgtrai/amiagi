@@ -40,6 +40,26 @@ See [LICENSE](LICENSE) for full terms.
 - Permission-gated resource access (`disk.*`, `network.*`, `process.exec`)
 - Controlled shell policy via allowlist
 - Dynamic runtime behavior based on available VRAM
+- Runtime model switching from UI/CLI (`/models show`, `/models chose <nr>`, `/models current`)
+- Automatic executor model bootstrap (first model from local Ollama list)
+- Cleaner end-user responses (tool-call payloads are kept in technical logs, user sees plain text)
+- Optional Textual UI parity for model commands and onboarding hints
+
+## Runtime Commands (CLI and Textual)
+
+Model management commands:
+
+- `/cls` — clears the main terminal screen
+- `/cls all` — clears terminal screen and scrollback history
+- `/models current` — shows currently active executor model
+- `/models show` — lists models discovered in local Ollama with index numbers
+- `/models chose <nr>` — switches executor model by index from `/models show`
+
+Notes:
+
+- On startup, runtime attempts to select a default executor model automatically (position `1/x` from Ollama list).
+- If model list retrieval fails, runtime keeps current model and reports a warning.
+- User-facing model output is normalized to readable text, while raw tool traces remain in JSONL/log panels.
 
 ## Project Structure
 
@@ -199,6 +219,7 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Release Process
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+Latest release notes: [RELEASE_NOTES_v0.1.3.md](RELEASE_NOTES_v0.1.3.md).
 
 ## Polish Documentation
 
