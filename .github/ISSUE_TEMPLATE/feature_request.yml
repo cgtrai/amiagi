@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea or improvement for amiagi
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your suggestion. Clear proposals help us prioritize better.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the feature
+      placeholder: What do you want to add/improve?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this solve?
+      placeholder: I'm always frustrated when ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred approach
+      placeholder: I would like amiagi to ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional alternatives or workarounds
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, examples, or constraints

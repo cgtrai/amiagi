@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible problem in amiagi
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in as much detail as possible.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short description of the bug
+      placeholder: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact steps
+      placeholder: |
+        1. Run ...
+        2. Execute ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: amiagi version
+      placeholder: e.g. 0.1.4
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.10.12
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs/output
+      render: shell
+      description: Paste traceback, test output, or command output
