@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import is_dataclass, replace
+from collections.abc import Iterable
+import random
 import shlex
 import re
 import shutil
@@ -15,6 +17,8 @@ import json
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
+from typing import Any, cast
+
 from amiagi.application.framework_directives import FrameworkDirective, parse_framework_directive
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
 from amiagi.application.shell_policy import (
@@ -24,12 +28,54 @@ from amiagi.application.shell_policy import (
 )
 from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.chat_service import ChatService
+from amiagi.application.tool_registry import list_registered_tools, resolve_registered_tool_script
 from amiagi.infrastructure.script_executor import ScriptExecutor
 from amiagi.interfaces.permission_manager import PermissionManager
+from amiagi import __version__
+
+
+# ---------------------------------------------------------------------------
+# Landing page: ASCII art logo + MOTD (shared with textual_cli)
+# ---------------------------------------------------------------------------
+
+_AMIAGI_LOGO = r"""
+               _              ___    _    ____ ___ 
+              / \   _ __ ___ |_ _|  / \  / ___|_ _|
+             / _ \ | '_ ` _ \ | |  / _ \| |  _ | | 
+            / ___ \| | | | | || | / ___ \ |_| || | 
+           /_/   \_\_| |_| |_|___/_/   \_\____|___|
+"""
+
+_MOTD_POOL = [
+    "AGI nadci\u0105ga i nadci\u0105ga, my b\u0119dziemy wiedzie\u0107 kiedy...",
+    "Lokalne LLM-y: bo prywatno\u015b\u0107 to nie bug, to feature.",
+    "Polluks my\u015bli, Kastor nadzoruje, Sponsor p\u0142aci rachunki.",
+    "Autonomia zaczyna si\u0119 od pierwszego tool_call.",
+    "Kto potrzebuje chmury, kiedy ma Ollama na localhost?",
+    "Tw\u00f3j prywatny agent AI \u2014 bez chmury, bez \u015bledzenia, bez \u017cart\u00f3w.",
+    "Ma\u0142a sztuczna inteligencja, wielkie ambicje.",
+    "Ka\u017cdy plan zaczyna si\u0119 od /help.",
+]
+
+
+def _build_landing_banner(*, mode: str) -> str:
+    """Return the startup banner string for *mode* ('textual' or 'cli')."""
+    motd = random.choice(_MOTD_POOL)  # noqa: S311
+    lines = [
+        _AMIAGI_LOGO.rstrip(),
+        f"           v:{__version__}  \u00b7  mode: {mode}",
+        "",
+        f"  \u2726 {motd}",
+        "",
+        "  Wpisz /help, aby zobaczy\u0107 dost\u0119pne komendy.",
+        " ",
+        " ",
+    ]
+    return "\n".join(lines)
 
 
 _HELP_COMMANDS: list[tuple[str, str]] = [
-        ("/help", "pokaż pomoc"),
+        ("/help", "pokaż dostępne komendy"),
     ("/cls", "wyczyść ekran główny terminala"),
     ("/cls all", "wyczyść ekran i historię przewijania terminala"),
     ("/models current", "pokaż aktualnie aktywny model wykonawczy"),
@@ -58,7 +104,7 @@ _HELP_COMMANDS: list[tuple[str, str]] = [
 
 def _build_help_text() -> str:
         command_width = max(len(command) for command, _ in _HELP_COMMANDS)
-        lines = ["Komendy:"]
+        lines = ["Komendy (CLI):"]
         for command, description in _HELP_COMMANDS:
                 lines.append(f"  {command.ljust(command_width)}  - {description}")
         return "\n".join(lines)
@@ -130,9 +176,13 @@ def _build_unknown_tools_corrective_prompt(unknown_tools: list[str]) -> str:
         "Twoje poprzednie wywołanie użyło nieobsługiwanych narzędzi: "
         + ", ".join(sorted(set(unknown_tools)))
         + ".\n"
-        f"Dostępne narzędzia to wyłącznie: {_ALLOWED_TOOLS_TEXT}.\n"
+        "Działaj proaktywnie: jeśli narzędzie nie istnieje, najpierw zaprojektuj je i zapisz plan do notes/tool_design_plan.json, "
+        "następnie zarejestruj je w state/tool_registry.json, a potem użyj narzędzia do realizacji zadania.\n"
+        "Plan musi zawierać: funkcjonalność narzędzia, procedurę debugowania, testowania i naprawy skryptów, "
+        "procedurę dopisania narzędzia do listy dostępnych oraz procedurę użycia narzędzia.\n"
+        f"Dostępne narzędzia bazowe: {_ALLOWED_TOOLS_TEXT}.\n"
         f"{_PYTHON_WORKFLOW_CHECKLIST}\n"
-        "Teraz zwróć WYŁĄCZNIE jeden poprawny blok tool_call z tej listy."
+        "Teraz zwróć WYŁĄCZNIE jeden poprawny blok tool_call jako pierwszy krok tej procedury (preferuj write_file)."
     )
 
 
@@ -281,9 +331,14 @@ def _fetch_ollama_models(chat_service: ChatService) -> tuple[list[str], str | No
     except Exception as error:
         return [], str(error)
 
+    if isinstance(raw_models, Iterable) and not isinstance(raw_models, (str, bytes, dict)):
+        iterable_models = raw_models
+    else:
+        iterable_models = []
+
     names: list[str] = []
     seen: set[str] = set()
-    for item in raw_models or []:
+    for item in iterable_models:
         name = str(item).strip()
         if not name or name in seen:
             continue
@@ -301,9 +356,9 @@ def _set_executor_model(chat_service: ChatService, model_name: str) -> tuple[boo
     if current == model_name:
         return True, current
 
-    if is_dataclass(client):
+    if is_dataclass(client) and not isinstance(client, type):
         try:
-            chat_service.ollama_client = replace(client, model=model_name)
+            chat_service.ollama_client = replace(cast(Any, client), model=model_name)
             return True, current
         except Exception:
             pass
@@ -826,6 +881,23 @@ def run_cli(
     last_referenced_file: Path | None = None
     mailbox_log_path = router_mailbox_log_path if router_mailbox_log_path is not None else Path("./logs/router_mailbox.jsonl")
 
+    def _runtime_supported_tools() -> set[str]:
+        return set(_SUPPORTED_TOOL_NAMES).union(list_registered_tools(work_dir))
+
+    def _has_supported_tool_call_runtime(answer: str) -> bool:
+        calls = parse_tool_calls(answer)
+        if not calls:
+            return False
+        supported = _runtime_supported_tools()
+        return any(_canonical_tool_name_for_validation(call.tool) in supported for call in calls)
+
+    def _has_unknown_tool_calls_runtime(answer: str) -> bool:
+        calls = parse_tool_calls(answer)
+        if not calls:
+            return False
+        supported = _runtime_supported_tools()
+        return any(_canonical_tool_name_for_validation(call.tool) not in supported for call in calls)
+
     file_ref_pattern = re.compile(r"(?P<path>[\w./-]+\.[A-Za-z0-9]+)")
     read_this_file_pattern = re.compile(
         r"(przeczytaj|odczytaj).*(tego\s+pliku|ten\s+plik)",
@@ -1153,17 +1225,28 @@ def run_cli(
             del supervisor_outbox[:-10]
         _append_router_mailbox_log("enqueue", payload)
 
+    def _merge_supervisor_notes(base_note: str, supervisor_note: str) -> str:
+        base_clean = " ".join(base_note.strip().split())
+        supervisor_clean = " ".join(supervisor_note.strip().split())
+        if not supervisor_clean:
+            return base_clean[:500]
+        if not base_clean:
+            return supervisor_clean[:500]
+        if supervisor_clean in base_clean:
+            return base_clean[:500]
+        return f"{base_clean} {supervisor_clean}"[:500]
+
     def _drain_supervisor_outbox_context() -> str:
         if not supervisor_outbox:
             return ""
         queued_messages = [dict(message) for message in supervisor_outbox]
-        lines = ["[ROUTER_MAILBOX_FROM_SUPERVISOR]"]
+        lines = ["[ROUTER_MAILBOX_FROM_KASTOR]"]
         for index, message in enumerate(supervisor_outbox, start=1):
             lines.append(
                 f"{index}) stage={message.get('stage','')}; reason={message.get('reason_code','')}; "
                 f"notes={message.get('notes','')}; suggested_step={message.get('suggested_step','')}"
             )
-        lines.append("[/ROUTER_MAILBOX_FROM_SUPERVISOR]")
+        lines.append("[/ROUTER_MAILBOX_FROM_KASTOR]")
         supervisor_outbox.clear()
         _append_router_mailbox_log(
             "deliver",
@@ -1214,7 +1297,7 @@ def run_cli(
             _enqueue_supervisor_message(
                 stage=stage,
                 reason_code=result.reason_code,
-                notes=notes,
+                notes=_merge_supervisor_notes(notes, result.notes),
                 answer=result.answer,
             )
             log_action(
@@ -1227,14 +1310,14 @@ def run_cli(
                     "work_state": result.work_state,
                 },
             )
-            if _has_unknown_tool_calls(result.answer):
+            if _has_unknown_tool_calls_runtime(result.answer):
                 log_action(
                     "supervisor.repair.rejected",
                     "Odrzucono poprawkę nadzorcy zawierającą nieobsługiwane narzędzie.",
                     {
                         "stage": stage,
                         "reason_code": result.reason_code,
-                        "had_supported_in_original": _has_supported_tool_call(model_answer),
+                        "had_supported_in_original": _has_supported_tool_call_runtime(model_answer),
                     },
                 )
                 return model_answer
@@ -1242,7 +1325,7 @@ def run_cli(
             _enqueue_supervisor_message(
                 stage=stage,
                 reason_code=result.reason_code,
-                notes="Ocena bez korekty.",
+                notes=_merge_supervisor_notes("Ocena bez korekty.", result.notes),
                 answer=result.answer,
             )
             log_action(
@@ -1747,6 +1830,39 @@ def run_cli(
                 return {"ok": False, "error": str(error), "path": str(path)}
             return {"ok": True, "tool": "append_file", "path": str(path), "chars": len(content)}
 
+        custom_script = resolve_registered_tool_script(work_dir, tool)
+        if custom_script is not None:
+            if not permission_manager.request_disk_read("Niestandardowe narzędzie wymaga odczytu skryptu."):
+                return {"ok": False, "error": "permission_denied:disk.read"}
+            if not permission_manager.request_process_exec("Niestandardowe narzędzie wymaga wykonania procesu."):
+                return {"ok": False, "error": "permission_denied:process.exec"}
+            if not custom_script.exists() or not custom_script.is_file():
+                return {
+                    "ok": False,
+                    "error": "custom_tool_script_not_found",
+                    "tool": tool,
+                    "path": str(custom_script),
+                }
+            if not _is_path_within_work_dir(custom_script, work_dir):
+                return {
+                    "ok": False,
+                    "error": "path_outside_work_dir",
+                    "tool": tool,
+                    "path": str(custom_script),
+                    "work_dir": str(work_dir),
+                }
+            result = script_executor.execute_python(custom_script, [json.dumps(args, ensure_ascii=False)])
+            return {
+                "ok": result.exit_code == 0,
+                "tool": tool,
+                "runner": "python_custom",
+                "script_path": str(custom_script),
+                "command": result.command,
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+
         return {
             "ok": False,
             "error": f"unknown_tool:{tool}",
@@ -1768,7 +1884,7 @@ def run_cli(
 
     def resolve_tool_calls(
         initial_answer: str,
-        max_steps: int = 3,
+        max_steps: int = 15,
         allow_safe_fallback: bool = True,
     ) -> str:
         nonlocal last_tool_activity_monotonic
@@ -1835,7 +1951,9 @@ def run_cli(
             return post_fallback_answer
 
         current = initial_answer
-        for _ in range(max_steps):
+        iteration = 0
+        while iteration < max_steps:
+            iteration += 1
             tool_calls = parse_tool_calls(current)
             if tool_calls:
                 current = apply_supervisor("[TOOL_FLOW]", current, stage="tool_flow")
@@ -1851,7 +1969,7 @@ def run_cli(
                         stage="unparsed_tool_call_corrective",
                     )
                     corrected_calls = parse_tool_calls(corrected)
-                    if corrected_calls and not _has_unknown_tool_calls(corrected):
+                    if corrected_calls and not _has_unknown_tool_calls_runtime(corrected):
                         current = corrected
                         continue
                     return corrected
@@ -1862,7 +1980,7 @@ def run_cli(
                     corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="empty_answer_corrective")
                     corrected_calls = parse_tool_calls(corrected)
-                    if corrected_calls and not _has_unknown_tool_calls(corrected):
+                    if corrected_calls and not _has_unknown_tool_calls_runtime(corrected):
                         current = corrected
                         continue
                     current = corrected
@@ -1873,7 +1991,7 @@ def run_cli(
                     corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="python_code_corrective")
                     corrected_calls = parse_tool_calls(corrected)
-                    if corrected_calls and not _has_unknown_tool_calls(corrected):
+                    if corrected_calls and not _has_unknown_tool_calls_runtime(corrected):
                         current = corrected
                         continue
                     current = corrected
@@ -1884,7 +2002,7 @@ def run_cli(
                     corrected = ask_executor_with_router_mailbox(corrective_prompt)
                     corrected = apply_supervisor(corrective_prompt, corrected, stage="pseudo_tool_corrective")
                     corrected_calls = parse_tool_calls(corrected)
-                    if corrected_calls and not _has_unknown_tool_calls(corrected):
+                    if corrected_calls and not _has_unknown_tool_calls_runtime(corrected):
                         current = corrected
                         continue
                     current = corrected
@@ -1961,7 +2079,7 @@ def run_cli(
                     )
                     redirected_calls = parse_tool_calls(redirected)
                     code_path_failure_streak = 0
-                    if redirected_calls and not _has_unknown_tool_calls(redirected):
+                    if redirected_calls and not _has_unknown_tool_calls_runtime(redirected):
                         current = _canonicalize_tool_calls(redirected_calls)
                         continue
                     return redirected
@@ -2008,6 +2126,15 @@ def run_cli(
             current = ask_executor_with_router_mailbox(followup)
 
         if parse_tool_calls(current):
+            print(
+                "Model> Ostrzeżenie runtime: osiągnięto limit iteracji resolve_tool_calls; "
+                "pozostał nierozwiązany krok narzędziowy."
+            )
+            log_action(
+                "tool_flow.iteration_cap",
+                "Osiągnięto limit iteracji resolve_tool_calls przy aktywnym tool_call.",
+                {"max_steps": max_steps},
+            )
             if not allow_safe_fallback:
                 return current
             return _run_safe_tool_fallback()
@@ -2117,12 +2244,14 @@ def run_cli(
         answer = ask_executor_with_router_mailbox(idle_prompt)
         answer = apply_supervisor(idle_prompt, answer, stage="idle_reactivation")
         answer = enforce_actionable_autonomy(last_user_message or "kontynuuj", answer)
-        if _has_supported_tool_call(answer):
+        tool_activity_before = last_tool_activity_monotonic
+        answer = resolve_tool_calls(answer)
+        answer = ensure_plan_persisted(last_user_message or "kontynuuj", answer)
+        had_runtime_progress = last_tool_activity_monotonic > tool_activity_before
+        if had_runtime_progress and not _has_supported_tool_call(answer):
             passive_turns = 0
         else:
             passive_turns += 1
-        answer = resolve_tool_calls(answer)
-        answer = ensure_plan_persisted(last_user_message or "kontynuuj", answer)
         display_answer = _format_user_facing_answer(answer)
         print(f"\nModel> {display_answer}")
         log_action(
@@ -2169,8 +2298,9 @@ def run_cli(
             f"z {shell_policy_path}: {error}. Używam polityki domyślnej."
         )
 
-    print("amiagi CLI")
-    print("Inicjalizacja kontekstu modelu...")
+    # --- Landing page ---
+    print(_build_landing_banner(mode="cli"))
+
     log_action(
         "session.start",
         "Rozpoczęcie sesji CLI i przygotowanie kontekstu ciągłości.",
@@ -2183,10 +2313,6 @@ def run_cli(
 
     selected_default_model, discovered_models, default_model_error = _ensure_default_executor_model(chat_service)
     if selected_default_model is not None:
-        print(
-            f"Domyślny model wykonawczy: {selected_default_model} "
-            f"(pozycja 1/{len(discovered_models)} z listy Ollama)."
-        )
         log_action(
             "models.default.selected",
             "Ustawiono domyślny model wykonawczy na pierwszy model z listy Ollama.",
@@ -2197,9 +2323,7 @@ def run_cli(
         )
     else:
         fallback_model = str(getattr(chat_service.ollama_client, "model", ""))
-        print(f"Domyślny model wykonawczy: {fallback_model} (fallback).")
         if default_model_error:
-            print(f"Uwaga: nie udało się pobrać listy modeli z Ollama: {default_model_error}")
             log_action(
                 "models.default.fallback",
                 "Pozostawiono model fallback z powodu błędu listowania modeli.",
@@ -2208,30 +2332,17 @@ def run_cli(
 
     try:
         readiness = chat_service.bootstrap_runtime_readiness()
-        print("\n--- MODEL READINESS ---")
-        print(readiness)
-        print("\nModel gotowy.")
-        print("Witaj w terminalu amiagi 👋")
-        print("- Wpisz /help, aby zobaczyć komendy.")
-        print("- Wpisz /models show, aby wyświetlić modele z Ollama.")
-        print("- Wpisz /models chose X, aby wybrać model do testów (X = numer z listy).")
         log_action(
             "session.readiness",
             "Model potwierdził gotowość po automatycznym bootstrapie.",
             {"chars": len(readiness)},
         )
     except Exception as error:
-        print(f"Błąd bootstrapu modelu: {error}")
-        print("Przechodzę do trybu interaktywnego bez potwierdzenia gotowości.")
         log_action(
             "session.readiness.error",
             "Nie udało się uzyskać komunikatu gotowości podczas bootstrapu.",
             {"error": str(error)},
         )
-        print("Witaj w terminalu amiagi 👋")
-        print("- Wpisz /help, aby zobaczyć komendy.")
-        print("- Wpisz /models show, aby wyświetlić modele z Ollama.")
-        print("- Wpisz /models chose X, aby wybrać model do testów (X = numer z listy).")
 
     while True:
         try:
@@ -2434,12 +2545,14 @@ def run_cli(
                 answer = ask_executor_with_router_mailbox(planning_prompt)
                 answer = apply_supervisor(planning_prompt, answer, stage="goal_planning")
                 answer = enforce_actionable_autonomy(confirmed_goal, answer)
-                if _has_supported_tool_call(answer):
+                tool_activity_before = last_tool_activity_monotonic
+                answer = resolve_tool_calls(answer)
+                answer = ensure_plan_persisted(confirmed_goal, answer)
+                had_runtime_progress = last_tool_activity_monotonic > tool_activity_before
+                if had_runtime_progress and not _has_supported_tool_call(answer):
                     passive_turns = 0
                 else:
                     passive_turns += 1
-                answer = resolve_tool_calls(answer)
-                answer = ensure_plan_persisted(confirmed_goal, answer)
                 user_turns_without_plan_update = 0
                 display_answer = _format_user_facing_answer(answer)
                 print(f"\nModel> {display_answer}")
@@ -2944,12 +3057,14 @@ def run_cli(
                     {"passive_turns_before": passive_turns},
                 )
             answer = enforce_actionable_autonomy(raw, answer)
-            if _has_supported_tool_call(answer):
+            tool_activity_before = last_tool_activity_monotonic
+            answer = resolve_tool_calls(answer)
+            answer = ensure_plan_persisted(raw, answer)
+            had_runtime_progress = last_tool_activity_monotonic > tool_activity_before
+            if had_runtime_progress and not _has_supported_tool_call(answer):
                 passive_turns = 0
             else:
                 passive_turns += 1
-            answer = resolve_tool_calls(answer)
-            answer = ensure_plan_persisted(raw, answer)
 
             plan_fingerprint_after = _main_plan_fingerprint(work_dir)
             if plan_fingerprint_after and plan_fingerprint_after != plan_fingerprint_before:

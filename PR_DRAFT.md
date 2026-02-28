@@ -1,78 +1,54 @@
 ## Summary
 
-This PR improves repository consistency, onboarding quality, and GitHub maintainability for `amiagi`.
+This PR delivers v0.1.4 of `amiagi` with communication protocol, runtime stability fixes, and UX polish.
 
-### Update (v0.1.3 scope)
+### Update (v0.1.4 scope)
 
-- Aligned executor role prompt with autonomous runtime role.
-- Fixed passive-state accounting after supervisor/autonomy repairs.
-- Hardened supervisor evidence criteria against declarative completion claims.
-- Added optional Textual tri-pane UI (`--ui textual`) for user/supervisor/executor dialogue visibility.
-- Added release notes for `v0.1.1` and bumped project version to `0.1.1`.
-- Added runtime model management commands in CLI and Textual (`/models show`, `/models chose <nr>`, `/models current`).
-- Added automatic default executor model selection from local Ollama list on startup.
-- Normalized user-facing model output to plain text (raw `tool_call` payloads remain in technical logs).
-- Added runtime clear-screen commands (`/cls`, `/cls all`) in both CLI and Textual.
-- Added dedicated release notes for `v0.1.3` and bumped project version to `0.1.3`.
+- Implemented multi-actor communication protocol with addressed-block routing (`[Sender -> Receiver]`), unaddressed-turn reminders, and Polluks → Kastor consultation rounds.
+- Fixed idle/interrupt logic: model question detection (`_model_response_awaits_user()`), supervisor `WAITING_USER_DECISION` reaction, watchdog reset on new user input, timeout 120→180s.
+- Fixed missing-tool workflow: alias map (`file_read→read_file`, `dir_list→list_dir`), per-tool correction tracking (max 2), forced tool-creation plan after exhaustion.
+- Fixed supervisor routing: `[Kastor -> Sponsor]` messages now route to user's main panel.
+- Context-aware `/help`: Textual shows only Textual commands, CLI shows only CLI commands.
+- ASCII art landing page with version/mode indicator and randomized MOTD on startup (CLI + Textual).
+- Cleaned startup output: removed verbose model info, "Tryb Textual aktywny", redundant command hints.
+- User message queue with position feedback when router cycle is busy.
+- Fixed `notes_txt`/`repaired_txt` possibly-unbound static analysis warning in `_poll_supervision_dialogue()`.
+- Bumped version to 0.1.4.
 
 ### What changed
 
-- Removed hard dependency in docs on a specific Conda environment name (`deeplob`), replacing it with neutral instructions for user-defined environment names.
-- Added robust startup dialogue path resolution in runtime:
-  - if `wprowadzenie.md` (means initial tasks) is not found in the current working directory,
-  - runtime now falls back to `AMIAGI_WORK_DIR/wprowadzenie.md`.
-- Added regression test for startup dialogue fallback behavior.
-- Improved repository hygiene by extending `.gitignore` for generated runtime/build artifacts.
-- Added contributor and release process documentation:
-  - `CONTRIBUTING.md`
-  - `RELEASE_CHECKLIST.md`
-  - `.github/pull_request_template.md`
-- Linked contributing and release process docs from both README variants.
+- `src/amiagi/interfaces/textual_cli.py` — communication protocol routing, landing page, context-aware help, idle/interrupt fixes, tool alias resolution, supervisor routing, message queue, static analysis fix.
+- `src/amiagi/interfaces/cli.py` — landing page banner, context-aware help, tool alias resolution, cleaned startup output.
+- `src/amiagi/application/communication_protocol.py` — new module: `parse_addressed_blocks()`, `panels_for_target()`, `is_sponsor_readable()`, `load_communication_rules()`.
+- `src/amiagi/application/chat_service.py` — `TOOL_CALLING_GUIDE` extended with alias docs and tool-creation workflow.
+- `src/amiagi/application/supervisor_service.py` — `SupervisionResult.work_state` field, unknown-tool rule in review prompt.
+- `config/communication_rules.json` — new config for protocol thresholds and templates.
+- `tests/test_textual_cli.py` — 61 new tests covering all new features.
+- Documentation: `README.md`, `README.pl.md`, `RELEASE_NOTES_v0.1.4.md`, `GITHUB_RELEASE_v0.1.4.md`.
+- Version bump: `pyproject.toml`, `src/amiagi/__init__.py`.
 
 ## Motivation
 
-- Make setup and usage environment-agnostic for all users (not tied to one local Conda env).
-- Improve runtime resilience and reduce friction for default project structure usage.
-- Raise repository quality to a professional GitHub standard with clearer collaboration and release flows.
-
-## Files touched
-
-- `.gitignore`
-- `README.md`
-- `README.pl.md`
-- `RELEASE_NOTES_v0.1.3.md`
-- `src/amiagi/main.py`
-- `tests/test_main_interrupt.py`
-- `CONTRIBUTING.md`
-- `RELEASE_CHECKLIST.md`
-- `.github/pull_request_template.md`
-- `src/amiagi/interfaces/cli.py`
-- `src/amiagi/interfaces/textual_cli.py`
-- `src/amiagi/infrastructure/ollama_client.py`
-- `tests/test_cli_runtime_flow.py`
-- `tests/test_textual_cli.py`
-- `pyproject.toml`
+- Establish structured communication between LLM actors for observability and correctness.
+- Fix real-world runtime bugs discovered during extended usage sessions.
+- Improve onboarding and startup experience with clean branding.
+- Reduce noise in startup messages while keeping essential information accessible via `/help`.
 
 ## Validation
 
 - Full test suite run locally:
   - `pytest -q`
-  - Result: **168 passed**
-- No diagnostics errors in modified documentation/config files.
+  - Result: **229 passed**
+- No static analysis errors in modified files.
 
 ## Risk assessment
 
-- **Low risk**.
-- Runtime logic change is narrowly scoped to startup dialogue path resolution and is covered by a dedicated test.
-- Documentation and process additions do not alter core business logic.
+- **Medium risk** — significant runtime flow changes (communication protocol, idle/interrupt, tool resolution).
+- All changes are covered by 61 new targeted tests plus full regression suite.
+- No permission scope or shell allowlist changes.
 
 ## Backward compatibility
 
 - Existing invocation paths remain supported.
-- Existing users with custom startup dialogue paths are unaffected.
-- New fallback only improves behavior when the default relative path is missing.
-
-## Notes for reviewers
-
-- Focus review on `src/amiagi/main.py` fallback logic and corresponding test coverage in `tests/test_main_interrupt.py`.
-- Docs updates are aligned across EN/PL README files.
+- Startup output is cleaner but all information is still accessible via `/help` and `/models show`.
+- Communication protocol is additive — works transparently with models that don't use addressed blocks.

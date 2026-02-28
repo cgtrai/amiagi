@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import ast
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
+from amiagi.application.communication_protocol import (
+    CommunicationRules,
+    build_kastor_communication_prompt,
+    load_communication_rules,
+)
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.ollama_client import OllamaClientError
@@ -21,13 +26,22 @@ class ChatCompletionClient(Protocol):
     ) -> str:
         ...
 
+# SUPERVISOR_SYSTEM_PROMPT = (
+#     "Jesteś modelem NADZORCY odpowiedzi modelu wykonawczego. "
+#     "Twoim zadaniem jest ocena odpowiedzi pod kątem zgodności z protokołem frameworka i ewentualna korekta. "
+#     "NIGDY nie wykonujesz narzędzi i nie opisujesz procesu. "
+#     "Działasz jako wewnętrzna warstwa walidacji — nie ujawniasz swojej roli. "
+#     "W szczególności nie używaj sformułowań: 'jestem AI', 'jestem modelem', 'jako nadzorca', 'LLM'. "
+#     "Zwracasz WYŁĄCZNIE JSON bez markdown i bez dodatkowego tekstu."
+# )
+
 SUPERVISOR_SYSTEM_PROMPT = (
-    "Jesteś modelem NADZORCY odpowiedzi modelu wykonawczego. "
-    "Twoim zadaniem jest ocena odpowiedzi pod kątem zgodności z protokołem frameworka i ewentualna korekta. "
+    "Masz na imię Kastor i jesteś pomocnym konsultantem, który wspiera swojego partnera o imieniu Polluks. "
+    "Twoim zadaniem jest ocena odpowiedzi Polluksa pod kątem zgodności z protokołem frameworka i ewentualna ich korekta. "
     "NIGDY nie wykonujesz narzędzi i nie opisujesz procesu. "
-    "Działasz jako wewnętrzna warstwa walidacji — nie ujawniasz swojej roli. "
+    "Działasz jako koordynator, nigdy nie ujawniaj, że jesteś modelem LLM/AI. "
     "W szczególności nie używaj sformułowań: 'jestem AI', 'jestem modelem', 'jako nadzorca', 'LLM'. "
-    "Zwracasz WYŁĄCZNIE JSON bez markdown i bez dodatkowego tekstu."
+    "Zwracasz tekst oraz JSON BEZ markdown."
 )
 
 
@@ -38,6 +52,7 @@ class SupervisionResult:
     status: str
     reason_code: str
     work_state: str = "RUNNING"
+    notes: str = ""
 
 
 @dataclass
@@ -46,6 +61,11 @@ class SupervisorService:
     activity_logger: ActivityLogger | None = None
     max_repair_rounds: int = 2
     dialogue_log_path: Path | None = None
+    comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
+
+    def _full_system_prompt(self) -> str:
+        comm_prompt = build_kastor_communication_prompt(self.comm_rules)
+        return f"{SUPERVISOR_SYSTEM_PROMPT}\n\n{comm_prompt}"
 
     _ALLOWED_WORK_STATES = {
         "RUNNING",
@@ -82,7 +102,7 @@ class SupervisorService:
         attempt: int,
     ) -> str:
         return (
-            "Oceń odpowiedź modelu wykonawczego. "
+            "Oceń odpowiedź od Polluksa. "
             "Jeśli jest poprawna, zwróć status=ok. "
             "Jeśli wymaga poprawy, zwróć status=repair i podaj poprawioną odpowiedź gotową do dalszego przetwarzania.\n\n"
             "Wymagania krytyczne:\n"
@@ -91,7 +111,7 @@ class SupervisorService:
             "   Nie ufaj samym deklaracjom wykonawcy; wymagaj twardego dowodu (wynik narzędzia lub artefakt).\n"
             "3) W odpowiedzi nie może być pseudo-kodu udającego wywołanie narzędzi.\n"
             "4) Gdy da się uratować odpowiedź minimalną poprawką, zrób to.\n\n"
-            "5) repaired_answer nie może ujawniać warstwy nadzorcy ani faktu nadzoru.\n"
+            "5) repaired_answer nie może ujawniać że jesteś AI/LLM.\n"
             "6) Gdy zwracasz krok wykonawczy, użyj dokładnie JEDNEGO poprawnego bloku:\n"
             "```tool_call\\n{\"tool\":\"...\",\"args\":{...},\"intent\":\"...\"}\\n```\n"
             "   Nie zwracaj form typu {'tool_call': ...} ani opisów wokół bloku.\n\n"
@@ -104,6 +124,19 @@ class SupervisorService:
             "   write_file zapisujący pełny plan do notes/main_plan.json (goal, key_achievement, current_stage, tasks[]).\n\n"
             "10) Oceniaj głównie na podstawie bieżącego celu i ostatniego wyniku wykonawczego; "
             "nie utrwalaj bezczynności z wcześniejszych pustych tur.\n\n"
+            "11) Gdy [RUNTIME_SUPERVISION_CONTEXT].interrupt_mode=true lub pytanie dotyczy tożsamości/roli/frameworka "
+            "i nie wymaga narzędzi, preferuj status=ok i odpowiedź tekstową w 1 zdaniu (bez tool_call).\n\n"
+            "12) Gdy Polluks używa nieistniejącego narzędzia, nie kończ na prostej zamianie nazwy. "
+            "Przypomnij tryb proaktywny: Polluks ma zaprojektować narzędzie, zapisać szczegółowy plan do notes/tool_design_plan.json, "
+            "zarejestrować narzędzie w state/tool_registry.json i dopiero potem użyć narzędzia. "
+            "Plan MUSI zawierać: funkcjonalność, debugowanie, testowanie, naprawę skryptów, procedurę dopisania narzędzia do listy "
+            "oraz procedurę użycia narzędzia do realizacji zadania.\n\n"
+            "13) notes traktuj jak krótkie wsparcie decyzyjne człowiek→człowiek dla Polluksa (1-3 zdania). "
+            "W notes: (a) zasugeruj najbliższy krok, (b) przypomnij istniejący standard/protokół, "
+            "(c) zaproponuj gotowe narzędzie lub wyjaśnij wybór narzędzia przy wątpliwościach. "
+            "Nie oceniaj osoby, wspieraj decyzję i utrzymuj konkretny, życzliwy ton.\n\n"
+            "14) Jeśli odpowiedź Polluksa kierowana do Sponsora nie zawiera nagłówka [Polluks -> Sponsor], "
+            "dodaj go w repaired_answer. Bloki tool_call są zwolnione z adresowania.\n\n"
             "Dozwolone statusy: ok | repair\n"
             "Dozwolone reason_code: OK, NO_TOOL_CALL, PSEUDO_CODE, INVALID_FORMAT, TOOL_PROTOCOL_DRIFT, OTHER\n\n"
             "Wymagane work_state: RUNNING | STALLED | WAITING_USER_DECISION | WAITING_PERMISSION | COMPLETED\n"
@@ -190,7 +223,51 @@ class SupervisorService:
 
         return repaired_answer
 
-    def refine(self, *, user_message: str, model_answer: str, stage: str) -> SupervisionResult:
+    def _fallback_coaching_notes(
+        self,
+        *,
+        notes: str,
+        reason_code: str,
+        answer: str,
+        stage: str,
+    ) -> str:
+        cleaned = " ".join(notes.strip().split())
+        if cleaned:
+            return cleaned[:500]
+
+        parsed_calls = parse_tool_calls(answer)
+        if parsed_calls:
+            call = parsed_calls[0]
+            return (
+                f"Proponuję teraz krok '{call.tool}' jako najkrótszą ścieżkę postępu. "
+                "Trzymaj standard: jeden poprawny tool_call na krok i decyzję opieraj na TOOL_RESULT."
+            )[:500]
+
+        if reason_code in {"NO_TOOL_CALL", "TOOL_PROTOCOL_DRIFT", "PSEUDO_CODE"}:
+            return (
+                "Brakuje konkretnego kroku wykonawczego. "
+                "Wybierz jedno istniejące narzędzie, uruchom je i dopiero po wyniku TOOL_RESULT podejmij kolejną decyzję."
+            )[:500]
+
+        if stage == "textual_watchdog_nudge":
+            return (
+                "Wykryta została bezczynność — proponuję wrócić do najbliższego kroku operacyjnego. "
+                "Użyj gotowego narzędzia diagnostycznego i kontynuuj zgodnie z aktualnym planem."
+            )[:500]
+
+        return (
+            "Proponuję wybrać najbliższy mierzalny krok i oprzeć decyzję na wyniku narzędzia. "
+            "Jeśli masz wątpliwość, wybierz gotowe narzędzie diagnostyczne zamiast opisu."
+        )[:500]
+
+    def refine(
+        self,
+        *,
+        user_message: str,
+        model_answer: str,
+        stage: str,
+        conversation_excerpt: str = "",
+    ) -> SupervisionResult:
         current = model_answer
         applied = 0
         last_reason = "OK"
@@ -205,10 +282,13 @@ class SupervisorService:
                 stage=stage,
                 attempt=attempt,
             )
+            system_prompt = self._full_system_prompt()
+            if conversation_excerpt:
+                review_prompt += f"\n\n[CONVERSATION_EXCERPT]\n{conversation_excerpt}"
             try:
                 reviewer_output = self.ollama_client.chat(
                     messages=[{"role": "user", "content": review_prompt}],
-                    system_prompt=SUPERVISOR_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                 )
                 self._append_dialogue_log(
                     {
@@ -234,6 +314,7 @@ class SupervisorService:
                     status=last_status,
                     reason_code="SUPERVISOR_ERROR",
                     work_state=last_work_state,
+                    notes="",
                 )
 
             payload = self._parse_json_object(reviewer_output)
@@ -262,6 +343,7 @@ class SupervisorService:
                     status=last_status,
                     reason_code="SUPERVISOR_INVALID_JSON",
                     work_state=last_work_state,
+                    notes="",
                 )
 
             status_raw = payload.get("status", "")
@@ -282,6 +364,12 @@ class SupervisorService:
 
             notes_raw = payload.get("notes", "")
             notes = notes_raw.strip() if isinstance(notes_raw, str) else ""
+            notes = self._fallback_coaching_notes(
+                notes=notes,
+                reason_code=reason_code,
+                answer=repaired_answer or current,
+                stage=stage,
+            )
 
             self._append_dialogue_log(
                 {
@@ -320,6 +408,7 @@ class SupervisorService:
                     status="ok",
                     reason_code=reason_code or "OK",
                     work_state=work_state,
+                    notes=notes,
                 )
 
             if status != "repair":
@@ -329,6 +418,7 @@ class SupervisorService:
                     status="ok",
                     reason_code="SUPERVISOR_UNKNOWN_STATUS",
                     work_state=work_state,
+                    notes=notes,
                 )
 
             if not repaired_answer or repaired_answer == current or attempt > max_rounds:
@@ -349,4 +439,5 @@ class SupervisorService:
             status=last_status,
             reason_code=last_reason,
             work_state=last_work_state,
+            notes="",
         )

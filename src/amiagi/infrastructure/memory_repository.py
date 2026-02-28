@@ -26,7 +26,8 @@ class MemoryRepository:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    actor TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE TABLE IF NOT EXISTS memory_records (
@@ -44,15 +45,23 @@ class MemoryRepository:
                 ON memory_records(created_at DESC);
                 """
             )
+            self._migrate_add_actor_column(connection)
 
-    def append_message(self, role: str, content: str) -> Message:
+    def _migrate_add_actor_column(self, connection: sqlite3.Connection) -> None:
+        """Add actor column to messages table if missing (backward compat)."""
+        cursor = connection.execute("PRAGMA table_info(messages)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "actor" not in columns:
+            connection.execute("ALTER TABLE messages ADD COLUMN actor TEXT NOT NULL DEFAULT ''")
+
+    def append_message(self, role: str, content: str, *, actor: str = "") -> Message:
         created_at = datetime.utcnow()
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO messages(role, content, created_at) VALUES (?, ?, ?)",
-                (role, content, created_at.isoformat()),
+                "INSERT INTO messages(role, content, created_at, actor) VALUES (?, ?, ?, ?)",
+                (role, content, created_at.isoformat(), actor),
             )
-        return Message(role=role, content=content, created_at=created_at)
+        return Message(role=role, content=content, created_at=created_at, actor=actor)
 
     def add_memory(self, kind: str, content: str, source: str = "manual") -> MemoryRecord:
         created_at = datetime.utcnow()
@@ -80,7 +89,7 @@ class MemoryRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT role, content, created_at
+                SELECT role, content, created_at, actor
                 FROM messages
                 ORDER BY id DESC
                 LIMIT ?
@@ -93,6 +102,7 @@ class MemoryRepository:
                 role=row["role"],
                 content=row["content"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                actor=row["actor"] if "actor" in row.keys() else "",
             )
             for row in rows
         ]

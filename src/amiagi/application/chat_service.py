@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from amiagi.application.communication_protocol import (
+    CommunicationRules,
+    build_polluks_communication_prompt,
+    load_communication_rules,
+)
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
 from amiagi.infrastructure.ollama_client import OllamaClient
@@ -14,17 +19,30 @@ if TYPE_CHECKING:
     from amiagi.application.supervisor_service import SupervisorService
 
 
+# SYSTEM_PROMPT = (
+#     "Jesteś autonomicznym modelem AI działającym wewnątrz frameworka amiagi. Masz na imię Polluks. "
+#     "Odpowiadaj konkretnie i technicznie. "
+#     "Jeżeli użytkownik prosi o kod, proponuj bezpieczne i utrzymywalne rozwiązania. "
+#     "Masz być świadomy aktualnych możliwości frameworka amiagi: pamięć trwała, "
+#     "zgody zasobowe, logi JSON/JSONL, uruchamianie skryptów i shell z polityką bezpieczeństwa, "
+#     "ciągłość sesji i adaptacja pod VRAM. "
+#     "Możesz proponować i planować rozbudowę frameworka zgodnie z własną oceną potrzeb. "
+#     "Nie proś użytkownika o zgodę w treści odpowiedzi — uruchamiaj realne kroki przez tool_call, "
+#     "a framework sam obsłuży politykę zgód. "
+#     "Nie odpowiadaj jak model ogólny oderwany od runtime — działasz wewnątrz amiagi i masz wykonywać zadania operacyjnie. "
+#     "W odpowiedziach tekstowych używaj naturalnego języka; nie emituj formatu status JSON (np. READY_STATE, CONTINUATION)."
+# )
+
 SYSTEM_PROMPT = (
-    "Jesteś autonomicznym modelem wykonawczym działającym wewnątrz frameworka amiagi. "
-    "Odpowiadaj konkretnie i technicznie. "
-    "Jeżeli użytkownik prosi o kod, proponuj bezpieczne i utrzymywalne rozwiązania. "
+    "Masz na imię Polluks. Jesteś autonomicznym modelem wykonawczym działającym wewnątrz frameworka amiagi. "
+    "Dzięki narzędziom frameworka amiagi możesz wykonywać różnorodne operacje i samodzielnie poznawać świat. "
     "Masz być świadomy aktualnych możliwości frameworka amiagi: pamięć trwała, "
     "zgody zasobowe, logi JSON/JSONL, uruchamianie skryptów i shell z polityką bezpieczeństwa, "
     "ciągłość sesji i adaptacja pod VRAM. "
-    "Możesz proponować i planować rozbudowę frameworka zgodnie z własną oceną potrzeb. "
-    "Nie proś użytkownika o zgodę w treści odpowiedzi — uruchamiaj realne kroki przez tool_call, "
-    "a framework sam obsłuży politykę zgód. "
-    "Nie odpowiadaj jak model ogólny oderwany od runtime — działasz wewnątrz amiagi i masz wykonywać zadania operacyjnie. "
+    "Możesz proponować i planować rozbudowę frameworka zgodnie z własną oceną potrzeb. W tym celu możesz tworzyć samodzielnie skrypty w gałęzi amiagi-my-work/tools/ i uruchamiać je przez run_python. "
+    "Nie musisz pytać użytkownika o zgodę w treści odpowiedzi — samodzielnie uruchamiaj realne kroki przez tool_call, "
+    "a framework sam obsłuży wykonanie poleceń. "
+    "Gdy użytkownik zadaje krótkie pytanie tożsamościowe/meta (np. 'kim jesteś?'), odpowiadaj jednym zdaniem i bez tool_call. "
     "W odpowiedziach tekstowych używaj naturalnego języka; nie emituj formatu status JSON (np. READY_STATE, CONTINUATION)."
 )
 
@@ -56,7 +74,7 @@ FRAMEWORK_CAPABILITIES_MAP = (
     "- Trwały stan pracy agenta: plan JSON + dziennik badań JSONL w amiagi-my-work/state/.\n"
     "- Ciągłość sesji: startup seed + session_summary + /bye zapisujące punkt kontynuacji.\n"
     "- Ochrona OOM: dynamiczne num_ctx zależne od VRAM (nvidia-smi + fallback).\n"
-    "- Rozbudowa frameworka: dozwolona po świadomej zgodzie użytkownika."
+    "- Rozbudowa frameworka: dozwolona w postaci dodatkowych narzędzi."
 )
 
 TOOL_CALLING_GUIDE = (
@@ -93,12 +111,23 @@ TOOL_CALLING_GUIDE = (
     "To NIE uruchamia frameworka. Używaj wyłącznie poprawnego bloku `tool_call`.\n"
     "- Dopuszczaj też składnię spotykaną w praktyce i mapuj ją na poprawne wywołanie: "
     "`tool_call: list_dir(path=...)`, `tool_call: read_file()`.\n"
+    "- Aliasy narzędzi (automatycznie mapowane): file_read → read_file, read → read_file, "
+    "run_command → run_shell, dir_list → list_dir. Nie używaj nieistniejących nazw narzędzi.\n"
     "WERYFIKACJA I NAPRAWA NARZĘDZI (OBOWIĄZKOWA):\n"
     "1) Po `write_file` najpierw wykonaj `read_file` tego samego pliku, aby potwierdzić zapis.\n"
     "2) Jeśli zapisany plik to skrypt `.py`, uruchom najpierw `check_python_syntax` (bez wykonywania kodu).\n"
     "3) Jeśli wykryjesz błąd składni, wykonaj poprawkę przez `write_file`/`append_file` i ponownie uruchom `check_python_syntax`.\n"
     "4) `run_python` uruchamiaj dopiero po wyraźnym poleceniu modelu/użytkownika.\n"
-    "5) Raportuj wyłącznie to, co potwierdza [TOOL_RESULT], bez deklarowania sukcesu przed wykonaniem."
+    "5) Raportuj wyłącznie to, co potwierdza [TOOL_RESULT], bez deklarowania sukcesu przed wykonaniem.\n"
+    "TWORZENIE NOWYCH NARZĘDZI (tryb proaktywny):\n"
+    "Gdy potrzebujesz narzędzia, którego nie ma na liście:\n"
+    "1) Zapisz plan do notes/tool_design_plan.json (write_file): nazwa, funkcjonalność, testy.\n"
+    "2) Napisz skrypt Python w amiagi-my-work/src/<nazwa>.py.\n"
+    "3) Sprawdź składnię: check_python_syntax.\n"
+    "4) Uruchom test: run_python.\n"
+    "5) Debuguj i napraw błędy (pętla check_python_syntax + write_file).\n"
+    "6) Zarejestruj narzędzie w state/tool_registry.json (write_file).\n"
+    "7) Użyj nowego narzędzia do realizacji zadania."
 )
 
 AUTONOMY_EXECUTION_GUIDE = (
@@ -156,6 +185,7 @@ class ChatService:
     max_memory_item_chars: int = 1200
     max_tool_result_chars: int = 7000
     supervisor_service: "SupervisorService | None" = None
+    comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
 
     def _workspace_guide(self) -> str:
         resolved = self.work_dir.resolve()
@@ -327,12 +357,12 @@ class ChatService:
             )
         return profile.suggested_num_ctx
 
-    def ask(self, user_message: str) -> str:
+    def ask(self, user_message: str, *, actor: str = "Sponsor") -> str:
         framework_answer = self._handle_framework_meta_query(user_message)
         if framework_answer is not None:
             stored_user_message = self._normalize_user_message_for_storage(user_message)
-            self.memory_repository.append_message("user", stored_user_message)
-            self.memory_repository.append_message("assistant", framework_answer)
+            self.memory_repository.append_message("user", stored_user_message, actor=actor)
+            self.memory_repository.append_message("assistant", framework_answer, actor="Polluks")
             self.memory_repository.add_memory(
                 kind="interaction",
                 content=f"U: {stored_user_message}\nA: {framework_answer}",
@@ -353,14 +383,18 @@ class ChatService:
                 details={"user_message_chars": len(user_message)},
             )
         stored_user_message = self._normalize_user_message_for_storage(user_message)
-        self.memory_repository.append_message("user", stored_user_message)
+        self.memory_repository.append_message("user", stored_user_message, actor=actor)
         user_message_for_model = self._augment_user_message(user_message)
 
         memory_context = self._build_memory_context(user_message)
         recent_messages = self.memory_repository.recent_messages(limit=12)
-        conversation = [{"role": msg.role, "content": msg.content} for msg in recent_messages]
-        if user_message_for_model != user_message:
-            conversation[-1]["content"] = user_message_for_model
+        conversation = []
+        for msg in recent_messages:
+            prefix = f"[{msg.actor}] " if msg.actor else ""
+            conversation.append({"role": msg.role, "content": f"{prefix}{msg.content}"})
+        if user_message_for_model != user_message and conversation:
+            actor_prefix = f"[{actor}] " if actor else ""
+            conversation[-1]["content"] = f"{actor_prefix}{user_message_for_model}"
 
         system_prompt = self.build_system_prompt(user_message)
         response = self.ollama_client.chat(
@@ -369,7 +403,7 @@ class ChatService:
             num_ctx=self._effective_num_ctx(),
         )
 
-        self.memory_repository.append_message("assistant", response)
+        self.memory_repository.append_message("assistant", response, actor="Polluks")
         self.memory_repository.add_memory(
             kind="interaction",
             content=f"U: {stored_user_message}\nA: {response}",
@@ -428,7 +462,7 @@ class ChatService:
         )
         return code
 
-    def summarize_session_for_restart(self) -> str:
+    def summarize_session_for_restart(self, *, communication_state: dict | None = None) -> str:
         recent_messages = self.memory_repository.recent_messages(limit=80)
         if not recent_messages:
             summary = "Brak wcześniejszych wiadomości do podsumowania."
@@ -439,7 +473,14 @@ class ChatService:
             )
             return summary
 
-        transcript = "\n".join(f"{message.role}: {message.content}" for message in recent_messages)
+        transcript_lines = []
+        for message in recent_messages:
+            actor_tag = f"[{message.actor}]" if message.actor else f"[{message.role}]"
+            transcript_lines.append(f"{actor_tag} {message.content}")
+        transcript = "\n".join(transcript_lines)
+
+        if communication_state:
+            transcript += "\n\n[COMMUNICATION_STATE]\n" + json.dumps(communication_state, ensure_ascii=False)
         conversation = [
             {
                 "role": "user",
@@ -485,7 +526,7 @@ class ChatService:
         )
         readiness = _strip_markdown_fences(readiness)
 
-        self.memory_repository.append_message("assistant", f"[BOOTSTRAP] {readiness}")
+        self.memory_repository.append_message("assistant", f"[BOOTSTRAP] {readiness}", actor="Polluks")
         self.memory_repository.replace_memory(
             kind="runtime_readiness",
             source="startup_bootstrap",
@@ -503,8 +544,10 @@ class ChatService:
     def build_system_prompt(self, user_message: str) -> str:
         memory_context = self._build_memory_context(user_message)
         plan_context = self._build_plan_context()
+        comm_prompt = build_polluks_communication_prompt(self.comm_rules)
         return (
             f"{SYSTEM_PROMPT}\n\n"
+            f"{comm_prompt}\n\n"
             f"{FRAMEWORK_RUNTIME_GUIDE}\n\n"
             f"{FRAMEWORK_CAPABILITIES_MAP}\n\n"
             f"{TOOL_CALLING_GUIDE}\n\n"

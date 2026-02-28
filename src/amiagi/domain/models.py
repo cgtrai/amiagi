@@ -9,6 +9,7 @@ class Message:
     role: str
     content: str
     created_at: datetime
+    actor: str = ""
 
 
 @dataclass(frozen=True)

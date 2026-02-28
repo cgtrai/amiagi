@@ -44,6 +44,16 @@ See [LICENSE](LICENSE) for full terms.
 - Automatic executor model bootstrap (first model from local Ollama list)
 - Cleaner end-user responses (tool-call payloads are kept in technical logs, user sees plain text)
 - Optional Textual UI parity for model commands and onboarding hints
+- Explicit multi-actor runtime visibility (Router, Polluks, Kastor, Terminal) in Textual status panel
+- Directional supervision lanes in logs (`POLLUKS→KASTOR`, `KASTOR→ROUTER`) for clearer handoff tracing
+- Interrupt-safe conversational mode in Textual (identity-aware reply + user decision follow-up)
+- Adaptive supervisor watchdog with attempt caps/cooldown and plan-aware reactivation checks
+- Deep tool-call resolution flow with iteration cap protection (`resolve_tool_calls`, max 15 steps)
+- Multi-actor communication protocol with addressed-block routing, unaddressed-turn reminders, and consultation rounds
+- Tool name alias resolution (`file_read→read_file`, `dir_list→list_dir`) with per-tool correction tracking
+- ASCII art landing page with randomized MOTD on startup (both CLI and Textual)
+- Context-aware `/help` — shows only commands relevant to the active interface mode
+- User message queue with position feedback when router cycle is busy
 
 ## Runtime Commands (CLI and Textual)
 
@@ -55,11 +65,35 @@ Model management commands:
 - `/models show` — lists models discovered in local Ollama with index numbers
 - `/models chose <nr>` — switches executor model by index from `/models show`
 
+Operational and diagnostics commands:
+
+- `/queue-status` — shows model queue status and VRAM policy decision context
+- `/capabilities [--network]` — checks tool/backend readiness (optionally includes network reachability)
+- `/show-system-context [text]` — displays current system prompt/context used for model call
+- `/goal-status` (alias: `/goal`) — shows goal/stage snapshot from `notes/main_plan.json`
+
+Textual-focused actor/runtime commands:
+
+- `/router-status` — shows actor states and runtime routing status
+- `/idle-until <ISO8601|off>` — schedules/clears watchdog idle window
+
 Notes:
 
-- On startup, runtime attempts to select a default executor model automatically (position `1/x` from Ollama list).
-- If model list retrieval fails, runtime keeps current model and reports a warning.
+- On startup, both CLI and Textual display an ASCII art banner with version, mode indicator, and a random MOTD.
+- Runtime attempts to select a default executor model automatically from the local Ollama list.
+- If model list retrieval fails, runtime keeps current model silently.
 - User-facing model output is normalized to readable text, while raw tool traces remain in JSONL/log panels.
+
+## Current Runtime Behavior (Polluks/Kastor/Router)
+
+- Textual interruptions are now decision-driven: after interrupt handling, runtime explicitly asks whether to continue, stop, or start a new task.
+- Identity queries in interrupt mode are handled deterministically (Polluks identity response), avoiding accidental tool-flow drift.
+- Auto-resume is blocked while identity decision is still pending, preventing unwanted continuation.
+- Idle watchdog reactivation checks include actionable-plan context, not only passive turn counters.
+- If tool-call resolution reaches iteration cap with unresolved calls, runtime emits explicit warning and marks router as stalled for visibility.
+- Multi-actor communication protocol enforces addressed blocks (`[Sender -> Receiver]`), with automatic reminders for unaddressed turns and configurable consultation rounds.
+- Supervisor `[Kastor -> Sponsor]` messages are routed to the user's main panel for visibility.
+- Unknown tool names are resolved via alias map; after max correction attempts, runtime forces a tool-creation plan.
 
 ## Project Structure
 
@@ -219,7 +253,8 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Release Process
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
-Latest release notes: [RELEASE_NOTES_v0.1.3.md](RELEASE_NOTES_v0.1.3.md).
+Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
+Latest release notes: [RELEASE_NOTES_v0.1.4.md](RELEASE_NOTES_v0.1.4.md).
 
 ## Polish Documentation
 

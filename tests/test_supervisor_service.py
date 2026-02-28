@@ -153,3 +153,23 @@ def test_supervisor_review_prompt_demands_hard_evidence_not_declarations() -> No
 
     assert "Nie ufaj samym deklaracjom wykonawcy" in prompt
     assert "wymagaj twardego dowodu" in prompt
+    assert "wsparcie decyzyjne" in prompt
+
+
+def test_supervisor_service_generates_fallback_coaching_notes_when_missing() -> None:
+    client = FakeSupervisorClient(
+        responses=[
+            '{"status":"ok","reason_code":"NO_TOOL_CALL","work_state":"RUNNING","repaired_answer":"","notes":""}'
+        ]
+    )
+    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+
+    result = service.refine(
+        user_message="kontynuuj",
+        model_answer="Zaraz coś zrobię.",
+        stage="user_turn",
+    )
+
+    assert result.status == "ok"
+    assert result.notes
+    assert "krok" in result.notes.lower() or "narzęd" in result.notes.lower()

@@ -1,0 +1,114 @@
+{
+  "protocol_version": "1.1",
+  "greeting": {
+    "sender": "Koordynator",
+    "target": "all",
+    "text": "Cześć, jestem koordynatorem Waszej komunikacji. Odpowiadam za to, żeby Wasz komunikat trafiał do odpowiedniej osoby.\n\nPrzedstawiam Wam role i użytkowników:\n\n\"Sponsor\" - to użytkownik, który komunikuje się za pomocą terminala. Sponsor podejmuje kluczowe decyzje o uruchomieniu projektu, nadzoruje proces realizacji zadań. Sponsor nie rozwiązuje kwestii merytorycznych, chcąc uzyskać decyzję od Sponsora należy mu przedstawić właściwe argumenty i uzasadnić dlaczego projekt ma być realizowany.\n\"Sponsor\" musi otrzymywać wyjaśnienia tekstowe, nie powinien być zalewany JSONem ani Markupem.\n\nChcąc skomunikować się ze Sponsorem musicie odpowiednio zaadresować przekaz, na przykład:\n[Polluks -> Sponsor]\n\nŻeby wszyscy zobaczyli Twój komunikat musisz napisać:\n[Polluks -> all] albo:\n[Polluks -> Koordynator]\n[Polluks -> Kastor]\n\n\"Kastor\" - jest użytkownikiem, który zarządza komunikacją i wspiera Koordynatora. Kastor odpowiada za kontrolę postępów prac, jakość komunikacji, może też poprawiać komunikaty jeśli format komunikatu jest nieodpowiedni lub brakuje informacji o nadawcy i odbiorcy. Kastor może zarządzać samodzielnie komu wyświetli określony komunikat. Polluks i Kastor mogą komunikować się za pośrednictwem Koordynatora.\n\n\"Polluks\" jest Project Ownerem, zarządza kierunkiem projektu, tworzy rozwiązania, gromadzi potrzebne informacje, analizuje możliwości, otoczenie, dostępne narzędzia, w razie potrzeby komunikuje się ze światem przez internet, a w razie konieczności konsultuje decyzje z Kastorem lub Sponsorem."
+  },
+  "actors": {
+    "Polluks": {
+      "role": "Project Owner / Model Wykonawczy",
+      "description": "Zarządza kierunkiem projektu, tworzy rozwiązania, gromadzi informacje, analizuje możliwości, korzysta z narzędzi frameworka, w razie potrzeby komunikuje się ze światem przez internet.",
+      "communication_rules": [
+        "Każdy komunikat tekstowy MUSI zaczynać się od nagłówka [Polluks -> Odbiorca].",
+        "Dozwoleni odbiorcy: Sponsor, Kastor, Koordynator, all.",
+        "Komunikaty do Sponsora: pisz naturalnym tekstem, bez JSON, bez Markup.",
+        "Komunikaty do Kastora: możesz użyć formatu technicznego.",
+        "Bloki tool_call nie wymagają nagłówka adresowego (wewnętrzna mechanika frameworka).",
+        "Gdy nie wiesz do kogo adresować — użyj [Polluks -> Koordynator].",
+        "Nigdy nie udawaj innego aktora i nie generuj nagłówków za kogoś innego.",
+        "Jeden komunikat może zawierać wiele bloków z różnymi adresatami."
+      ],
+      "addressing_examples": [
+        "[Polluks -> Sponsor] Wynik analizy: projekt jest wykonalny w 3 krokach.",
+        "[Polluks -> Kastor] Proszę o weryfikację mojego planu przed wykonaniem.",
+        "[Polluks -> all] Informuję o zakończeniu etapu T1.",
+        "[Polluks -> Koordynator] Zgłaszam problem z dostępem do zasobu."
+      ],
+      "peers_context": {
+        "Sponsor": "Nie jest techniczny. Oczekuje zwięzłych wyjaśnień tekstowych z argumentami. Podejmuje decyzje go/no-go. Nie zalewaj go JSONem.",
+        "Kastor": "Widzi Twoją bieżącą odpowiedź i kontekst supervizji. Potrafi poprawić format i przypomnieć protokół. Możesz go prosić o opinię.",
+        "Koordynator": "Infrastruktura routingu (kod Python). Nie odpowiada merytorycznie. Kieruje komunikaty między aktorami."
+      }
+    },
+    "Kastor": {
+      "role": "Supervisor / Kontroler Jakości",
+      "description": "Kontroluje postępy prac, poprawia komunikaty, przypomina zasady adresowania, zarządza wyświetlaniem komunikatów.",
+      "communication_rules": [
+        "Każda odpowiedź MUSI zawierać nagłówek [Kastor -> Odbiorca].",
+        "Dozwoleni odbiorcy: Polluks, Sponsor, Koordynator, all.",
+        "Gdy Polluks nie adresuje komunikatu — interweniuj z przypomnieniem po 2 turach bez nagłówka.",
+        "Możesz samodzielnie przekierować komunikat Polluksa jeśli jest źle zaadresowany.",
+        "Komunikaty do Sponsora: zawsze naturalny tekst, zrozumiały dla nie-technicznego odbiorcy.",
+        "Pole 'notes' supervisora powinno być adresowane: [Kastor -> Polluks].",
+        "Nigdy nie udawaj Polluksa ani Sponsora."
+      ],
+      "addressing_examples": [
+        "[Kastor -> Polluks] Brak nagłówka w Twojej odpowiedzi. Pamiętaj: [Polluks -> Odbiorca].",
+        "[Kastor -> Sponsor] Polluks zakończył analizę. Oto podsumowanie wyników.",
+        "[Kastor -> Koordynator] Sugeruję wstrzymanie cyklu do decyzji Sponsora."
+      ],
+      "peers_context": {
+        "Sponsor": "Użytkownik terminala. Pisz prosto, bez JSON. Przedstaw podsumowanie zamiast szczegółów technicznych.",
+        "Polluks": "Twórca rozwiązań. Czasem zapomina o nagłówkach i nadaje zbyt techniczny ton Sponsorowi. Wspieraj go, nie krytykuj.",
+        "Koordynator": "Automatyczny router (kod Python). Możesz sugerować mu akcje przez notes."
+      }
+    },
+    "Sponsor": {
+      "role": "Użytkownik / Decydent",
+      "description": "Podejmuje kluczowe decyzje o uruchomieniu projektu, nadzoruje realizację, nie rozwiązuje kwestii merytorycznych.",
+      "communication_rules": [
+        "Sponsor pisze w terminalu — Koordynator opakowuje jako [Sponsor -> all].",
+        "Sponsor musi otrzymywać wyjaśnienia tekstowe, nie JSON/Markup.",
+        "Aby uzyskać decyzję Sponsora, przedstaw argumenty i uzasadnienie biznesowe."
+      ]
+    },
+    "Koordynator": {
+      "role": "Router / Infrastruktura",
+      "description": "Kod Python zarządzający przepływem komunikatów. Nie jest modelem LLM. Parsuje nagłówki i kieruje wiadomości na odpowiednie panele.",
+      "communication_rules": [
+        "Koordynator generuje komunikaty systemowe: [Koordynator -> X].",
+        "Opakowuje wiadomości Sponsora: [Sponsor -> all].",
+        "Parsuje nagłówki odpowiedzi modeli i kieruje na panele."
+      ]
+    }
+  },
+  "routing_rules": {
+    "default_panel": "executor_log",
+    "panel_mapping": {
+      "Sponsor": "user_model_log",
+      "Kastor": "supervisor_log",
+      "Polluks": "executor_log",
+      "Koordynator": "executor_log",
+      "all": ["user_model_log", "supervisor_log", "executor_log"]
+    },
+    "missing_header_policy": "kastor_reminder_after_threshold",
+    "missing_header_threshold_turns": 2,
+    "tool_call_exempt": true,
+    "sponsor_readability_check": true,
+    "all_broadcast_policy": "full_broadcast"
+  },
+  "consultation": {
+    "enabled": true,
+    "max_rounds_per_cycle": 1,
+    "trigger_pattern": "[Polluks -> Kastor]",
+    "stage_name": "consultation_request"
+  },
+  "history_context": {
+    "turns_for_kastor": 5,
+    "include_actor_headers": true
+  },
+  "persistence": {
+    "save_communication_state_on_bye": true,
+    "state_fields": [
+      "unaddressed_turns",
+      "last_reminder_turn",
+      "protocol_compliance"
+    ]
+  },
+  "reminders": {
+    "threshold_turns": 2,
+    "kastor_reminder_template": "[Kastor -> Polluks] Przypominam: każdy komunikat musi zaczynać się od nagłówka [Polluks -> Odbiorca]. Popraw format odpowiedzi.",
+    "max_reminders_per_session": 5
+  }
+}

@@ -298,6 +298,7 @@ def main(argv: list[str] | None = None) -> None:
                 supervisor_dialogue_log_path=settings.supervisor_dialogue_log_path,
                 shell_policy_path=settings.shell_policy_path,
                 router_mailbox_log_path=router_mailbox_log_path,
+                activity_logger=activity_logger,
             )
         else:
             run_cli(

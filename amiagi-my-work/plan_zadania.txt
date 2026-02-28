@@ -1,0 +1,9 @@
+# Zadanie 1
+- Cel: Wykonać analizę danych
+- Wartość: Skuteczne wykorzystanie zasobów
+- Priorytet: Vyghygiyhtihigh
+
+Zadanie 2:
+- Cel: Optymalizacja procesu
+- Wartość: Zmniejszenie czasu realizacji
+- Priorytet: Mid

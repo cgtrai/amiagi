@@ -113,6 +113,46 @@
  4. Podsumuj wynik i zaproponuj następny krok.
 
 
+ ### Parametry uruchomienia programu głównego (`main`)
+ Program możesz uruchamiać jako:
+ - `amiagi`
+ - `python -m main`
+
+ Dostępne parametry CLI:
+
+ 1. `-cs`, `--cold_start`
+    - Typ: flaga (bez wartości).
+    - Działanie: czyści historię konwersacji i logi JSONL, a następnie uruchamia od kontekstu startowego.
+    - Domyślnie: `False`.
+
+ 2. `-auto`, `--auto`
+    - Typ: flaga (bez wartości).
+    - Działanie: włącza tryb autonomiczny dla bieżącego uruchomienia.
+    - Domyślnie: `False`.
+
+ 3. `-vram-off`, `--vram-off`
+    - Typ: flaga (bez wartości).
+    - Działanie: wyłącza runtime kontrolę VRAM i politykę kolejki modeli po stronie frameworka (zarządzanie pamięcią pozostaje po stronie Ollama).
+    - Domyślnie: `False`.
+
+ 4. `--startup_dialogue_path <ścieżka>`
+    - Typ: parametr tekstowy.
+    - Działanie: wskazuje plik instrukcji startowych (Markdown) używany do seedowania kontekstu sesji.
+    - Domyślnie: `wprowadzenie.md`.
+
+ 5. `--ui <cli|textual>`
+    - Typ: parametr wyboru.
+    - Działanie: wybiera tryb interfejsu:
+      - `cli` — klasyczny interfejs terminalowy,
+      - `textual` — interfejs podzielony na panele.
+    - Domyślnie: `cli`.
+
+ Przykłady:
+ - `python -m main --cold_start --auto`
+ - `python -m main --ui textual`
+ - `python -m main --startup_dialogue_path amiagi-my-work/wprowadzenie.md`
+
+
 
  ## Twoje zadanie
  Proponuję Ci eksperyment, w którym nie będziesz miał ustalonego z góry scenariusza.

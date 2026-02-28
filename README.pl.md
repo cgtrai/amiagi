@@ -44,6 +44,16 @@ Pełne warunki: [LICENSE](LICENSE).
 - Automatyczne ustawienie modelu domyślnego (pierwszy model z lokalnej listy Ollama)
 - Czytelniejsze odpowiedzi użytkownikowe (bez surowych payloadów `tool_call`/JSON)
 - Spójne komendy modeli i onboarding zarówno w CLI, jak i w UI Textual
+- Jawna widoczność aktorów runtime (Router, Polluks, Kastor, Terminal) w panelu statusu Textual
+- Kierunkowe etykiety nadzoru w logach (`POLLUKS→KASTOR`, `KASTOR→ROUTER`) dla czytelnego śledzenia przekazań
+- Bezpieczny tryb wtrąceń w Textual (obsługa pytań tożsamościowych + pytanie decyzyjne do użytkownika)
+- Adaptacyjny watchdog Kastora z limitem prób/cooldownem i kontrolą kontekstu planu
+- Głębsza pętla rozwiązywania `tool_call` z ochroną limitem iteracji (`resolve_tool_calls`, max 15 kroków)
+- Protokół komunikacji między aktorami z routingiem bloków adresowanych, przypomnieniami i rundami konsultacji
+- Rozpoznawanie aliasów nazw narzędzi (`file_read→read_file`, `dir_list→list_dir`) z limitem korekcji per narzędzie
+- Strona startowa ASCII art z losowym MOTD przy uruchomieniu (CLI i Textual)
+- Kontekstowe `/help` — wyświetla tylko komendy właściwe dla aktywnego trybu interfejsu
+- Kolejka wiadomości użytkownika z informacją o pozycji, gdy router jest zajęty
 
 ## Komendy runtime (CLI i Textual)
 
@@ -55,11 +65,35 @@ Komendy zarządzania modelem:
 - `/models show` — wyświetla listę modeli z lokalnego Ollama (z numeracją)
 - `/models chose <nr>` — przełącza model wykonawczy na pozycję z `/models show`
 
+Komendy operacyjne i diagnostyczne:
+
+- `/queue-status` — pokazuje status kolejki modeli i kontekst decyzji polityki VRAM
+- `/capabilities [--network]` — sprawdza gotowość narzędzi/backendów (opcjonalnie z testem sieci)
+- `/show-system-context [tekst]` — pokazuje aktualny kontekst/system prompt wysyłany do modelu
+- `/goal-status` (alias: `/goal`) — pokazuje migawkę celu i etapu z `notes/main_plan.json`
+
+Komendy aktorów/runtime (Textual):
+
+- `/router-status` — pokazuje stany aktorów i status routingu runtime
+- `/idle-until <ISO8601|off>` — ustawia/czyści planowane okno IDLE watchdoga
+
 Uwagi:
 
-- Przy starcie runtime próbuje automatycznie ustawić domyślny model wykonawczy (pozycja `1/x` z listy Ollama).
-- Gdy pobranie listy modeli się nie powiedzie, runtime pozostawia bieżący model i zwraca ostrzeżenie.
+- Przy starcie CLI i Textual wyświetlają banner ASCII art z wersją, trybem i losowym MOTD.
+- Runtime próbuje automatycznie ustawić domyślny model wykonawczy z listy Ollama.
+- Gdy pobranie listy modeli się nie powiedzie, runtime pozostawia bieżący model bez komunikatu.
 - Warstwa użytkownika dostaje odpowiedź tekstową; surowe ślady narzędzi pozostają w logach technicznych (JSONL/panele).
+
+## Aktualne działanie runtime (Polluks/Kastor/Router)
+
+- Wtrącenia w Textual są decyzyjne: po obsłudze wtrącenia runtime pyta, czy kontynuować plan, przerwać, czy rozpocząć nowe zadanie.
+- Pytania tożsamościowe w trybie wtrącenia są obsługiwane deterministycznie (odpowiedź tożsamościowa Polluksa), bez dryfu do przypadkowych `tool_call`.
+- Auto-wznowienie jest blokowane, gdy trwa oczekiwanie na decyzję po pytaniu tożsamościowym.
+- Reaktywacja watchdoga uwzględnia kontekst planu (czy plan jest wykonalny), a nie tylko licznik pasywnych tur.
+- Gdy `resolve_tool_calls` osiąga limit iteracji i zostają nierozwiązane wywołania, runtime emituje jawne ostrzeżenie i oznacza router jako stalled.
+- Protokół komunikacji aktorów wymusza bloki adresowane (`[Nadawca -> Odbiorca]`), z automatycznymi przypomnieniami i konfigurowalnymi rundami konsultacji.
+- Wiadomości `[Kastor -> Sponsor]` są routowane na główny panel użytkownika.
+- Nieznane nazwy narzędzi są rozpoznawane przez mapę aliasów; po wyczerpaniu limitów korekcji runtime wymusza plan tworzenia narzędzia.
 
 ## Wymagania
 
@@ -205,4 +239,5 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Proces wydania
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
-Najnowsze release notes: [RELEASE_NOTES_v0.1.3.md](RELEASE_NOTES_v0.1.3.md).
+Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
+Najnowsze release notes: [RELEASE_NOTES_v0.1.4.md](RELEASE_NOTES_v0.1.4.md).

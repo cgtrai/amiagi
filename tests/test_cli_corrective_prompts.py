@@ -36,10 +36,13 @@ def test_unknown_tools_corrective_prompt_contains_same_python_checklist() -> Non
     prompt = _build_unknown_tools_corrective_prompt(["foo", "bar", "foo"])
 
     assert "nieobsługiwanych narzędzi: bar, foo" in prompt
-    assert "Dostępne narzędzia to wyłącznie:" in prompt
+    assert "Działaj proaktywnie" in prompt
+    assert "notes/tool_design_plan.json" in prompt
+    assert "state/tool_registry.json" in prompt
+    assert "Dostępne narzędzia bazowe:" in prompt
     assert "1) Zapisz plik: write_file" in prompt
     assert "3) Sprawdź składnię: check_python_syntax" in prompt
-    assert "Teraz zwróć WYŁĄCZNIE jeden poprawny blok tool_call z tej listy." in prompt
+    assert "Teraz zwróć WYŁĄCZNIE jeden poprawny blok tool_call jako pierwszy krok" in prompt
 
 
 def test_no_action_corrective_prompt_contains_context_and_checklist() -> None:
