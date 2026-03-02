@@ -1,0 +1,49 @@
+# Benchmark: Research — advanced scenarios
+scenarios:
+  - scenario_id: research_llm_comparison
+    prompt: "Porównaj architektury i możliwości modeli LLM: GPT-4, Claude, Llama 3, Mixtral. Uwzględnij parametry, kontekst, licencje i koszty."
+    expected_keywords:
+      - parametr
+      - kontekst
+      - licencja
+      - porównanie
+
+  - scenario_id: research_vector_db
+    prompt: "Przeanalizuj dostępne bazy wektorowe (Pinecone, Weaviate, Milvus, Chroma, Qdrant) pod kątem: wydajność, skalowalność, API, koszty, self-hosted."
+    expected_keywords:
+      - wektor
+      - wydajność
+      - skalowalność
+      - porównanie
+
+  - scenario_id: research_rust_vs_go
+    prompt: "Porównaj Rust i Go dla systemów backendowych o wysokiej przepustowości: bezpieczeństwo pamięci, współbieżność, ekosystem, krzywa uczenia."
+    expected_keywords:
+      - pamięć
+      - współbieżność
+      - ekosystem
+      - wydajność
+
+  - scenario_id: research_testing_strategies
+    prompt: "Zbadaj strategie testowania w architekturze mikroserwisowej: contract testing, integration testing, chaos engineering, synthetic monitoring."
+    expected_keywords:
+      - contract
+      - integration
+      - chaos
+      - monitoring
+
+  - scenario_id: research_auth_patterns
+    prompt: "Przeanalizuj nowoczesne wzorce autentykacji i autoryzacji: OAuth2, OIDC, FIDO2/WebAuthn, JWT, mTLS. Porównaj bezpieczeństwo i UX."
+    expected_keywords:
+      - OAuth
+      - JWT
+      - bezpieczeństwo
+      - autentykacja
+
+  - scenario_id: research_observability
+    prompt: "Zbadaj narzędzia obserwalowalności dla systemów rozproszonych: OpenTelemetry, Jaeger, Grafana, Prometheus. Porównaj tracing, metrics, logging."
+    expected_keywords:
+      - tracing
+      - metrics
+      - logging
+      - distributed

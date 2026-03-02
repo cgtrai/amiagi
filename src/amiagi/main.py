@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         if supervisor_client.ping():
             supervisor_service = SupervisorService(
-                ollama_client=supervisor_client,
+                model_client=supervisor_client,
                 activity_logger=activity_logger,
                 max_repair_rounds=settings.supervisor_max_repair_rounds,
                 dialogue_log_path=settings.supervisor_dialogue_log_path,
@@ -280,7 +280,7 @@ def main(argv: list[str] | None = None) -> None:
 
     chat_service = ChatService(
         memory_repository=repository,
-        ollama_client=ollama,
+        model_client=ollama,
         max_context_memories=settings.max_context_memories,
         activity_logger=activity_logger,
         vram_advisor=vram_advisor,

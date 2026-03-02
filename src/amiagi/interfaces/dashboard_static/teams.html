@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>amiagi — Team Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #4ea1ff;
+  --green: #47c26b; --orange: #f5a623; --red: #f85149; --purple: #9a6bff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+h1 { font-size: 1.4rem; padding: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); }
+h1 span { font-size: 0.8rem; color: var(--text-dim); margin-left: 1rem; }
+h1 a { color: var(--text-dim); text-decoration: none; font-size: 0.85rem; margin-left: 1rem; }
+h1 a:hover { color: var(--accent); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+.panel-title { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.75rem; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { text-align: left; color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 0.4rem; }
+td { padding: 0.4rem; border-bottom: 1px solid var(--border); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+.badge-lead { background: var(--accent); color: #000; }
+.badge-member { background: var(--border); color: var(--text); }
+.metric-card { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 1rem; margin: 0.25rem; }
+.metric-card .value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.metric-card .label { font-size: 0.75rem; color: var(--text-dim); }
+.org-chart { padding: 0.5rem; }
+.org-node { margin: 0.5rem 0; padding: 0.5rem 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; gap: 0.5rem; }
+.org-node.lead { border-color: var(--accent); }
+.org-node .name { font-weight: 600; }
+.org-node .role { color: var(--text-dim); font-size: 0.8rem; }
+.org-members { margin-left: 2rem; border-left: 2px solid var(--border); padding-left: 1rem; }
+.empty { color: var(--text-dim); padding: 1rem; text-align: center; }
+.full-width { grid-column: 1 / -1; }
+.team-select { margin-left: 0.5rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+.status-bar { padding: 0.5rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
+  font-size: 0.8rem; color: var(--text-dim); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<h1>👥 amiagi Team Dashboard <span id="status-text">ładowanie…</span>
+  <a href="/index.html">← główny dashboard</a>
+</h1>
+<div class="grid">
+
+  <!-- Overview -->
+  <div class="panel" id="overview-panel">
+    <div class="panel-title">Przegląd zespołów</div>
+    <div id="overview-cards"></div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="panel" id="metrics-panel">
+    <div class="panel-title">Metryki</div>
+    <div id="metrics-cards"></div>
+  </div>
+
+  <!-- Teams table -->
+  <div class="panel full-width">
+    <div class="panel-title">Zespoły</div>
+    <table>
+      <thead><tr><th>ID</th><th>Nazwa</th><th>Rozmiar</th><th>Zadania ✓</th><th>Oczekujące</th><th>Koszt</th><th>Jakość</th></tr></thead>
+      <tbody id="teams-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Org chart -->
+  <div class="panel full-width">
+    <div class="panel-title">Schemat organizacyjny <select id="team-select" class="team-select" title="Wybierz zespół"></select></div>
+    <div id="org-chart" class="org-chart"><div class="empty">Wybierz zespół</div></div>
+  </div>
+
+</div>
+<div class="status-bar">
+  <span id="last-update">—</span>
+  <span>auto-refresh: 10s</span>
+</div>
+
+<script>
+const API = window.location.origin;
+
+async function fetchJSON(path) {
+  try {
+    const r = await fetch(API + path);
+    return await r.json();
+  } catch { return null; }
+}
+
+function badge(text, cls) {
+  return `<span class="badge badge-${cls}">${text}</span>`;
+}
+
+async function refreshTeams() {
+  const data = await fetchJSON('/api/teams');
+  if (!data) { document.getElementById('status-text').textContent = 'błąd połączenia'; return; }
+  document.getElementById('status-text').textContent = `${data.total_teams} zespołów`;
+
+  // overview cards
+  const overview = document.getElementById('overview-cards');
+  overview.innerHTML = `
+    <div class="metric-card"><div class="value">${data.total_teams}</div><div class="label">Zespoły</div></div>
+  `;
+
+  // metrics
+  const metricsEl = document.getElementById('metrics-cards');
+  let totalDone = 0, totalPending = 0, totalCost = 0;
+  (data.teams || []).forEach(t => {
+    const m = t.metrics || {};
+    totalDone += m.tasks_completed || 0;
+    totalPending += m.tasks_pending || 0;
+    totalCost += m.total_cost_usd || 0;
+  });
+  metricsEl.innerHTML = `
+    <div class="metric-card"><div class="value">${totalDone}</div><div class="label">Ukończone zadania</div></div>
+    <div class="metric-card"><div class="value">${totalPending}</div><div class="label">Oczekujące</div></div>
+    <div class="metric-card"><div class="value">$${totalCost.toFixed(2)}</div><div class="label">Łączny koszt</div></div>
+  `;
+
+  // teams table
+  const tbody = document.getElementById('teams-body');
+  tbody.innerHTML = '';
+  const select = document.getElementById('team-select');
+  const prevVal = select.value;
+  select.innerHTML = '<option value="">-- wybierz --</option>';
+  (data.teams || []).forEach(t => {
+    const m = t.metrics || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.team_id}</td><td>${t.name}</td><td>${t.size || '?'}</td>
+      <td>${m.tasks_completed || 0}</td><td>${m.tasks_pending || 0}</td>
+      <td>$${(m.total_cost_usd || 0).toFixed(2)}</td>
+      <td>${(m.avg_quality_score || 0).toFixed(1)}</td>
+    `;
+    tbody.appendChild(tr);
+    const opt = document.createElement('option');
+    opt.value = t.team_id; opt.textContent = t.name || t.team_id;
+    select.appendChild(opt);
+  });
+  if (prevVal) select.value = prevVal;
+
+  document.getElementById('last-update').textContent = 'Ostatnia aktualizacja: ' + new Date().toLocaleTimeString();
+}
+
+async function refreshOrg() {
+  const teamId = document.getElementById('team-select').value;
+  const el = document.getElementById('org-chart');
+  if (!teamId) { el.innerHTML = '<div class="empty">Wybierz zespół</div>'; return; }
+  const data = await fetchJSON(`/api/teams/${teamId}/org`);
+  if (!data || data.error) { el.innerHTML = '<div class="empty">Nie znaleziono</div>'; return; }
+
+  let html = `<div class="org-node lead"><span class="name">🎯 Lead: ${data.lead || '—'}</span></div>`;
+  html += '<div class="org-members">';
+  (data.members || []).forEach(m => {
+    const cls = m.is_lead ? 'lead' : '';
+    html += `<div class="org-node ${cls}"><span class="name">${m.name || m.role}</span><span class="role">${m.role}</span>${m.is_lead ? badge('lead','lead') : badge('member','member')}</div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+document.getElementById('team-select').addEventListener('change', refreshOrg);
+
+// Initial + periodic refresh
+refreshTeams();
+setInterval(refreshTeams, 10000);
+</script>
+</body>
+</html>

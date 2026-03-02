@@ -256,16 +256,48 @@ class WorkflowEngine:
     def _eval_condition(
         self, node: WorkflowNode, nmap: dict[str, WorkflowNode]
     ) -> bool:
-        """Simple condition evaluation.
+        """Condition evaluation with support for status checks and result matching.
 
-        Supported: ``prev.status == completed`` where ``prev`` is a dep node_id.
+        Supported patterns:
+        - ``node_id.status == completed``
+        - ``node_id.status == failed``
+        - ``node_id.result == 'some value'``
+        - ``result == 'pass'`` (references first dependency)
         Default: ``True`` (pass through).
         """
         cond = node.condition.strip()
         if not cond:
             return True
 
-        # Simple pattern: "node_id.status == completed"
+        import re
+        # Pattern: "node_id.status == value" or "node_id.result == 'value'"
+        match = re.match(
+            r"^(\w+)\.(status|result)\s*==\s*['\"]?([^'\"]+)['\"]?$",
+            cond,
+        )
+        if match:
+            ref_id, attr, expected = match.groups()
+            ref_node = nmap.get(ref_id)
+            if ref_node is not None:
+                if attr == "status":
+                    return ref_node.status.value == expected.strip()
+                if attr == "result":
+                    return ref_node.result.strip() == expected.strip()
+            return False
+
+        # Pattern: "result == 'value'" (reference first dependency)
+        match = re.match(
+            r"^result\s*==\s*['\"]?([^'\"]+)['\"]?$",
+            cond,
+        )
+        if match and node.depends_on:
+            expected = match.group(1).strip()
+            dep_node = nmap.get(node.depends_on[0])
+            if dep_node is not None:
+                return dep_node.result.strip() == expected
+            return False
+
+        # Fallback: simple "completed"/"failed" keyword check
         parts = cond.split(".")
         if len(parts) >= 2:
             ref_id = parts[0]

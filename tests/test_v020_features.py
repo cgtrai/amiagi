@@ -319,7 +319,7 @@ class TestChatServiceApiModel:
         repo = MemoryRepository(db_path)
         return ChatService(
             memory_repository=repo,
-            ollama_client=_FakeClient(api=is_api),
+            model_client=_FakeClient(api=is_api),
         )
 
     def test_is_api_model_false_for_ollama(self, tmp_path: Path) -> None:

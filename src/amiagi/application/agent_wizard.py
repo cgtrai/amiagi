@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from amiagi.application.agent_factory import AgentFactory
 from amiagi.application.agent_test_runner import AgentTestRunner, ValidationReport
 from amiagi.application.model_client_protocol import ChatCompletionClient
@@ -26,6 +28,24 @@ from amiagi.application.tool_recommender import ToolRecommender
 from amiagi.domain.agent import AgentDescriptor, AgentRole
 from amiagi.domain.blueprint import AgentBlueprint, TestScenario
 from amiagi.infrastructure.agent_runtime import AgentRuntime
+
+
+class SensitivePermissionError(Exception):
+    """Raised when a blueprint requests sensitive permissions without Sponsor confirmation.
+
+    Attributes:
+        blueprint: The blueprint that triggered the error.
+        sensitive_perms: List of human-readable strings describing the sensitive accesses.
+    """
+
+    def __init__(self, blueprint: AgentBlueprint, sensitive_perms: list[str]) -> None:
+        self.blueprint = blueprint
+        self.sensitive_perms = sensitive_perms
+        msg = (
+            f"Blueprint '{blueprint.name}' requests sensitive permissions "
+            f"that require Sponsor confirmation: {', '.join(sensitive_perms)}"
+        )
+        super().__init__(msg)
 
 
 _BLUEPRINT_PROMPT = """\
@@ -101,6 +121,38 @@ class AgentWizardService:
         self._blueprints_dir = blueprints_dir
         self._blueprints_dir.mkdir(parents=True, exist_ok=True)
 
+    # ---- step 0: analyze request ----
+
+    def analyze_request(self, need: str) -> dict[str, Any]:
+        """Pre-analyze a user need before generating a full blueprint.
+
+        Returns a dict with ``complexity``, ``suggested_role``,
+        ``suggested_tools``, and ``summary``.
+        """
+        words = need.lower().split()
+        complexity = "simple" if len(words) < 20 else ("complex" if len(words) > 50 else "moderate")
+        role = "executor"
+        if any(w in need.lower() for w in ("review", "audit", "check")):
+            role = "specialist"
+        elif any(w in need.lower() for w in ("plan", "architect", "design", "supervise")):
+            role = "supervisor"
+
+        tools: list[str] = ["read_file", "list_dir"]
+        if any(w in need.lower() for w in ("code", "python", "program", "script")):
+            tools.extend(["run_python", "check_python_syntax", "write_file"])
+        if any(w in need.lower() for w in ("web", "search", "research", "http")):
+            tools.extend(["fetch_web", "search_web"])
+        if any(w in need.lower() for w in ("shell", "command", "terminal", "deploy")):
+            tools.append("run_shell")
+
+        return {
+            "complexity": complexity,
+            "suggested_role": role,
+            "suggested_tools": tools,
+            "word_count": len(words),
+            "summary": need[:200],
+        }
+
     # ---- step 1: generate blueprint ----
 
     def generate_blueprint(self, need: str) -> AgentBlueprint:
@@ -114,13 +166,41 @@ class AgentWizardService:
 
     # ---- step 2: create agent from blueprint ----
 
+    @staticmethod
+    def check_sensitive_permissions(blueprint: AgentBlueprint) -> list[str]:
+        """Return human-readable list of sensitive permissions the blueprint requests.
+
+        Empty list means no confirmation is needed.
+        """
+        sensitive: list[str] = []
+        perms = blueprint.initial_permissions or {}
+        if perms.get("shell_access"):
+            sensitive.append("shell_access (uruchamianie poleceń systemowych)")
+        if perms.get("network_access"):
+            sensitive.append("network_access (dostęp do sieci)")
+        # Broad path permissions
+        allowed = perms.get("allowed_paths", [])
+        if any(p in ("*", "/", "~") for p in allowed):
+            sensitive.append(f"unrestricted_paths ({', '.join(allowed)})")
+        return sensitive
+
     def create_agent(
         self,
         blueprint: AgentBlueprint,
         *,
         client: ChatCompletionClient | None = None,
+        sponsor_confirmed: bool = False,
     ) -> AgentRuntime:
-        """Instantiate an agent from *blueprint* and register it."""
+        """Instantiate an agent from *blueprint* and register it.
+
+        If the blueprint requests sensitive permissions (shell_access,
+        network_access, unrestricted paths) and *sponsor_confirmed* is
+        ``False``, raises :class:`SensitivePermissionError` so the caller
+        (e.g. TUI) can present a confirmation dialog.
+        """
+        sensitive = self.check_sensitive_permissions(blueprint)
+        if sensitive and not sponsor_confirmed:
+            raise SensitivePermissionError(blueprint, sensitive)
         role_map = {
             "executor": AgentRole.EXECUTOR,
             "supervisor": AgentRole.SUPERVISOR,
@@ -135,9 +215,32 @@ class AgentWizardService:
             model_name=blueprint.suggested_model,
             skills=list(blueprint.required_skills),
             tools=list(blueprint.required_tools),
-            metadata={"origin": "wizard", "team_function": blueprint.team_function},
+            metadata={
+                "origin": "wizard",
+                "team_function": blueprint.team_function,
+                "initial_permissions": blueprint.initial_permissions,
+            },
         )
-        return self._factory.create_agent(descriptor, client=client)
+        runtime = self._factory.create_agent(descriptor, client=client)
+
+        # Apply initial_permissions to PermissionEnforcer if available
+        if blueprint.initial_permissions and hasattr(self._factory, '_permission_enforcer'):
+            enforcer = getattr(self._factory, '_permission_enforcer', None)
+            if enforcer is not None:
+                from amiagi.domain.permission_policy import AgentPermissionPolicy
+                perms = blueprint.initial_permissions
+                policy = AgentPermissionPolicy(
+                    allowed_tools=perms.get("allowed_tools", []),
+                    denied_tools=perms.get("denied_tools", []),
+                    allowed_paths=perms.get("allowed_paths", []),
+                    read_only_paths=perms.get("read_only_paths", []),
+                    network_access=perms.get("network_access", False),
+                    shell_access=perms.get("shell_access", False),
+                    max_file_size_bytes=perms.get("max_file_size_bytes", 10 * 1024 * 1024),
+                )
+                enforcer.set_policy(descriptor.agent_id, policy)
+
+        return runtime
 
     # ---- step 3: validate ----
 
@@ -152,28 +255,33 @@ class AgentWizardService:
     # ---- persistence ----
 
     def save_blueprint(self, blueprint: AgentBlueprint) -> Path:
-        """Persist *blueprint* as JSON to the blueprints directory."""
-        path = self._blueprints_dir / f"{blueprint.name}.json"
+        """Persist *blueprint* as YAML to the blueprints directory."""
+        path = self._blueprints_dir / f"{blueprint.name}.yaml"
         path.write_text(
-            json.dumps(blueprint.to_dict(), indent=2, ensure_ascii=False),
+            yaml.dump(blueprint.to_dict(), default_flow_style=False, allow_unicode=True, sort_keys=False),
             encoding="utf-8",
         )
         return path
 
     def load_blueprint(self, name: str) -> AgentBlueprint | None:
-        """Load a previously-saved blueprint by name."""
-        path = self._blueprints_dir / f"{name}.json"
-        if not path.exists():
+        """Load a previously-saved blueprint by name (YAML preferred, JSON fallback)."""
+        yaml_path = self._blueprints_dir / f"{name}.yaml"
+        json_path = self._blueprints_dir / f"{name}.json"
+        if yaml_path.exists():
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        elif json_path.exists():
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        else:
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
         return AgentBlueprint.from_dict(data)
 
     def list_blueprints(self) -> list[str]:
         """Return names of all saved blueprints."""
-        return sorted(
-            p.stem
-            for p in self._blueprints_dir.glob("*.json")
-        )
+        names: set[str] = set()
+        for ext in ("*.yaml", "*.json"):
+            for p in self._blueprints_dir.glob(ext):
+                names.add(p.stem)
+        return sorted(names)
 
     # ---- internals ----
 

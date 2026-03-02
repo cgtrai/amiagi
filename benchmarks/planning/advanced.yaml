@@ -1,0 +1,49 @@
+# Benchmark: Planning — advanced scenarios
+scenarios:
+  - scenario_id: plan_microservices
+    prompt: "Zaprojektuj architekturę systemu e-commerce opartego na mikroserwisach: katalog produktów, koszyk, płatności, powiadomienia. Uwzględnij komunikację, bazę danych i skalowanie."
+    expected_keywords:
+      - mikroserwis
+      - api
+      - baza danych
+      - skalowanie
+
+  - scenario_id: plan_migration
+    prompt: "Zaplanuj migrację monolitycznej aplikacji Django do architektury mikroserwisowej. Opisz etapy, ryzyka i strategię rollback."
+    expected_keywords:
+      - etap
+      - ryzyko
+      - rollback
+      - migracja
+
+  - scenario_id: plan_ml_pipeline
+    prompt: "Zaprojektuj pipeline ML do predykcji churnu klientów: zbieranie danych, feature engineering, trening, ewaluacja, deployment, monitoring."
+    expected_keywords:
+      - pipeline
+      - trening
+      - ewaluacja
+      - monitoring
+
+  - scenario_id: plan_incident_response
+    prompt: "Opracuj procedurę reakcji na incydent bezpieczeństwa w systemie produkcyjnym: detekcja, izolacja, analiza, naprawy, post-mortem."
+    expected_keywords:
+      - detekcja
+      - izolacja
+      - post-mortem
+      - procedura
+
+  - scenario_id: plan_team_scaling
+    prompt: "Zaplanuj skalowanie zespołu deweloperskiego z 3 do 15 osób: rekrutacja, onboarding, struktura zespołów, procesy, narzędzia."
+    expected_keywords:
+      - rekrutacja
+      - onboarding
+      - struktura
+      - proces
+
+  - scenario_id: plan_api_versioning
+    prompt: "Zaprojektuj strategię wersjonowania REST API obsługującego 50+ klientów z różnymi wersjami: deprecation policy, migration path, backward compatibility."
+    expected_keywords:
+      - versioning
+      - deprecation
+      - backward
+      - migration

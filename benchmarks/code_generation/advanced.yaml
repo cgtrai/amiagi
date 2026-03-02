@@ -1,0 +1,65 @@
+# Benchmark: Code Generation — advanced scenarios
+scenarios:
+  - scenario_id: codegen_decorator_cache
+    prompt: "Napisz dekorator w Pythonie implementujący LRU cache z limitem rozmiaru i opcjonalnym TTL."
+    expected_keywords:
+      - def
+      - functools
+      - cache
+      - wrapper
+
+  - scenario_id: codegen_async_api
+    prompt: "Zaimplementuj asynchroniczny klient HTTP w Pythonie (aiohttp) z retry logic i rate limiting."
+    expected_keywords:
+      - async
+      - await
+      - aiohttp
+      - retry
+
+  - scenario_id: codegen_dataclass_validation
+    prompt: "Utwórz zestaw dataclass z walidacją pól (email, wiek > 0, data w przeszłości) i serializacją do JSON."
+    expected_keywords:
+      - dataclass
+      - validate
+      - json
+      - field
+
+  - scenario_id: codegen_context_manager
+    prompt: "Napisz kontekst menedżer do zarządzania połączeniem z bazą danych SQLite z obsługą tranzakcji."
+    expected_keywords:
+      - __enter__
+      - __exit__
+      - sqlite3
+      - commit
+
+  - scenario_id: codegen_cli_argparse
+    prompt: "Stwórz narzędzie CLI z argparse do analizy plików logów — filtrowanie po dacie, poziomie logowania i regex."
+    expected_keywords:
+      - argparse
+      - def
+      - filter
+      - parse
+
+  - scenario_id: codegen_design_pattern
+    prompt: "Zaimplementuj wzorzec Observer w Pythonie z typowaniem generycznym i thread-safety."
+    expected_keywords:
+      - class
+      - subscribe
+      - notify
+      - threading
+
+  - scenario_id: codegen_metaclass
+    prompt: "Napisz metaklasę Singleton z obsługą dziedziczenia i thread-safety."
+    expected_keywords:
+      - metaclass
+      - __call__
+      - class
+      - threading
+
+  - scenario_id: codegen_generator_pipeline
+    prompt: "Stwórz pipeline przetwarzania danych złożony z generatorów: czytanie, filtrowanie, transformacja, agregacja."
+    expected_keywords:
+      - yield
+      - def
+      - pipeline
+      - generator

@@ -39,6 +39,14 @@ class AgentRegistry:
         with self._lock:
             return [a for a in self._agents.values() if a.state == state]
 
+    def list_active(self) -> list[AgentDescriptor]:
+        """Return agents that are IDLE or WORKING (non-terminated, non-paused)."""
+        with self._lock:
+            return [
+                a for a in self._agents.values()
+                if a.state in (AgentState.IDLE, AgentState.WORKING)
+            ]
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._agents)

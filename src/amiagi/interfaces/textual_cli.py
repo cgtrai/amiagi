@@ -260,6 +260,9 @@ _TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
     # --- API usage ---
     ("/api-usage", "pokaż szczegółowe zużycie tokenów i koszty API"),
     ("/api-key verify", "zweryfikuj ponownie klucz API"),
+    # --- Skills ---
+    ("/skills", "lista załadowanych skills per rola"),
+    ("/skills reload", "przeładuj pliki skills z dysku"),
     # --- Phase 1: Agent Registry ---
     ("/agents list", "lista agentów, stan, model, rola"),
     ("/agents info <id|name>", "szczegóły agenta"),
@@ -1852,6 +1855,30 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✗ (nie udało się połączyć)"])
 
         # ==================================================================
+        # v0.2.0 — /skills commands
+        # ==================================================================
+        if lower == "/skills reload":
+            sl = self._chat_service.skills_loader if self._chat_service else None
+            if sl is None:
+                return _CommandOutcome(True, ["SkillsLoader nie jest skonfigurowany."])
+            sl.reload()
+            available = sl.list_available()
+            total = sum(len(v) for v in available.values())
+            return _CommandOutcome(True, [f"Skills przeładowane. Znaleziono {total} skill(s) w {len(available)} roli/rolach."])
+
+        if lower == "/skills":
+            sl = self._chat_service.skills_loader if self._chat_service else None
+            if sl is None:
+                return _CommandOutcome(True, ["SkillsLoader nie jest skonfigurowany."])
+            available = sl.list_available()
+            if not available:
+                return _CommandOutcome(True, ["Brak załadowanych skills. Sprawdź katalog skills/."])
+            lines = ["--- ZAŁADOWANE SKILLS ---"]
+            for role, names in sorted(available.items()):
+                lines.append(f"  {role}/: {', '.join(names)}")
+            return _CommandOutcome(True, lines)
+
+        # ==================================================================
         # Phase 1 — /agents commands
         # ==================================================================
         if lower.startswith("/agents"):
@@ -2415,15 +2442,17 @@ class _AmiagiTextualApp(App[None]):
             workflows_dir = Path("./data/workflows")
             if self._settings is not None:
                 workflows_dir = self._settings.workflows_dir
-            template_path = workflows_dir / f"{template_name}.json"
+            template_path = workflows_dir / f"{template_name}.yaml"
             if not template_path.exists():
-                available = [p.stem for p in workflows_dir.glob("*.json")]
+                template_path = workflows_dir / f"{template_name}.json"
+            if not template_path.exists():
+                available = sorted({p.stem for p in list(workflows_dir.glob("*.yaml")) + list(workflows_dir.glob("*.json"))})
                 return _CommandOutcome(True, [
                     f"Szablon '{template_name}' nie istnieje.",
                     f"Dostępne: {', '.join(available) or 'brak'}",
                 ])
             try:
-                wf = WorkflowDefinition.load_json(template_path)
+                wf = WorkflowDefinition.load_file(template_path)
                 run = self._workflow_engine.start(wf)
                 return _CommandOutcome(True, [
                     f"Workflow '{wf.name}' uruchomiony jako {run.run_id}.",
@@ -2465,7 +2494,7 @@ class _AmiagiTextualApp(App[None]):
             workflows_dir = Path("./data/workflows")
             if self._settings is not None:
                 workflows_dir = self._settings.workflows_dir
-            templates = [p.stem for p in workflows_dir.glob("*.json")]
+            templates = sorted({p.stem for p in list(workflows_dir.glob("*.yaml")) + list(workflows_dir.glob("*.json"))})
             if not templates:
                 return _CommandOutcome(True, ["Brak szablonów workflow."])
             msgs = ["--- Szablony workflow ---"]
@@ -4267,11 +4296,41 @@ class _AmiagiTextualApp(App[None]):
 
         return current
 
-    def _execute_tool_call(self, tool_call: ToolCall) -> dict:
+    def _execute_tool_call(self, tool_call: ToolCall, *, agent_id: str = "") -> dict:
         tool = tool_call.tool.strip()
         if tool == "run_command":
             tool = "run_shell"
         args = tool_call.args
+
+        # ---- Phase 7: per-agent permission enforcement ----
+        if agent_id and self._permission_enforcer is not None:
+            result = self._permission_enforcer.check_tool(agent_id, tool)
+            if not result.allowed:
+                if self._audit_chain is not None:
+                    self._audit_chain.record_action(
+                        agent_id=agent_id,
+                        action=f"tool.denied:{tool}",
+                        target=tool,
+                        approved_by="permission_enforcer",
+                    )
+                return {"ok": False, "error": f"permission_denied:{result.reason}"}
+            # Path-based checks for file tools
+            if tool in ("read_file", "list_dir", "check_python_syntax", "run_python"):
+                path_arg = str(args.get("path", ""))
+                if path_arg:
+                    path_result = self._permission_enforcer.check_path(
+                        agent_id, path_arg, write=False
+                    )
+                    if not path_result.allowed:
+                        return {"ok": False, "error": f"permission_denied:{path_result.reason}"}
+            if tool in ("write_file", "append_file"):
+                path_arg = str(args.get("path", ""))
+                if path_arg:
+                    path_result = self._permission_enforcer.check_path(
+                        agent_id, path_arg, write=True
+                    )
+                    if not path_result.allowed:
+                        return {"ok": False, "error": f"permission_denied:{path_result.reason}"}
 
         if tool == "read_file":
             if not self._ensure_resource("disk.read", "Tool read_file wymaga odczytu pliku"):

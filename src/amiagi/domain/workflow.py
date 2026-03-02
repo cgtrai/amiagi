@@ -138,3 +138,32 @@ class WorkflowDefinition:
             json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def load_yaml(path: Path) -> "WorkflowDefinition":
+        """Load a workflow definition from a YAML file."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return WorkflowDefinition.from_dict(data)
+
+    def save_yaml(self, path: Path) -> None:
+        """Save workflow definition to a YAML file."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def load_file(path: Path) -> "WorkflowDefinition":
+        """Load from JSON or YAML based on file extension."""
+        if path.suffix in (".yaml", ".yml"):
+            return WorkflowDefinition.load_yaml(path)
+        return WorkflowDefinition.load_json(path)

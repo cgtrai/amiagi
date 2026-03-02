@@ -1,12 +1,17 @@
 # amiagi
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
+[![Tests: 1045](https://img.shields.io/badge/tests-1045%20passed-brightgreen.svg)](tests/)
+[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blueviolet.svg)](pyproject.toml)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 A local, CLI-first framework for orchestrating autonomous LLM agent teams in controlled environments.
 
 `amiagi` is a full-featured agent orchestration platform: dynamic agent registry, task queuing, workflow engine, budget governance, evaluation framework, REST API, web dashboard, and team composition — all with per-agent security isolation, JSONL audit logs, and multi-backend support (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Current version: **v1.0.0** — all 11 roadmap phases complete, **815 tests**.
+Current version: **v1.0.1** — all 11 roadmap phases complete, **1045 tests**.
 
 ## Safety Disclaimer (Read First)
 
@@ -94,9 +99,9 @@ See [LICENSE](LICENSE) for full terms.
 
 ### Workflow engine (Phase 6)
 
-- **DAG workflow definitions** — JSON-defined directed acyclic graphs with conditional branching
+- **DAG workflow definitions** — YAML-defined directed acyclic graphs with conditional branching
 - **Workflow checkpoints** — serialized workflow state for crash recovery
-- Predefined templates: `code_review.json`, `research.json`, `feature.json`
+- Predefined templates: `code_review.yaml`, `research.yaml`, `feature.yaml`
 
 ### Security & isolation (Phase 7)
 
@@ -132,12 +137,13 @@ See [LICENSE](LICENSE) for full terms.
 
 ### Team composition (Phase 11)
 
-- **Team definition** — structured team model with member descriptors and JSON persistence
+- **Team definition** — structured team model with member descriptors and YAML persistence
 - **Team composer** — heuristic + template-based team recommendation and assembly
 - **Skill catalog** — searchable skill registry with tool/model matching
 - **Dynamic scaler** — load-monitoring scaler with cooldown-based scale-up/down decisions
 - **Team dashboard** — org chart, per-team metrics, and summary views
-- Predefined templates: `team_backend.json`, `team_research.json`, `team_fullstack.json`
+- **Router → TaskQueue bridge** — sponsor messages automatically decomposed into tasks
+- Predefined templates: `team_backend.yaml`, `team_research.yaml`, `team_fullstack.yaml`, `data_pipeline.yaml`
 
 ### User experience
 
@@ -329,6 +335,8 @@ src/amiagi/
     dynamic_scaler.py         # DynamicScaler (load-based scaling)
     agent_registry.py         # AgentRegistry (thread-safe CRUD)
     agent_factory.py          # AgentFactory (create agents from descriptors)
+    router_task_bridge.py     # RouterTaskBridge (sponsor → tasks)
+    wizard_conversation.py    # WizardConversation (multi-turn blueprint creation)
     task_queue.py             # TaskQueue (priority + dependency)
     work_assigner.py          # WorkAssigner (skill-based matching)
     workflow_engine.py        # WorkflowEngine (DAG interpreter)
@@ -345,7 +353,8 @@ src/amiagi/
     webhook_dispatcher.py     # WebhookDispatcher (event webhooks)
     ci_adapter.py             # CIAdapter (GitHub Actions integration)
     sdk_client.py             # AmiagiClient (Python SDK)
-    dashboard_server.py       # DashboardServer (web monitoring)
+    dashboard_server.py       # DashboardServer (web monitoring + /api/budget)
+    trace_viewer.py           # TraceViewer (request chain visualization)
     sandbox_manager.py        # SandboxManager (per-agent isolation)
     secret_vault.py           # SecretVault (per-agent credentials)
   interfaces/         # CLI and user interaction layer
@@ -353,11 +362,12 @@ src/amiagi/
     human_feedback.py         # HumanFeedbackCollector (JSONL)
     team_dashboard.py         # TeamDashboard (org chart + metrics)
     dashboard_static/         # HTML/CSS/JS for web dashboard
-tests/                # pytest suite (815 tests)
+  sdk/                # AmiagiClient SDK package
+tests/                # pytest suite (1045 tests)
 config/               # shell allowlist policy
 skills/               # per-role Markdown skill files
 data/                 # local persistent DB, history, model config
-  teams/              # team template JSON files
+  teams/              # team definition files
   benchmarks/         # benchmark scenario files
 logs/                 # JSONL runtime and model logs
 ```
@@ -530,6 +540,7 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
 Latest release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
+Patch notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md).
 Roadmap: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).
 
 ## Polish Documentation

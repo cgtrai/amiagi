@@ -189,7 +189,7 @@ SUMMARY_SYSTEM_PROMPT = (
 @dataclass
 class ChatService:
     memory_repository: MemoryRepository
-    ollama_client: Any = None  # ChatCompletionClient (OllamaClient | OpenAIClient)
+    model_client: Any = None  # ChatCompletionClient (OllamaClient | OpenAIClient)
     max_context_memories: int = 5
     activity_logger: ActivityLogger | None = None
     vram_advisor: VramAdvisor | None = None
@@ -200,18 +200,18 @@ class ChatService:
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
     skills_loader: SkillsLoader | None = None
 
-    # Forward-looking alias — new code should prefer model_client.
+    # Backward-compat alias — legacy code may still use ollama_client.
     @property
-    def model_client(self) -> Any:
-        return self.ollama_client
+    def ollama_client(self) -> Any:
+        return self.model_client
 
-    @model_client.setter
-    def model_client(self, value: Any) -> None:
-        self.ollama_client = value
+    @ollama_client.setter
+    def ollama_client(self, value: Any) -> None:
+        self.model_client = value
 
     def is_api_model(self) -> bool:
         """Return True when the current model client is a cloud API backend."""
-        return getattr(self.ollama_client, "_is_api_client", False)
+        return getattr(self.model_client, "_is_api_client", False)
 
     def _workspace_guide(self) -> str:
         resolved = self.work_dir.resolve()
@@ -423,7 +423,7 @@ class ChatService:
             conversation[-1]["content"] = f"{actor_prefix}{user_message_for_model}"
 
         system_prompt = self.build_system_prompt(user_message)
-        response = self.ollama_client.chat(
+        response = self.model_client.chat(
             messages=conversation,
             system_prompt=system_prompt,
             num_ctx=self._effective_num_ctx(),
@@ -501,7 +501,7 @@ class ChatService:
             f"Opis: {description}"
         )
         conversation.append({"role": "user", "content": user_prompt})
-        response = self.ollama_client.chat(
+        response = self.model_client.chat(
             messages=conversation,
             system_prompt=CODE_SYSTEM_PROMPT,
             num_ctx=self._effective_num_ctx(),
@@ -544,7 +544,7 @@ class ChatService:
                 ),
             }
         ]
-        summary = self.ollama_client.chat(
+        summary = self.model_client.chat(
             messages=conversation,
             system_prompt=SUMMARY_SYSTEM_PROMPT,
             num_ctx=self._effective_num_ctx(),
@@ -572,7 +572,7 @@ class ChatService:
             )
 
         system_prompt = self.build_system_prompt("bootstrap runtime")
-        readiness = self.ollama_client.chat(
+        readiness = self.model_client.chat(
             messages=[{"role": "user", "content": BOOTSTRAP_USER_PROMPT}],
             system_prompt=system_prompt,
             num_ctx=self._effective_num_ctx(),

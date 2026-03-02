@@ -1,0 +1,39 @@
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #4ea1ff;
+  --green: #47c26b; --orange: #f5a623; --red: #f85149; --purple: #9a6bff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+h1 { font-size: 1.4rem; padding: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); }
+h1 span { font-size: 0.8rem; color: var(--text-dim); margin-left: 1rem; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+.panel-title { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.75rem; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { text-align: left; color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 0.4rem; }
+td { padding: 0.4rem; border-bottom: 1px solid var(--border); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+.badge-idle { background: var(--green); color: #000; }
+.badge-working { background: var(--orange); color: #000; }
+.badge-paused { background: var(--purple); color: #fff; }
+.badge-error, .badge-failed { background: var(--red); color: #fff; }
+.badge-terminated { background: var(--text-dim); color: #000; }
+.badge-pending { background: var(--border); color: var(--text); }
+.badge-assigned, .badge-in_progress { background: var(--accent); color: #000; }
+.badge-done { background: var(--green); color: #000; }
+.badge-critical { background: var(--red); color: #fff; }
+.badge-high { background: var(--orange); color: #000; }
+.badge-normal { background: var(--accent); color: #000; }
+.badge-low { background: var(--text-dim); color: #000; }
+.metric-card { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 1rem; margin: 0.25rem; }
+.metric-card .value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.metric-card .label { font-size: 0.75rem; color: var(--text-dim); }
+#event-log { max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; }
+#event-log .event { padding: 2px 0; border-bottom: 1px solid var(--border); }
+#event-log .ts { color: var(--text-dim); margin-right: 0.5rem; }
+#event-log .src { color: var(--purple); margin-right: 0.5rem; }
+.status-bar { padding: 0.5rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
+  font-size: 0.8rem; color: var(--text-dim); display: flex; justify-content: space-between; }
+#cost-session { margin-bottom: 0.75rem; }

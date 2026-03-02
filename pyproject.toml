@@ -16,6 +16,8 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 amiagi = "amiagi.main:main"
+amiagi-ci = "amiagi.infrastructure.ci_adapter:cli_main"
+amiagi-plugin = "amiagi.application.plugin_loader:plugin_cli_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

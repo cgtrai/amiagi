@@ -30,12 +30,13 @@ Transition from "collection of agents" to "managed team framework".
 - TUI commands: `/api status|start|stop`, `/plugins list|load`.
 
 ### Phase 11 — Persona & Team Composition
-- **TeamDefinition**: structured team model with member descriptors and JSON persistence.
+- **TeamDefinition**: structured team model with member descriptors and YAML persistence.
 - **TeamComposer**: heuristic + template-based team recommendation and assembly.
 - **SkillCatalog**: searchable skill registry with tool/model matching.
 - **DynamicScaler**: load-monitoring scaler with cooldown-based scale-up/down decisions.
 - **TeamDashboard**: org chart, per-team metrics, and summary views.
-- 3 predefined team templates: `team_backend.json`, `team_research.json`, `team_fullstack.json`.
+- **RouterTaskBridge**: sponsor messages automatically decomposed into tasks via TaskQueue.
+- 4 predefined team templates: `team_backend.yaml`, `team_research.yaml`, `team_fullstack.yaml`, `data_pipeline.yaml`.
 - TUI commands: `/team list|templates|create|status`.
 
 ### Integration
@@ -43,7 +44,7 @@ Transition from "collection of agents" to "managed team framework".
 - `main.py` bootstraps all Phase 8–11 services.
 - `textual_cli.py` dispatches 7 new TUI command families via dedicated handlers.
 
-## New modules (20)
+## New modules (23)
 
 | Layer | Module | Phase |
 |-------|--------|-------|
@@ -58,6 +59,7 @@ Transition from "collection of agents" to "managed team framework".
 | application | `team_composer.py` | 11 |
 | application | `skill_catalog.py` | 11 |
 | application | `dynamic_scaler.py` | 11 |
+| application | `router_task_bridge.py` | 11 |
 | infrastructure | `rate_limiter.py` | 8 |
 | infrastructure | `vram_scheduler.py` | 8 |
 | infrastructure | `benchmark_suite.py` | 9 |
@@ -65,16 +67,21 @@ Transition from "collection of agents" to "managed team framework".
 | infrastructure | `webhook_dispatcher.py` | 10 |
 | infrastructure | `ci_adapter.py` | 10 |
 | infrastructure | `sdk_client.py` | 10 |
+| infrastructure | `trace_viewer.py` | 10 |
 | interfaces | `human_feedback.py` | 9 |
 | interfaces | `team_dashboard.py` | 11 |
+| interfaces | `wizard_conversation.py` | 11 |
 
-## New test files (20)
+## New test files (31)
 
 `test_quota_policy.py`, `test_budget_manager.py`, `test_rate_limiter.py`, `test_vram_scheduler.py`,
 `test_eval_rubric.py`, `test_eval_runner.py`, `test_benchmark_suite.py`, `test_ab_test_runner.py`,
 `test_regression_detector.py`, `test_human_feedback.py`,
 `test_rest_server.py`, `test_webhook_dispatcher.py`, `test_plugin_loader.py`, `test_ci_adapter.py`, `test_sdk_client.py`,
-`test_team_definition.py`, `test_team_composer.py`, `test_skill_catalog.py`, `test_dynamic_scaler.py`, `test_team_dashboard.py`.
+`test_team_definition.py`, `test_team_composer.py`, `test_skill_catalog.py`, `test_dynamic_scaler.py`, `test_team_dashboard.py`,
+`test_router_task_bridge.py`, `test_trace_viewer.py`, `test_wizard_conversation.py`, `test_wizard_permissions.py`,
+`test_quota_enforcement.py`, `test_agent_factory_blueprint.py`, `test_registry_list_active.py`,
+`test_sdk_and_model_client.py`, `test_dashboard_teams_and_cli.py`, `test_team_composer_llm.py`, `test_workflow_yaml.py`.
 
 ## Compatibility
 
@@ -83,7 +90,7 @@ Transition from "collection of agents" to "managed team framework".
 
 ## Validation
 
-- Full test suite: **815 passed** (203 new tests from Phases 8–11).
+- Full test suite: **1045 passed** (433 new tests from Phases 8–11 and gap-fill).
 - 0 Pylance errors.
 
 ## Safety

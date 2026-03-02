@@ -31,7 +31,7 @@ def test_supervisor_service_applies_repair_and_then_accepts() -> None:
             '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}',
         ]
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=2)
+    service = SupervisorService(model_client=client, max_repair_rounds=2)
 
     result = service.refine(
         user_message="działaj",
@@ -46,7 +46,7 @@ def test_supervisor_service_applies_repair_and_then_accepts() -> None:
 
 def test_supervisor_service_ignores_invalid_json() -> None:
     client = FakeSupervisorClient(responses=["to nie jest json"])
-    service = SupervisorService(ollama_client=client, max_repair_rounds=2)
+    service = SupervisorService(model_client=client, max_repair_rounds=2)
 
     original = "Niepoprawna odpowiedź wykonawcy"
     result = service.refine(
@@ -63,7 +63,7 @@ def test_supervisor_service_accepts_protocol_client() -> None:
     client = FakeSupervisorClient(
         responses=['{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}']
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+    service = SupervisorService(model_client=client, max_repair_rounds=1)
 
     result = service.refine(
         user_message="test",
@@ -81,7 +81,7 @@ def test_supervisor_service_normalizes_dict_style_repair() -> None:
             '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}',
         ]
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=2)
+    service = SupervisorService(model_client=client, max_repair_rounds=2)
 
     result = service.refine(
         user_message="kontynuuj",
@@ -99,7 +99,7 @@ def test_supervisor_service_handles_null_repaired_answer_without_none_text() -> 
     client = FakeSupervisorClient(
         responses=['{"status":"repair","reason_code":"NO_TOOL_CALL","repaired_answer":null,"notes":""}']
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+    service = SupervisorService(model_client=client, max_repair_rounds=1)
 
     original = "Brak poprawnego kroku wykonawczego"
     result = service.refine(
@@ -118,7 +118,7 @@ def test_supervisor_service_writes_dialogue_log(tmp_path) -> None:
     )
     dialogue_log = tmp_path / "supervision_dialogue.jsonl"
     service = SupervisorService(
-        ollama_client=client,
+        model_client=client,
         max_repair_rounds=1,
         dialogue_log_path=dialogue_log,
     )
@@ -142,7 +142,7 @@ def test_supervisor_review_prompt_demands_hard_evidence_not_declarations() -> No
     client = FakeSupervisorClient(
         responses=['{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}']
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+    service = SupervisorService(model_client=client, max_repair_rounds=1)
 
     prompt = service._build_review_prompt(
         user_message="kontynuuj",
@@ -162,7 +162,7 @@ def test_supervisor_service_generates_fallback_coaching_notes_when_missing() -> 
             '{"status":"ok","reason_code":"NO_TOOL_CALL","work_state":"RUNNING","repaired_answer":"","notes":""}'
         ]
     )
-    service = SupervisorService(ollama_client=client, max_repair_rounds=1)
+    service = SupervisorService(model_client=client, max_repair_rounds=1)
 
     result = service.refine(
         user_message="kontynuuj",
@@ -184,7 +184,7 @@ def test_sponsor_task_included_in_review_prompt() -> None:
     """When sponsor_task is set, _build_review_prompt includes [SPONSOR_TASK] block."""
     client = FakeSupervisorClient(responses=[])
     service = SupervisorService(
-        ollama_client=client,
+        model_client=client,
         max_repair_rounds=0,
         sponsor_task="Zbierz informacje o AI i wyślij 'Zakończyłem zadanie'.",
     )
@@ -202,7 +202,7 @@ def test_sponsor_task_included_in_review_prompt() -> None:
 def test_sponsor_task_absent_when_empty() -> None:
     """When sponsor_task is empty, the [SPONSOR_TASK] block should not be present."""
     client = FakeSupervisorClient(responses=[])
-    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    service = SupervisorService(model_client=client, max_repair_rounds=0)
     prompt = service._build_review_prompt(
         user_message="test",
         model_answer="test answer",
@@ -215,7 +215,7 @@ def test_sponsor_task_absent_when_empty() -> None:
 def test_review_prompt_contains_rule_16_premature_completion() -> None:
     """The review prompt must include rule 16 about premature completion."""
     client = FakeSupervisorClient(responses=[])
-    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    service = SupervisorService(model_client=client, max_repair_rounds=0)
     prompt = service._build_review_prompt(
         user_message="test",
         model_answer="test",
@@ -229,7 +229,7 @@ def test_review_prompt_contains_rule_16_premature_completion() -> None:
 def test_fallback_coaching_notes_premature_completion() -> None:
     """_fallback_coaching_notes returns guidance for PREMATURE_COMPLETION."""
     client = FakeSupervisorClient(responses=[])
-    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    service = SupervisorService(model_client=client, max_repair_rounds=0)
     notes = service._fallback_coaching_notes(
         notes="",
         reason_code="PREMATURE_COMPLETION",

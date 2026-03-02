@@ -312,7 +312,7 @@ class TestChatServiceActor:
                 return "odpowiedź"
 
         repo = MemoryRepository(tmp_path / "chat.db")
-        service = ChatService(memory_repository=repo, ollama_client=FakeClient())  # type: ignore[arg-type]
+        service = ChatService(memory_repository=repo, model_client=FakeClient())  # type: ignore[arg-type]
 
         service.ask("test message", actor="Sponsor")
 
@@ -330,7 +330,7 @@ class TestChatServiceActor:
                 return "ok"
 
         repo = MemoryRepository(tmp_path / "chat.db")
-        service = ChatService(memory_repository=repo, ollama_client=FakeClient())  # type: ignore[arg-type]
+        service = ChatService(memory_repository=repo, model_client=FakeClient())  # type: ignore[arg-type]
 
         prompt = service.build_system_prompt("hello")
         # Should contain communication protocol section
@@ -357,7 +357,7 @@ class TestSupervisorServiceComm:
             def list_models(self) -> list[str]:
                 return ["fake-model"]
 
-        service = SupervisorService(ollama_client=FakeClient())
+        service = SupervisorService(model_client=FakeClient())
         prompt = service._full_system_prompt()
         assert "Kastor" in prompt
 
@@ -376,7 +376,7 @@ class TestSupervisorServiceComm:
             def list_models(self) -> list[str]:
                 return ["fake-model"]
 
-        service = SupervisorService(ollama_client=FakeClient())
+        service = SupervisorService(model_client=FakeClient())
         result = service.refine(
             user_message="test",
             model_answer="response",
@@ -403,7 +403,7 @@ class TestSupervisorServiceComm:
             def list_models(self) -> list[str]:
                 return ["fake-model"]
 
-        service = SupervisorService(ollama_client=FakeClient())
+        service = SupervisorService(model_client=FakeClient())
         # Trigger _build_review_prompt through refine
         result = service.refine(
             user_message="test",
@@ -431,7 +431,7 @@ class TestSessionSummaryCommunicationState:
         repo.append_message("user", "hello", actor="Sponsor")
         repo.append_message("assistant", "hi", actor="Polluks")
 
-        service = ChatService(memory_repository=repo, ollama_client=FakeClient())  # type: ignore[arg-type]
+        service = ChatService(memory_repository=repo, model_client=FakeClient())  # type: ignore[arg-type]
         comm_state = {"unaddressed_turns": 1, "passive_turns": 3}
         summary = service.summarize_session_for_restart(communication_state=comm_state)
 
@@ -450,7 +450,7 @@ class TestSessionSummaryCommunicationState:
         repo = MemoryRepository(tmp_path / "chat.db")
         repo.append_message("user", "hello")
 
-        service = ChatService(memory_repository=repo, ollama_client=FakeClient())  # type: ignore[arg-type]
+        service = ChatService(memory_repository=repo, model_client=FakeClient())  # type: ignore[arg-type]
         summary = service.summarize_session_for_restart()
         assert isinstance(summary, str)
 

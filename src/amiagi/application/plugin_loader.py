@@ -189,3 +189,56 @@ class PluginLoader:
                 "plugins_dir": str(self._plugins_dir) if self._plugins_dir else None,
                 "plugins": [p.to_dict() for p in self._registry.values()],
             }
+
+
+def plugin_cli_main() -> None:
+    """CLI entry-point for ``amiagi-plugin`` command.
+
+    Provides plugin management from the command line::
+
+        amiagi-plugin list
+        amiagi-plugin load <name>
+        amiagi-plugin scan [--dir <path>]
+    """
+    import argparse
+    import json as _json
+    import sys
+
+    parser = argparse.ArgumentParser(prog="amiagi-plugin", description="amiagi plugin manager")
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("list", help="List discovered plugins")
+    load_p = sub.add_parser("load", help="Load a specific plugin by name")
+    load_p.add_argument("name", help="Plugin name")
+    scan_p = sub.add_parser("scan", help="Scan directory for plugins")
+    scan_p.add_argument("--dir", default="./plugins", help="Directory to scan")
+
+    args = parser.parse_args()
+
+    loader = PluginLoader()
+
+    if args.command == "list":
+        loader.discover_entry_points()
+        loader.discover_directory()
+        data = loader.to_dict()
+        print(_json.dumps(data, indent=2, ensure_ascii=False))
+    elif args.command == "load":
+        loader.discover_entry_points()
+        loader.discover_directory()
+        info = loader.load(args.name)
+        if info.loaded:
+            print(f"Plugin '{args.name}' loaded successfully.")
+        else:
+            err = info.error or "not found"
+            print(f"Failed to load '{args.name}': {err}", file=sys.stderr)
+            sys.exit(1)
+    elif args.command == "scan":
+        loader = PluginLoader(plugins_dir=Path(args.dir))
+        loader.discover_directory()
+        loaded = loader.load_all()
+        print(f"Loaded {len(loaded)} plugins from {args.dir}")
+        for p in loaded:
+            print(f"  - {p.name} ({p.module_path})")
+    else:
+        parser.print_help()
+        sys.exit(1)

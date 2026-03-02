@@ -1,12 +1,17 @@
 # amiagi
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
+[![Tests: 1045](https://img.shields.io/badge/tests-1045%20passed-brightgreen.svg)](tests/)
+[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blueviolet.svg)](pyproject.toml)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 Lokalny framework CLI do orkiestracji autonomicznych zespołów agentów LLM w kontrolowanym środowisku.
 
 `amiagi` to pełnoprawna platforma orkiestracji agentów: dynamiczny rejestr agentów, kolejka zadań, silnik workflow, budżetowanie, framework ewaluacyjny, REST API, web dashboard i kompozycja zespołów — wszystko z izolacją bezpieczeństwa per agent, pełnym audytem JSONL i obsługą wielu backendów (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Aktualna wersja: **v1.0.0** — wszystkie 11 faz roadmapy zrealizowanych, **815 testów**.
+Aktualna wersja: **v1.0.1** — wszystkie 11 faz roadmapy zrealizowanych, **1045 testów**.
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 
@@ -94,9 +99,9 @@ Pełne warunki: [LICENSE](LICENSE).
 
 ### Silnik workflow (Faza 6)
 
-- **Definicje workflow DAG** — JSON z warunkowym rozgałęzianiem
+- **Definicje workflow DAG** — YAML z warunkowym rozgałęzianiem
 - **Checkpointy workflow** — serializowany stan do odtworzenia po awarii
-- Predefiniowane szablony: `code_review.json`, `research.json`, `feature.json`
+- Predefiniowane szablony: `code_review.yaml`, `research.yaml`, `feature.yaml`
 
 ### Bezpieczeństwo i izolacja (Faza 7)
 
@@ -132,12 +137,13 @@ Pełne warunki: [LICENSE](LICENSE).
 
 ### Kompozycja zespołów (Faza 11)
 
-- **Definicja zespołu** — strukturalny model z deskryptorami członków i persystencją JSON
+- **Definicja zespołu** — strukturalny model z deskryptorami członków i persystencją YAML
 - **Kompozer zespołów** — heurystyczna + szablonowa rekomendacja składu
 - **Katalog umiejętności** — przeszukiwalny rejestr z dopasowaniem do narzędzi/modeli
 - **Dynamiczny scaler** — monitorowanie obciążenia z decyzjami scale-up/down
 - **Dashboard zespołu** — org chart, metryki per team, podsumowania
-- Predefiniowane szablony: `team_backend.json`, `team_research.json`, `team_fullstack.json`
+- **Most Router → TaskQueue** — wiadomości sponsora automatycznie dekomponowane na zadania
+- Predefiniowane szablony: `team_backend.yaml`, `team_research.yaml`, `team_fullstack.yaml`, `data_pipeline.yaml`
 
 ### Wygoda użytkowania
 
@@ -469,4 +475,5 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
 Najnowsze release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
+Patch notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md).
 Roadmapa: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).

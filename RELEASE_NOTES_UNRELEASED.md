@@ -1,3 +1,3 @@
 # amiagi (unreleased)
 
-No unreleased changes since v0.2.0.
+No unreleased changes since v1.0.1.

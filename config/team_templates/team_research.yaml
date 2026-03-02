@@ -1,0 +1,40 @@
+# Team template — Research project
+team_id: tmpl-research
+name: Research Team
+workflow: sequential
+members:
+  - role: researcher
+    name: Searcher
+    persona_prompt: >
+      Jesteś badaczem. Wyszukujesz informacje w internecie,
+      analizujesz źródła i zbierasz dane.
+    model_preference: large
+    skills:
+      - web_research
+      - data_collection
+
+  - role: data_analyst
+    name: Analyst
+    persona_prompt: >
+      Jesteś analitykiem. Analizujesz zebrane dane, identyfikujesz
+      wzorce i wyciągasz wnioski.
+    model_preference: medium
+    skills:
+      - data_analysis
+      - statistics
+
+  - role: code_reviewer
+    name: Writer
+    persona_prompt: >
+      Jesteś redaktorem technicznym. Piszesz raporty, dokumentację
+      i podsumowania na podstawie zebranych danych i analiz.
+    model_preference: medium
+    skills:
+      - technical_writing
+      - document_analysis
+
+lead_agent_id: researcher
+project_context: ""
+metadata:
+  description: "Zespół do zadań badawczych: search → analiza → raport"
+  use_case: research

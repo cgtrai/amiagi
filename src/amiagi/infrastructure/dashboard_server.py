@@ -11,9 +11,21 @@ from typing import Any, Callable
 
 from amiagi.application.agent_registry import AgentRegistry
 from amiagi.application.alert_manager import AlertManager
+from amiagi.application.budget_manager import BudgetManager
 from amiagi.application.task_queue import TaskQueue
 from amiagi.infrastructure.metrics_collector import MetricsCollector
 from amiagi.infrastructure.session_replay import SessionReplay
+
+# Lazy import to avoid circular dependency — resolved at runtime.
+_TeamDashboard: Any = None
+
+
+def _get_team_dashboard_cls() -> Any:
+    global _TeamDashboard
+    if _TeamDashboard is None:
+        from amiagi.interfaces.team_dashboard import TeamDashboard as _TD
+        _TeamDashboard = _TD
+    return _TeamDashboard
 
 
 class _DashboardHandler(BaseHTTPRequestHandler):
@@ -25,6 +37,8 @@ class _DashboardHandler(BaseHTTPRequestHandler):
     _metrics: MetricsCollector | None = None
     _alert_manager: AlertManager | None = None
     _session_replay: SessionReplay | None = None
+    _team_dashboard: Any = None  # TeamDashboard (lazy)
+    _budget_manager: BudgetManager | None = None
     _static_dir: Path | None = None
     _sse_subscribers: list[Any] = []
     _sse_lock: threading.Lock = threading.Lock()
@@ -45,15 +59,24 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             self._json_response(self._get_metrics())
         elif path == "/api/alerts":
             self._json_response(self._get_alerts())
+        elif path == "/api/teams":
+            self._json_response(self._get_teams())
+        elif path.startswith("/api/teams/") and path.endswith("/org"):
+            team_id = path[len("/api/teams/"):-len("/org")]
+            self._json_response(self._get_team_org(team_id))
         elif path == "/api/events":
             self._handle_sse()
         elif path == "/api/replay":
             self._json_response(self._get_replay())
         elif path == "/api/status":
             self._json_response(self._get_status())
+        elif path == "/api/budget":
+            self._json_response(self._get_budget())
         # ---- static files ----
         elif path == "/" or path == "/index.html":
             self._serve_static("index.html", "text/html")
+        elif path == "/teams.html" or path == "/teams":
+            self._serve_static("teams.html", "text/html")
         elif path.startswith("/static/"):
             filename = path[len("/static/"):]
             content_type = "text/css" if filename.endswith(".css") else "application/javascript"
@@ -136,6 +159,26 @@ class _DashboardHandler(BaseHTTPRequestHandler):
             "tasks": task_stats,
         }
 
+    def _get_budget(self) -> dict[str, Any]:
+        if self._budget_manager is None:
+            return {"agents": {}, "session": {}}
+        return {
+            "agents": self._budget_manager.summary(),
+            "session": self._budget_manager.session_summary(),
+        }
+
+    def _get_teams(self) -> dict[str, Any]:
+        td = self._team_dashboard
+        if td is None:
+            return {"teams": [], "total_teams": 0}
+        return td.summary()
+
+    def _get_team_org(self, team_id: str) -> dict[str, Any]:
+        td = self._team_dashboard
+        if td is None:
+            return {"error": "Team dashboard unavailable"}
+        return td.org_chart(team_id)
+
     # ---- SSE ----
 
     def _handle_sse(self) -> None:
@@ -210,6 +253,8 @@ class DashboardServer:
         metrics_collector: MetricsCollector | None = None,
         alert_manager: AlertManager | None = None,
         session_replay: SessionReplay | None = None,
+        team_dashboard: Any = None,
+        budget_manager: BudgetManager | None = None,
         static_dir: Path | None = None,
     ) -> None:
         self._registry = registry
@@ -217,6 +262,8 @@ class DashboardServer:
         self._metrics = metrics_collector
         self._alert_manager = alert_manager
         self._session_replay = session_replay
+        self._team_dashboard = team_dashboard
+        self._budget_manager = budget_manager
         self._static_dir = static_dir
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -242,6 +289,8 @@ class DashboardServer:
         _DashboardHandler._metrics = self._metrics
         _DashboardHandler._alert_manager = self._alert_manager
         _DashboardHandler._session_replay = self._session_replay
+        _DashboardHandler._team_dashboard = self._team_dashboard
+        _DashboardHandler._budget_manager = self._budget_manager
         _DashboardHandler._static_dir = self._static_dir
 
         self._server = HTTPServer(("0.0.0.0", port), _DashboardHandler)

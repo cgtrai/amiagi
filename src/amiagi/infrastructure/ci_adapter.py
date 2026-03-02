@@ -445,3 +445,57 @@ class CIAdapter:
             "config": self._config.to_dict(),
             "history_count": len(self._history),
         }
+
+
+def cli_main() -> None:
+    """CLI entry-point for ``amiagi-ci`` command.
+
+    Provides a minimal headless interface for CI pipelines::
+
+        amiagi-ci review --pr 42
+        amiagi-ci benchmark --suite basic
+        amiagi-ci status
+    """
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(prog="amiagi-ci", description="amiagi CI adapter")
+    sub = parser.add_subparsers(dest="command")
+
+    # review
+    review_p = sub.add_parser("review", help="Run automated code review on a PR")
+    review_p.add_argument("--pr", type=int, default=0, help="PR number")
+    review_p.add_argument("--repo", default="", help="owner/repo")
+
+    # benchmark
+    bench_p = sub.add_parser("benchmark", help="Run benchmark suite")
+    bench_p.add_argument("--suite", default="basic", help="Suite name (basic, advanced)")
+    bench_p.add_argument("--output", default="", help="Output JSON path")
+
+    # status
+    sub.add_parser("status", help="Show adapter status")
+
+    args = parser.parse_args()
+
+    adapter = CIAdapter()
+
+    if args.command == "status":
+        print(json.dumps(adapter.to_dict(), indent=2, ensure_ascii=False))
+    elif args.command == "review":
+        if args.repo:
+            owner, _, repo = args.repo.partition("/")
+            adapter.config = CIConfig(repo_owner=owner, repo_name=repo)
+        result = adapter.review_pr(args.pr)
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        sys.exit(0 if result.success else 1)
+    elif args.command == "benchmark":
+        result = adapter.run_benchmark(suite_name=args.suite)
+        output = json.dumps(result.to_dict(), indent=2, ensure_ascii=False)
+        if args.output:
+            Path(args.output).write_text(output, encoding="utf-8")
+        else:
+            print(output)
+        sys.exit(0 if result.success else 1)
+    else:
+        parser.print_help()
+        sys.exit(1)

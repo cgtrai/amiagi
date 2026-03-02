@@ -120,9 +120,15 @@ class CompositionAdvice:
 class TeamComposer:
     """Recommends team compositions from a project description."""
 
-    def __init__(self, *, templates_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        templates_dir: str | None = None,
+        planner_client: Any = None,
+    ) -> None:
         self._templates: dict[str, TeamDefinition] = {}
         self._history: list[CompositionAdvice] = []
+        self._planner = planner_client
         if templates_dir is not None:
             self._load_templates(templates_dir)
 
@@ -190,6 +196,61 @@ class TeamComposer:
         )
         self._history.append(advice)
         return advice
+
+    def recommend_with_llm(self, project_description: str) -> CompositionAdvice:
+        """LLM-based team recommendation with heuristic fallback.
+
+        Uses the planner client (if available) to generate a richer
+        recommendation; falls back to :meth:`recommend` when no LLM
+        is configured or when the LLM response cannot be parsed.
+        """
+        if self._planner is None:
+            return self.recommend(project_description)
+
+        import json as _json
+
+        prompt = (
+            "Jesteś ekspertem od budowania zespołów programistycznych.\n"
+            "Na podstawie opisu projektu zaproponuj optymalny skład zespołu.\n"
+            "Zwróć TYLKO JSON (bez markdown fences):\n"
+            '{"roles": ["role1", "role2"], "reasoning": "...", "confidence": 0.8}\n\n'
+            "Dostępne role: " + ", ".join(sorted(_KEYWORD_MAP.values())) + "\n\n"
+            f"Opis projektu:\n{project_description}"
+        )
+        try:
+            raw = self._planner.chat(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt="Return ONLY valid JSON, no explanation.",
+            )
+            # Try to extract JSON
+            cleaned = raw.strip()
+            if "```" in cleaned:
+                for part in cleaned.split("```"):
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    if part.startswith("{"):
+                        cleaned = part
+                        break
+            data = _json.loads(cleaned)
+            roles = data.get("roles", [])
+            if not roles:
+                return self.recommend(project_description)
+            advice = CompositionAdvice(
+                recommended_roles=sorted(set(roles)),
+                team_size=len(set(roles)),
+                reasoning=data.get("reasoning", "LLM recommendation"),
+                confidence=float(data.get("confidence", 0.7)),
+                metadata={"source": "llm", "word_count": len(project_description.split())},
+            )
+            self._history.append(advice)
+            return advice
+        except Exception:  # noqa: BLE001
+            return self.recommend(project_description)
+
+    def smart_recommend(self, project_description: str) -> CompositionAdvice:
+        """Best-effort recommendation: tries LLM first, then heuristic."""
+        return self.recommend_with_llm(project_description)
 
     def build_team(self, project_description: str, team_id: str = "") -> TeamDefinition:
         """Create a :class:`TeamDefinition` from a description."""

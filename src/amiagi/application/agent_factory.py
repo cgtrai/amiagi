@@ -9,9 +9,11 @@ from typing import Any
 from amiagi.application.agent_registry import AgentRegistry
 from amiagi.application.chat_service import ChatService
 from amiagi.application.model_client_protocol import ChatCompletionClient
+from amiagi.application.permission_enforcer import PermissionEnforcer
 from amiagi.application.skills_loader import SkillsLoader
 from amiagi.application.supervisor_service import SupervisorService
 from amiagi.domain.agent import AgentDescriptor, AgentRole, AgentState
+from amiagi.domain.blueprint import AgentBlueprint
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.agent_runtime import AgentRuntime
 from amiagi.infrastructure.lifecycle_logger import LifecycleLogger
@@ -34,6 +36,7 @@ class AgentFactory:
         activity_logger: ActivityLogger | None = None,
         lifecycle_logger: LifecycleLogger | None = None,
         skills_loader: SkillsLoader | None = None,
+        permission_enforcer: PermissionEnforcer | None = None,
         work_dir: Path = Path("./amiagi-my-work"),
     ) -> None:
         self._registry = registry
@@ -41,6 +44,7 @@ class AgentFactory:
         self._activity_logger = activity_logger
         self._lifecycle_logger = lifecycle_logger
         self._skills_loader = skills_loader
+        self._permission_enforcer = permission_enforcer
         self._work_dir = work_dir
 
     @property
@@ -74,7 +78,7 @@ class AgentFactory:
         if client is not None:
             chat_service = ChatService(
                 memory_repository=self._memory_repository,
-                ollama_client=client,
+                model_client=client,
                 activity_logger=self._activity_logger,
                 work_dir=self._work_dir,
                 supervisor_service=supervisor_service,
@@ -90,6 +94,57 @@ class AgentFactory:
         self._registry.register(descriptor)
         runtime.spawn()
         return runtime
+
+    # ---- blueprint / YAML convenience methods ----
+
+    def create_from_blueprint(
+        self,
+        blueprint: AgentBlueprint,
+        *,
+        client: ChatCompletionClient | None = None,
+    ) -> AgentRuntime:
+        """Create an agent from an :class:`AgentBlueprint`."""
+        role_map = {
+            "executor": AgentRole.EXECUTOR,
+            "supervisor": AgentRole.SUPERVISOR,
+            "specialist": AgentRole.SPECIALIST,
+        }
+        descriptor = AgentDescriptor(
+            agent_id=self.generate_id(),
+            name=blueprint.name,
+            role=role_map.get(blueprint.role, AgentRole.EXECUTOR),
+            persona_prompt=blueprint.persona_prompt,
+            model_backend=blueprint.suggested_backend,
+            model_name=blueprint.suggested_model,
+            skills=list(blueprint.required_skills),
+            tools=list(blueprint.required_tools),
+            metadata={
+                "origin": "blueprint",
+                "team_function": blueprint.team_function,
+                "initial_permissions": blueprint.initial_permissions,
+            },
+        )
+        return self.create_agent(descriptor, client=client)
+
+    def create_from_yaml(
+        self,
+        path: Path,
+        *,
+        client: ChatCompletionClient | None = None,
+    ) -> AgentRuntime:
+        """Load an :class:`AgentBlueprint` from a YAML/JSON file and create an agent."""
+        import json as _json
+        raw = path.read_text(encoding="utf-8")
+        if path.suffix in (".yaml", ".yml"):
+            try:
+                import yaml  # type: ignore[import-untyped]
+                data = yaml.safe_load(raw)
+            except ImportError:
+                raise RuntimeError("PyYAML required for YAML blueprints")
+        else:
+            data = _json.loads(raw)
+        blueprint = AgentBlueprint.from_dict(data)
+        return self.create_from_blueprint(blueprint, client=client)
 
     def create_from_existing(
         self,

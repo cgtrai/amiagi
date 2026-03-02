@@ -1,0 +1,101 @@
+# Benchmark: Code Review — advanced scenarios
+scenarios:
+  - scenario_id: review_security_injection
+    prompt: |
+      Przeanalizuj poniższy kod pod kątem bezpieczeństwa:
+      ```python
+      import sqlite3
+      def get_user(name):
+          conn = sqlite3.connect("db.sqlite")
+          cursor = conn.execute(f"SELECT * FROM users WHERE name = '{name}'")
+          return cursor.fetchone()
+      ```
+    expected_keywords:
+      - sql injection
+      - parameterized
+      - bezpieczeństwo
+
+  - scenario_id: review_race_condition
+    prompt: |
+      Zidentyfikuj problemy współbieżności w kodzie:
+      ```python
+      class Counter:
+          def __init__(self):
+              self.value = 0
+          def increment(self):
+              current = self.value
+              self.value = current + 1
+      ```
+    expected_keywords:
+      - race condition
+      - threading
+      - lock
+
+  - scenario_id: review_memory_leak
+    prompt: |
+      Sprawdź wyciek pamięci:
+      ```python
+      _cache = {}
+      def process(key, data):
+          result = expensive_computation(data)
+          _cache[key] = result
+          return result
+      ```
+    expected_keywords:
+      - memory
+      - cache
+      - limit
+
+  - scenario_id: review_error_handling
+    prompt: |
+      Oceń obsługę błędów:
+      ```python
+      def read_config(path):
+          try:
+              with open(path) as f:
+                  return json.load(f)
+          except:
+              return {}
+      ```
+    expected_keywords:
+      - except
+      - specific
+      - logging
+
+  - scenario_id: review_code_smell
+    prompt: |
+      Zidentyfikuj code smells w klasie:
+      ```python
+      class Manager:
+          def process(self, data, mode, flag1=False, flag2=True, flag3=None, verbose=0, retry=3, timeout=30):
+              if mode == "a":
+                  # 50 lines of code
+                  pass
+              elif mode == "b":
+                  # 50 lines of code
+                  pass
+              elif mode == "c":
+                  # 50 lines of code
+                  pass
+      ```
+    expected_keywords:
+      - refactor
+      - single responsibility
+      - extract
+
+  - scenario_id: review_performance
+    prompt: |
+      Przeanalizuj wydajność:
+      ```python
+      def find_duplicates(items):
+          duplicates = []
+          for i in range(len(items)):
+              for j in range(i + 1, len(items)):
+                  if items[i] == items[j] and items[i] not in duplicates:
+                      duplicates.append(items[i])
+          return duplicates
+      ```
+    expected_keywords:
+      - O(n)
+      - set
+      - complexity

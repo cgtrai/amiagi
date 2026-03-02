@@ -47,12 +47,21 @@ class SupervisionResult:
 
 @dataclass
 class SupervisorService:
-    ollama_client: ChatCompletionClient
+    model_client: ChatCompletionClient
     activity_logger: ActivityLogger | None = None
     max_repair_rounds: int = 2
     dialogue_log_path: Path | None = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
     sponsor_task: str = ""
+
+    # Backward-compat alias — legacy code may still use ollama_client.
+    @property
+    def ollama_client(self) -> ChatCompletionClient:
+        return self.model_client
+
+    @ollama_client.setter
+    def ollama_client(self, value: ChatCompletionClient) -> None:
+        self.model_client = value
 
     def _full_system_prompt(self) -> str:
         comm_prompt = build_kastor_communication_prompt(self.comm_rules)
@@ -312,7 +321,7 @@ class SupervisorService:
             if conversation_excerpt:
                 review_prompt += f"\n\n[CONVERSATION_EXCERPT]\n{conversation_excerpt}"
             try:
-                reviewer_output = self.ollama_client.chat(
+                reviewer_output = self.model_client.chat(
                     messages=[{"role": "user", "content": review_prompt}],
                     system_prompt=system_prompt,
                 )

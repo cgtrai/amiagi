@@ -26,7 +26,7 @@ class FakeOllamaClient:
 def test_chat_service_stores_interaction(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     answer = service.ask("jak działa sqlite?")
 
@@ -39,7 +39,7 @@ def test_chat_service_stores_interaction(tmp_path: Path) -> None:
 def test_remember_adds_note_memory(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     service.remember("zapamiętaj stack: python + ollama")
     memories = repository.search_memories(query="ollama", limit=10)
@@ -54,7 +54,7 @@ def test_generate_python_code_strips_markdown_fences(tmp_path: Path) -> None:
     client.next_response = """```python
 print('hello')
 ```"""
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     code = service.generate_python_code("wypisz hello")
 
@@ -70,7 +70,7 @@ def test_summarize_session_for_restart_saves_memory(tmp_path: Path) -> None:
 
     client = FakeOllamaClient()
     client.next_response = "- cel\n- etapy\n- następne kroki"
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     summary = service.summarize_session_for_restart()
 
@@ -93,7 +93,7 @@ def test_ask_includes_framework_protocol_and_startup_context(tmp_path: Path) -> 
         content="podsumowanie: mamy gotowy framework i zasady zgód",
     )
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     _ = service.ask("co dalej?")
 
@@ -107,7 +107,7 @@ def test_ask_includes_framework_protocol_and_startup_context(tmp_path: Path) -> 
 def test_build_system_prompt_contains_runtime_guide(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     prompt = service.build_system_prompt("test")
 
@@ -118,7 +118,7 @@ def test_build_system_prompt_contains_runtime_guide(tmp_path: Path) -> None:
 def test_build_system_prompt_uses_autonomous_executor_role(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     prompt = service.build_system_prompt("kontynuuj")
 
@@ -130,7 +130,7 @@ def test_build_system_prompt_contains_work_dir_protocol(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
     work_dir = tmp_path / "amiagi-my-work"
-    service = ChatService(memory_repository=repository, ollama_client=client, work_dir=work_dir)
+    service = ChatService(memory_repository=repository, model_client=client, work_dir=work_dir)
 
     prompt = service.build_system_prompt("utwórz narzędzie")
 
@@ -159,7 +159,7 @@ def test_build_system_prompt_includes_persisted_main_plan_context(tmp_path: Path
                 encoding="utf-8",
         )
 
-        service = ChatService(memory_repository=repository, ollama_client=client, work_dir=work_dir)
+        service = ChatService(memory_repository=repository, model_client=client, work_dir=work_dir)
         prompt = service.build_system_prompt("kontynuuj")
 
         assert "Kontekst planu głównego (trwały)" in prompt
@@ -176,7 +176,7 @@ def test_bootstrap_runtime_readiness_saves_status(tmp_path: Path) -> None:
     )
     client = FakeOllamaClient()
     client.next_response = "Jestem gotowy do współpracy."
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     readiness = service.bootstrap_runtime_readiness()
 
@@ -189,7 +189,7 @@ def test_bootstrap_runtime_readiness_saves_status(tmp_path: Path) -> None:
 def test_framework_meta_query_is_answered_without_model_call(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     answer = service.ask("czy wiesz jak działa framework za pomocą którego się komunikujemy?")
 
@@ -201,7 +201,7 @@ def test_framework_meta_query_mentions_work_dir_and_tool_calling(tmp_path: Path)
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
     work_dir = tmp_path / "amiagi-my-work"
-    service = ChatService(memory_repository=repository, ollama_client=client, work_dir=work_dir)
+    service = ChatService(memory_repository=repository, model_client=client, work_dir=work_dir)
 
     answer = service.ask("jak używać framework?")
 
@@ -219,7 +219,7 @@ def test_autonomy_trigger_includes_existing_intro_path(tmp_path: Path, monkeypat
     intro.write_text("start", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    service = ChatService(memory_repository=repository, ollama_client=client, work_dir=work_dir)
+    service = ChatService(memory_repository=repository, model_client=client, work_dir=work_dir)
     augmented = service._augment_user_message("działaj")
 
     assert str(intro.resolve()) in augmented
@@ -234,7 +234,7 @@ def test_extract_sponsor_task_returns_section_content(tmp_path: Path) -> None:
     """extract_sponsor_task extracts the '## Twoje zadanie' section."""
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     body = (
         "# Wprowadzenie\n"
@@ -254,7 +254,7 @@ def test_extract_sponsor_task_fallback_when_no_heading(tmp_path: Path) -> None:
     """Without '## Twoje zadanie', extract_sponsor_task falls back to last 800 chars."""
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     body = "Zbierz dane i napisz raport."
     repository.add_memory(kind="discussion_context", content=body, source="imported_dialogue")
@@ -268,7 +268,7 @@ def test_extract_sponsor_task_empty_when_no_memory(tmp_path: Path) -> None:
     """When no discussion_context memory exists, returns empty string."""
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
-    service = ChatService(memory_repository=repository, ollama_client=client)
+    service = ChatService(memory_repository=repository, model_client=client)
 
     result = service.extract_sponsor_task()
 
