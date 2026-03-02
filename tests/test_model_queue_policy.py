@@ -45,6 +45,31 @@ def test_queue_policy_acquire_release_roundtrip() -> None:
     policy.release("supervisor")
 
 
+def test_queue_policy_allows_supervisor_when_vram_check_disabled() -> None:
+    """When supervisor_min_free_vram_mb=0, VRAM check is disabled — Ollama handles swapping."""
+    policy = ModelQueuePolicy(supervisor_min_free_vram_mb=0)
+
+    ok, free_mb = policy.can_run_for_vram("supervisor", FakeVramAdvisor(100))
+
+    assert ok is True
+    assert free_mb is None
+
+
+def test_queue_policy_allows_supervisor_when_vram_unknown() -> None:
+    """When nvidia-smi returns None, be optimistic and let Ollama try."""
+
+    class NoneVramAdvisor:
+        def detect(self) -> FakeProfile:
+            return FakeProfile(free_mb=None)
+
+    policy = ModelQueuePolicy(supervisor_min_free_vram_mb=3000)
+
+    ok, free_mb = policy.can_run_for_vram("supervisor", NoneVramAdvisor())
+
+    assert ok is True
+    assert free_mb is None
+
+
 def test_queue_policy_snapshot_contains_recent_decisions() -> None:
     policy = ModelQueuePolicy(queue_max_wait_seconds=0.2)
 

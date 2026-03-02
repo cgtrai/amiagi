@@ -7,6 +7,7 @@ from pathlib import Path
 from amiagi.application.chat_service import ChatService
 from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.model_queue_policy import ModelQueuePolicy
+from amiagi.application.skills_loader import SkillsLoader
 from amiagi.application.supervisor_service import SupervisorService
 from amiagi.config import Settings
 from amiagi.infrastructure.activity_logger import ActivityLogger
@@ -14,6 +15,7 @@ from amiagi.infrastructure.memory_repository import MemoryRepository
 from amiagi.infrastructure.model_io_logger import ModelIOLogger
 from amiagi.infrastructure.ollama_client import OllamaClient
 from amiagi.infrastructure.vram_advisor import VramAdvisor
+from amiagi.infrastructure.session_model_config import SessionModelConfig
 from amiagi.interfaces.cli import run_cli
 from amiagi.interfaces.textual_cli import run_textual_cli
 
@@ -134,14 +136,20 @@ def main(argv: list[str] | None = None) -> None:
             path.write_text("", encoding="utf-8")
         settings.activity_log_path.parent.mkdir(parents=True, exist_ok=True)
         settings.activity_log_path.write_text("", encoding="utf-8")
+        # Clear persisted model assignment and input history
+        SessionModelConfig.clear(settings.model_config_path)
+        if settings.input_history_path.exists():
+            settings.input_history_path.unlink(missing_ok=True)
         activity_logger.log(
             action="startup.cold_start",
-            intent="Wyczyszczenie historii i logów JSONL oraz uruchomienie od kontekstu początkowego.",
+            intent="Wyczyszczenie historii, logów JSONL, konfiguracji modeli i historii poleceń.",
             details={
                 "db_path": str(settings.db_path),
                 "executor_model_io_log_path": str(executor_log_path),
                 "supervisor_model_io_log_path": str(supervisor_log_path),
                 "activity_log_path": str(settings.activity_log_path),
+                "model_config_path": str(settings.model_config_path),
+                "input_history_path": str(settings.input_history_path),
             },
         )
 
@@ -170,7 +178,7 @@ def main(argv: list[str] | None = None) -> None:
 
     ollama = OllamaClient(
         base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
+        model="",  # Placeholder — the UI wizard will set the actual model.
         io_logger=io_logger,
         activity_logger=activity_logger,
         request_timeout_seconds=settings.ollama_request_timeout_seconds,
@@ -181,27 +189,9 @@ def main(argv: list[str] | None = None) -> None:
         vram_advisor=vram_advisor,
     )
 
-    default_executor_models: list[str] = []
-    list_models = getattr(ollama, "list_models", None)
-    if callable(list_models):
-        try:
-            default_executor_models = list_models()
-        except Exception as error:
-            activity_logger.log(
-                action="models.default.error",
-                intent="Nie udało się pobrać listy modeli z Ollama podczas ustawiania modelu domyślnego.",
-                details={"error": str(error)},
-            )
-
-    if default_executor_models:
-        first_model = default_executor_models[0]
-        if first_model != getattr(ollama, "model", ""):
-            ollama = replace(ollama, model=first_model)
-            activity_logger.log(
-                action="models.default.selected",
-                intent="Ustawiono domyślny model wykonawczy na pierwszy model zwrócony przez Ollama.",
-                details={"model": first_model, "models_count": len(default_executor_models)},
-            )
+    # Model auto-select removed — the startup wizard in the UI handles
+    # interactive model selection for both Polluks (executor) and Kastor
+    # (supervisor).  See _run_model_selection_wizard() in textual_cli.py.
 
     supervisor_service: SupervisorService | None = None
     if settings.supervisor_enabled:
@@ -253,7 +243,20 @@ def main(argv: list[str] | None = None) -> None:
         vram_advisor=vram_advisor,
         work_dir=settings.work_dir,
         supervisor_service=supervisor_service,
+        skills_loader=SkillsLoader(skills_dir=settings.skills_dir),
     )
+
+    # --- Populate supervisor's sponsor_task from startup dialogue ---
+    if supervisor_service is not None:
+        sponsor_task = chat_service.extract_sponsor_task()
+        if sponsor_task:
+            supervisor_service.sponsor_task = sponsor_task
+            activity_logger.log(
+                action="supervisor.sponsor_task_loaded",
+                intent="Załadowano zadanie Sponsora do kontekstu nadzorcy.",
+                details={"chars": len(sponsor_task)},
+            )
+
     max_idle_autoreactivations = getattr(settings, "max_idle_autoreactivations", 2)
     router_mailbox_log_path = getattr(settings, "router_mailbox_log_path", Path("./logs/router_mailbox.jsonl"))
 
@@ -299,6 +302,7 @@ def main(argv: list[str] | None = None) -> None:
                 shell_policy_path=settings.shell_policy_path,
                 router_mailbox_log_path=router_mailbox_log_path,
                 activity_logger=activity_logger,
+                settings=settings,
             )
         else:
             run_cli(

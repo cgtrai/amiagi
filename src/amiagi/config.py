@@ -46,10 +46,16 @@ class Settings:
     supervisor_model: str = "cogito:14b"
     supervisor_max_repair_rounds: int = 2
     supervisor_request_timeout_seconds: int = 120
-    supervisor_min_free_vram_mb: int = 3000
+    supervisor_min_free_vram_mb: int = 0
     model_queue_max_wait_seconds: float = 1.0
     autonomous_mode: bool = False
     max_idle_autoreactivations: int = 2
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_request_timeout_seconds: int = 120
+    skills_dir: Path = Path("./skills")
+    input_history_path: Path = Path("./data/input_history.txt")
+    model_config_path: Path = Path("./data/model_config.json")
 
     @staticmethod
     def from_env() -> "Settings":
@@ -138,8 +144,8 @@ class Settings:
             supervisor_min_free_vram_mb=max(
                 0,
                 _as_int(
-                    os.getenv("AMIAGI_SUPERVISOR_MIN_FREE_VRAM_MB", "3000"),
-                    default=3000,
+                    os.getenv("AMIAGI_SUPERVISOR_MIN_FREE_VRAM_MB", "0"),
+                    default=0,
                 ),
             ),
             model_queue_max_wait_seconds=max(0.05, queue_wait),
@@ -153,5 +159,21 @@ class Settings:
                     os.getenv("AMIAGI_MAX_IDLE_AUTOREACTIVATIONS", "2"),
                     default=2,
                 ),
+            ),
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            openai_request_timeout_seconds=max(
+                5,
+                _as_int(
+                    os.getenv("OPENAI_REQUEST_TIMEOUT_SECONDS", "120"),
+                    default=120,
+                ),
+            ),
+            skills_dir=Path(os.getenv("AMIAGI_SKILLS_DIR", "./skills")),
+            input_history_path=Path(
+                os.getenv("AMIAGI_INPUT_HISTORY_PATH", "./data/input_history.txt")
+            ),
+            model_config_path=Path(
+                os.getenv("AMIAGI_MODEL_CONFIG_PATH", "./data/model_config.json")
             ),
         )

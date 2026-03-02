@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from amiagi.application.communication_protocol import (
     CommunicationRules,
     build_polluks_communication_prompt,
     load_communication_rules,
 )
+from amiagi.application.model_client_protocol import ChatCompletionClient
+from amiagi.application.skills_loader import SkillsLoader
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
-from amiagi.infrastructure.ollama_client import OllamaClient
 from amiagi.infrastructure.vram_advisor import VramAdvisor
 
 if TYPE_CHECKING:
@@ -85,20 +86,29 @@ TOOL_CALLING_GUIDE = (
     "```\n"
     "- Gdy NIE używasz narzędzia, odpowiadaj normalnym tekstem (bez JSON, bez znaczników statusu).\n"
     "- Dostępne narzędzia:\n"
-    "  1) read_file args: {\"path\":\"/abs/path\",\"max_chars\":12000}\n"
+    "  1) read_file args: {\"path\":\"/abs/path\",\"max_chars\":12000,\"offset\":0}\n"
+    "     - offset: pozycja startowa w znakach (domyślnie 0). Gdy plik jest dłuższy niż max_chars,\n"
+    "       wynik zawiera has_more=true i next_offset — użyj kolejnego read_file z tym offset.\n"
+    "     - Przy przetwarzaniu długich dokumentów rób notatki w notes/ z kluczowymi informacjami z każdego chunka.\n"
     "  2) list_dir args: {\"path\":\"/abs/path\"}\n"
     "  3) run_shell args: {\"command\":\"<cmd>\"} (tylko whitelist read-only)\n"
     "  4) run_python args: {\"path\":\"/abs/path.py\",\"args\":[...]}\n"
     "  5) check_python_syntax args: {\"path\":\"/abs/path.py\"}\n"
-    "  6) fetch_web args: {\"url\":\"https://...\",\"max_chars\":12000}\n"
+    "  6) fetch_web args: {\"url\":\"https://...\",\"max_chars\":12000,\"offset\":0}\n"
+    "     - Obsługuje offset tak samo jak read_file — używaj do przeglądania długich stron chunkami.\n"
     "  7) search_web args: {\"query\":\"...\",\"engine\":\"duckduckgo|google\",\"max_results\":5}\n"
-    "  8) capture_camera_frame args: {\"output_path\":\"artifacts/camera.jpg\",\"device\":\"/dev/video0\"}\n"
-    "  9) record_microphone_clip args: {\"output_path\":\"artifacts/mic.wav\",\"duration_seconds\":5,\"sample_rate_hz\":16000,\"channels\":1}\n"
+    "  8) download_file args: {\"url\":\"https://...\",\"output_path\":\"downloads/plik.pdf\",\"max_size_mb\":50}\n"
+    "     - Pobiera plik binarny z URL i zapisuje na dysku. Domyślnie do downloads/.\n"
+    "  9) convert_pdf_to_markdown args: {\"path\":\"/abs/path.pdf\",\"output_path\":\"converted/plik.md\"}\n"
+    "     - Konwertuje PDF na markdown (markitdown → PyPDF2 → pdftotext). Wynik w converted/.\n"
+    "     - Po konwersji użyj read_file na output_path aby przeczytać treść (z chunkami jeśli długa).\n"
+    "  10) capture_camera_frame args: {\"output_path\":\"artifacts/camera.jpg\",\"device\":\"/dev/video0\"}\n"
+    "  11) record_microphone_clip args: {\"output_path\":\"artifacts/mic.wav\",\"duration_seconds\":5,\"sample_rate_hz\":16000,\"channels\":1}\n"
     "     - Dla nagrywania mikrofonu używaj WYŁĄCZNIE record_microphone_clip (nie run_shell/arecord).\n"
     "     - Runtime automatycznie emituje komunikaty bezpieczeństwa [MIC] (prepare/active/done/failed) do konsoli i activity logu.\n"
-    "  10) check_capabilities args: {\"check_network\":false}\n"
-    "  11) write_file args: {\"path\":\"/abs/path\",\"content\":\"...\",\"overwrite\":true}\n"
-    "  12) append_file args: {\"path\":\"/abs/path\",\"content\":\"...\"}\n"
+    "  12) check_capabilities args: {\"check_network\":false}\n"
+    "  13) write_file args: {\"path\":\"/abs/path\",\"content\":\"...\",\"overwrite\":true}\n"
+    "  14) append_file args: {\"path\":\"/abs/path\",\"content\":\"...\"}\n"
     "- Kompatybilne formaty odpowiedzi tool_call:\n"
     "  a) {\"tool\":\"name\",\"args\":{...},\"intent\":\"...\"}\n"
     "  b) {\"tool_call\":{\"name\":\"name\",\"arguments\":{...}}}\n"
@@ -112,7 +122,9 @@ TOOL_CALLING_GUIDE = (
     "- Dopuszczaj też składnię spotykaną w praktyce i mapuj ją na poprawne wywołanie: "
     "`tool_call: list_dir(path=...)`, `tool_call: read_file()`.\n"
     "- Aliasy narzędzi (automatycznie mapowane): file_read → read_file, read → read_file, "
-    "run_command → run_shell, dir_list → list_dir. Nie używaj nieistniejących nazw narzędzi.\n"
+    "run_command → run_shell, dir_list → list_dir, download → download_file, "
+    "pdf_to_md → convert_pdf_to_markdown, convert_pdf → convert_pdf_to_markdown. "
+    "Nie używaj nieistniejących nazw narzędzi.\n"
     "WERYFIKACJA I NAPRAWA NARZĘDZI (OBOWIĄZKOWA):\n"
     "1) Po `write_file` najpierw wykonaj `read_file` tego samego pliku, aby potwierdzić zapis.\n"
     "2) Jeśli zapisany plik to skrypt `.py`, uruchom najpierw `check_python_syntax` (bez wykonywania kodu).\n"
@@ -177,7 +189,7 @@ SUMMARY_SYSTEM_PROMPT = (
 @dataclass
 class ChatService:
     memory_repository: MemoryRepository
-    ollama_client: OllamaClient
+    ollama_client: Any = None  # ChatCompletionClient (OllamaClient | OpenAIClient)
     max_context_memories: int = 5
     activity_logger: ActivityLogger | None = None
     vram_advisor: VramAdvisor | None = None
@@ -186,6 +198,20 @@ class ChatService:
     max_tool_result_chars: int = 7000
     supervisor_service: "SupervisorService | None" = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
+    skills_loader: SkillsLoader | None = None
+
+    # Forward-looking alias — new code should prefer model_client.
+    @property
+    def model_client(self) -> Any:
+        return self.ollama_client
+
+    @model_client.setter
+    def model_client(self, value: Any) -> None:
+        self.ollama_client = value
+
+    def is_api_model(self) -> bool:
+        """Return True when the current model client is a cloud API backend."""
+        return getattr(self.ollama_client, "_is_api_client", False)
 
     def _workspace_guide(self) -> str:
         resolved = self.work_dir.resolve()
@@ -433,6 +459,33 @@ class ChatService:
             content=content,
         )
 
+    def extract_sponsor_task(self) -> str:
+        """Extract the Sponsor's original task from startup dialogue memory.
+
+        Looks for the '## Twoje zadanie' section (or similar) in the
+        discussion_context/imported_dialogue memory.  Falls back to the
+        last 800 characters of the raw imported dialogue if no section
+        heading is found.
+        """
+        record = self.memory_repository.latest_memory(
+            kind="discussion_context",
+            source="imported_dialogue",
+        )
+        if record is None or not record.content:
+            return ""
+        text = record.content
+        import re as _re
+        # Try to extract the specific task section
+        match = _re.search(
+            r"##\s*Twoje\s+zadanie\s*\n(.*)",
+            text,
+            _re.DOTALL | _re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()[:3000]
+        # Fallback: last part of the document is usually the task
+        return text[-800:].strip()
+
     def generate_python_code(self, description: str) -> str:
         if self.activity_logger:
             self.activity_logger.log(
@@ -545,6 +598,7 @@ class ChatService:
         memory_context = self._build_memory_context(user_message)
         plan_context = self._build_plan_context()
         comm_prompt = build_polluks_communication_prompt(self.comm_rules)
+        skills_section = self._build_skills_section("polluks")
         return (
             f"{SYSTEM_PROMPT}\n\n"
             f"{comm_prompt}\n\n"
@@ -555,8 +609,23 @@ class ChatService:
             f"{WORK_PROGRESS_GUIDE}\n\n"
             f"{self._workspace_guide()}\n\n"
             f"{plan_context}\n\n"
+            f"{skills_section}"
             f"{memory_context}"
         )
+
+    def _build_skills_section(self, role: str) -> str:
+        """Return skill prompts for *role* if using an API model; empty otherwise."""
+        if not self.is_api_model():
+            return ""
+        if self.skills_loader is None:
+            return ""
+        skills = self.skills_loader.load_for_role(role)
+        if not skills:
+            return ""
+        parts: list[str] = []
+        for skill in skills:
+            parts.append(f"\n## Skill: {skill.name}\n{skill.content}")
+        return "\n".join(parts) + "\n\n"
 
     def _augment_user_message(self, user_message: str) -> str:
         normalized = user_message.strip().lower()

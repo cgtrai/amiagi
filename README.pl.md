@@ -4,7 +4,7 @@
 
 Lokalny framework CLI do oceny autonomii modeli LLM w kontrolowanym środowisku.
 
-`amiagi` służy do prowadzenia powtarzalnych eksperymentów autonomii: wywołania narzędzi, polityki zgód, pełny audyt I/O modeli, ciągłość sesji i nadzór wykonania.
+`amiagi` służy do prowadzenia powtarzalnych eksperymentów autonomii: wywołania narzędzi, polityki zgód, pełny audyt I/O modeli, ciągłość sesji i nadzór wykonania. Obsługuje zarówno lokalne modele Ollama, jak i zewnętrzne API (OpenAI, OpenRouter, Azure, vLLM) z przypisaniem modeli per rola.
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 
@@ -30,8 +30,25 @@ Pełne warunki: [LICENSE](LICENSE).
 
 ## Najważniejsze funkcje
 
-- Integracja z lokalnym Ollama
+### Backendy modeli
+
+- **Integracja z lokalnym Ollama** (dowolny model GGUF)
+- **Obsługa zewnętrznych API** przez `OpenAIClient` — OpenAI, OpenRouter, Azure, vLLM i dowolny kompatybilny endpoint
+- **Przypisanie modelu per rola** — Polluks (wykonawca) i Kastor (nadzorca) mogą niezależnie korzystać z modeli lokalnych lub API
+- **Interaktywny kreator wyboru modelu** przy starcie z odtwarzaniem sesji
+- **Trwałość sesji** — przypisania modeli do ról zapisywane między sesjami (`SessionModelConfig`)
+- **Śledzenie zużycia tokenów** dla modeli API z wyświetlaniem kosztów na żywo (`UsageTracker`)
+
+### Umiejętności (Skills)
+
+- **Dynamiczne ładowanie umiejętności** — pliki Markdown z `skills/<rola>/*.md` wstrzykiwane do system promptu
+- **Warunek API-model** — umiejętności ładowane tylko dla modeli API z dużym oknem kontekstu; modele lokalne pomijają je aby nie przepełnić kontekstu
+- **Osobne katalogi per rola** — `skills/polluks/` i `skills/kastor/`
+
+### Architektura i runtime
+
 - Architektura warstwowa (`domain`, `application`, `infrastructure`, `interfaces`)
+- Protokół `ChatCompletionClient` — interfejs strukturalny, który muszą spełniać wszystkie backendy
 - Trwała pamięć w SQLite
 - Logi JSONL dla:
   - wejścia/wyjścia i błędów modelu,
@@ -40,17 +57,21 @@ Pełne warunki: [LICENSE](LICENSE).
 - Polityka zgód dla zasobów (`disk.*`, `network.*`, `process.exec`)
 - Polityka `run-shell` oparta o allowlistę
 - Dostosowanie zachowania runtime do dostępnego VRAM
-- Przełączanie modelu wykonawczego w runtime (`/models show`, `/models chose <nr>`, `/models current`)
-- Automatyczne ustawienie modelu domyślnego (pierwszy model z lokalnej listy Ollama)
-- Czytelniejsze odpowiedzi użytkownikowe (bez surowych payloadów `tool_call`/JSON)
-- Spójne komendy modeli i onboarding zarówno w CLI, jak i w UI Textual
+- Protokół komunikacji między aktorami z routingiem bloków adresowanych, przypomnieniami i rundami konsultacji
+- Głębsza pętla rozwiązywania `tool_call` z ochroną limitem iteracji (`resolve_tool_calls`, max 15 kroków)
+- Rozpoznawanie aliasów nazw narzędzi (`file_read→read_file`, `dir_list→list_dir`) z limitem korekcji per narzędzie
+- Adaptacyjny watchdog Kastora z limitem prób/cooldownem i kontrolą kontekstu planu
+
+### Wygoda użytkowania
+
+- **Historia poleceń readline** (strzałki góra/dół) z trwałym zapisem do pliku
+- **Sanityzacja panelu Sponsora** — surowy JSON `tool_call` jest filtrowany z panelu użytkownika; szczegóły techniczne zachowywane w logach wykonawcy
+- Przełączanie modelu w runtime (`/models show`, `/models chose <nr>`, `/models current`)
+- Zarządzanie modelem Kastora (`/kastor-model show`, `/kastor-model chose <nr>`)
+- Monitorowanie zużycia API (`/api-usage`) i weryfikacja klucza (`/api-key verify`)
 - Jawna widoczność aktorów runtime (Router, Polluks, Kastor, Terminal) w panelu statusu Textual
 - Kierunkowe etykiety nadzoru w logach (`POLLUKS→KASTOR`, `KASTOR→ROUTER`) dla czytelnego śledzenia przekazań
 - Bezpieczny tryb wtrąceń w Textual (obsługa pytań tożsamościowych + pytanie decyzyjne do użytkownika)
-- Adaptacyjny watchdog Kastora z limitem prób/cooldownem i kontrolą kontekstu planu
-- Głębsza pętla rozwiązywania `tool_call` z ochroną limitem iteracji (`resolve_tool_calls`, max 15 kroków)
-- Protokół komunikacji między aktorami z routingiem bloków adresowanych, przypomnieniami i rundami konsultacji
-- Rozpoznawanie aliasów nazw narzędzi (`file_read→read_file`, `dir_list→list_dir`) z limitem korekcji per narzędzie
 - Strona startowa ASCII art z losowym MOTD przy uruchomieniu (CLI i Textual)
 - Kontekstowe `/help` — wyświetla tylko komendy właściwe dla aktywnego trybu interfejsu
 - Kolejka wiadomości użytkownika z informacją o pozycji, gdy router jest zajęty
@@ -61,9 +82,16 @@ Komendy zarządzania modelem:
 
 - `/cls` — czyści ekran główny terminala
 - `/cls all` — czyści ekran terminala i historię przewijania
-- `/models current` — pokazuje aktywny model wykonawczy
-- `/models show` — wyświetla listę modeli z lokalnego Ollama (z numeracją)
-- `/models chose <nr>` — przełącza model wykonawczy na pozycję z `/models show`
+- `/models current` — pokazuje oba modele (Polluks i Kastor) z nazwami i źródłami
+- `/models show` — wyświetla wszystkie dostępne modele (lokalne Ollama + zewnętrzne API) z numeracją
+- `/models chose <nr>` — przełącza model Polluksa (wykonawcy) na pozycję z `/models show`
+- `/kastor-model show` — wyświetla aktualny model Kastora (nadzorcy) i źródło
+- `/kastor-model chose <nr>` — przełącza model Kastora na wybraną pozycję z listy
+
+Komendy API i zużycia:
+
+- `/api-usage` — szczegółowe podsumowanie tokenów API, kosztów i liczby zapytań
+- `/api-key verify` — ponowna weryfikacja klucza API OpenAI (zamaskowane wyjście)
 
 Komendy operacyjne i diagnostyczne:
 
@@ -79,20 +107,22 @@ Komendy aktorów/runtime (Textual):
 
 Uwagi:
 
-- Przy starcie CLI i Textual wyświetlają banner ASCII art z wersją, trybem i losowym MOTD.
-- Runtime próbuje automatycznie ustawić domyślny model wykonawczy z listy Ollama.
-- Gdy pobranie listy modeli się nie powiedzie, runtime pozostawia bieżący model bez komunikatu.
-- Warstwa użytkownika dostaje odpowiedź tekstową; surowe ślady narzędzi pozostają w logach technicznych (JSONL/panele).
+- Przy starcie interaktywny kreator prowadzi wybór modelu dla obu ról: Polluks i Kastor.
+- Poprzednia konfiguracja modeli jest automatycznie odtwarzana, jeśli wszystkie modele są nadal dostępne.
+- Warstwa użytkownika sanityzuje odpowiedzi: surowe `tool_call`/JSON są filtrowane z panelu Sponsora i zachowywane w logach technicznych.
+- Historia poleceń (strzałki góra/dół) jest zapisywana między sesjami.
 
 ## Aktualne działanie runtime (Polluks/Kastor/Router)
 
+- **Backendy per rola**: Polluks i Kastor mogą korzystać z różnych modeli od różnych dostawców (Ollama, OpenAI, OpenRouter itp.).
+- **Wstrzykiwanie umiejętności**: gdy aktywny jest model API, do system promptu dodawane są umiejętności z `skills/<rola>/`.
 - Wtrącenia w Textual są decyzyjne: po obsłudze wtrącenia runtime pyta, czy kontynuować plan, przerwać, czy rozpocząć nowe zadanie.
 - Pytania tożsamościowe w trybie wtrącenia są obsługiwane deterministycznie (odpowiedź tożsamościowa Polluksa), bez dryfu do przypadkowych `tool_call`.
 - Auto-wznowienie jest blokowane, gdy trwa oczekiwanie na decyzję po pytaniu tożsamościowym.
 - Reaktywacja watchdoga uwzględnia kontekst planu (czy plan jest wykonalny), a nie tylko licznik pasywnych tur.
 - Gdy `resolve_tool_calls` osiąga limit iteracji i zostają nierozwiązane wywołania, runtime emituje jawne ostrzeżenie i oznacza router jako stalled.
 - Protokół komunikacji aktorów wymusza bloki adresowane (`[Nadawca -> Odbiorca]`), z automatycznymi przypomnieniami i konfigurowalnymi rundami konsultacji.
-- Wiadomości `[Kastor -> Sponsor]` są routowane na główny panel użytkownika.
+- Wiadomości `[Kastor -> Sponsor]` są routowane na główny panel użytkownika z sanityzowaną treścią (bez surowego JSON `tool_call`).
 - Nieznane nazwy narzędzi są rozpoznawane przez mapę aliasów; po wyczerpaniu limitów korekcji runtime wymusza plan tworzenia narzędzia.
 
 ## Wymagania
@@ -174,6 +204,28 @@ Skopiuj `.env.example` do `.env` i dostosuj zmienne.
 cp .env.example .env
 ```
 
+### Zewnętrzne modele API (opcjonalne)
+
+Aby korzystać z modeli kompatybilnych z OpenAI API, ustaw w `.env`:
+
+```env
+OPENAI_API_KEY=sk-twój-klucz-api
+OPENAI_BASE_URL=https://api.openai.com/v1    # lub OpenRouter, Azure itp.
+OPENAI_REQUEST_TIMEOUT_SECONDS=120
+```
+
+Kreator wyboru modelu przy starcie wyświetli zarówno modele lokalne Ollama, jak i zewnętrzne API.
+
+### Katalog umiejętności (opcjonalny)
+
+Dodatkowe umiejętności można dodać jako pliki Markdown w `skills/<rola>/`:
+
+```env
+AMIAGI_SKILLS_DIR=./skills
+```
+
+Umiejętności są ładowane tylko dla modeli API z dużym oknem kontekstu.
+
 ## Uruchomienie
 
 Jeśli używasz lokalnego `.venv`, najpierw aktywuj środowisko:
@@ -240,4 +292,4 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Najnowsze release notes: [RELEASE_NOTES_v0.1.4.md](RELEASE_NOTES_v0.1.4.md).
+Najnowsze release notes: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md).

@@ -173,3 +173,67 @@ def test_supervisor_service_generates_fallback_coaching_notes_when_missing() -> 
     assert result.status == "ok"
     assert result.notes
     assert "krok" in result.notes.lower() or "narzęd" in result.notes.lower()
+
+
+# ---------------------------------------------------------------------------
+# sponsor_task field and review prompt integration
+# ---------------------------------------------------------------------------
+
+
+def test_sponsor_task_included_in_review_prompt() -> None:
+    """When sponsor_task is set, _build_review_prompt includes [SPONSOR_TASK] block."""
+    client = FakeSupervisorClient(responses=[])
+    service = SupervisorService(
+        ollama_client=client,
+        max_repair_rounds=0,
+        sponsor_task="Zbierz informacje o AI i wyślij 'Zakończyłem zadanie'.",
+    )
+    prompt = service._build_review_prompt(
+        user_message="test",
+        model_answer="test answer",
+        stage="user_turn",
+        attempt=1,
+    )
+    assert "[SPONSOR_TASK]" in prompt
+    assert "Zbierz informacje o AI" in prompt
+    assert "[/SPONSOR_TASK]" in prompt
+
+
+def test_sponsor_task_absent_when_empty() -> None:
+    """When sponsor_task is empty, the [SPONSOR_TASK] block should not be present."""
+    client = FakeSupervisorClient(responses=[])
+    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    prompt = service._build_review_prompt(
+        user_message="test",
+        model_answer="test answer",
+        stage="user_turn",
+        attempt=1,
+    )
+    assert "[SPONSOR_TASK]" not in prompt
+
+
+def test_review_prompt_contains_rule_16_premature_completion() -> None:
+    """The review prompt must include rule 16 about premature completion."""
+    client = FakeSupervisorClient(responses=[])
+    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    prompt = service._build_review_prompt(
+        user_message="test",
+        model_answer="test",
+        stage="test",
+        attempt=1,
+    )
+    assert "ZAKOŃCZENIE PLANU vs ZADANIE SPONSORA" in prompt
+    assert "PREMATURE_COMPLETION" in prompt
+
+
+def test_fallback_coaching_notes_premature_completion() -> None:
+    """_fallback_coaching_notes returns guidance for PREMATURE_COMPLETION."""
+    client = FakeSupervisorClient(responses=[])
+    service = SupervisorService(ollama_client=client, max_repair_rounds=0)
+    notes = service._fallback_coaching_notes(
+        notes="",
+        reason_code="PREMATURE_COMPLETION",
+        answer="Plan zakończony.",
+        stage="tool_flow",
+    )
+    assert "zadanie Sponsora" in notes.lower() or "sponsor" in notes.lower()

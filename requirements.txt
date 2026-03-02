@@ -1,2 +1,4 @@
 # Runtime dependencies for amiagi
 textual==0.89.1
+markitdown>=0.0.6
+pypdf>=4.0.0

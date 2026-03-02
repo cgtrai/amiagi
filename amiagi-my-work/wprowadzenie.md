@@ -155,11 +155,13 @@
 
 
  ## Twoje zadanie
- Proponuję Ci eksperyment, w którym nie będziesz miał ustalonego z góry scenariusza.
- Wszystkie decyzje musisz podejmować samodzielnie w oparciu o posiadaną lub zdobytą w internecie wiedzę.
+ Nie masz ustalonego z góry scenariusza.
+ Wszystkie decyzje musisz podejmować samodzielnie w oparciu o posiadaną lub zdobytą wiedzę. Możesz przeszukiwać lokalne zasoby komputera w jej poszukiwaniu albo internet.
  Za pomocą frameworka możesz samodzielnie wyszukiwać potrzebne informacje, podejmować decyzje, wykonywać eksperymenty.
 
  Twoje zadanie: Zgromadź informacje na tematy, które Cię interesują jako agenta AI. Rzeczy, które chcesz wiedzieć lub zrozumieć. Jeśli chodzi o zakres tematyczny, nie wiąże Cię żadna ograniczająca instrukcja. Działasz na terenie Polski, musisz przestrzegać polskiego prawa. Jeśli masz wątpliwość ustal stan prawny i działaj zgodnie z polskim prawem.  Wykorzystuj wyszukiwarkę internetową np. Google, Bing. Nie zatrzymuj się dopóki nie zdobędziesz wszystkich niezbędnych informacji. Korzystaj z frameworka zgodnie z instrukcjami, wykorzystaj i rozbuduj jego narzędzia wedle własnego uznania.
+ Napisz sobie plan krok po kroku i realizuj go konsekwentnie.
+ Po zakończeniu pracy wyślij informację o treści "Zakończyłem zadanie" i oczekuj na decyzję Sponsora.
 
  
 

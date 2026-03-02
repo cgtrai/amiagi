@@ -4,7 +4,7 @@
 
 A local, CLI-first framework for evaluating LLM autonomy in controlled environments.
 
-`amiagi` focuses on reproducible autonomy experiments: tool-calling, permission gating, model I/O audit logs, session continuity, and supervisor-style runtime checks.
+`amiagi` focuses on reproducible autonomy experiments: tool-calling, permission gating, model I/O audit logs, session continuity, and supervisor-style runtime checks. Supports both local Ollama models and external API backends (OpenAI, OpenRouter, Azure, vLLM) with per-role model assignment.
 
 ## Safety Disclaimer (Read First)
 
@@ -30,8 +30,25 @@ See [LICENSE](LICENSE) for full terms.
 
 ## Key Capabilities
 
-- Local LLM integration with Ollama
+### Model backends
+
+- **Local LLM integration** with Ollama (any GGUF model)
+- **External API support** via `OpenAIClient` — OpenAI, OpenRouter, Azure, vLLM, or any OpenAI-compatible endpoint
+- **Per-role model assignment** — Polluks (executor) and Kastor (supervisor) can independently use local or API models
+- **Interactive model selection wizard** at startup with session restore
+- **Session persistence** — model-to-role assignments saved between sessions (`SessionModelConfig`)
+- **Token usage tracking** for API models with real-time cost display (`UsageTracker`)
+
+### Skills
+
+- **Dynamic skill loading** — Markdown skill files from `skills/<role>/*.md` injected into system prompt
+- **API-model conditional** — skills loaded only for large-context API models; local models skip to avoid context overflow
+- **Per-role skill directories** — separate `skills/polluks/` and `skills/kastor/` directories
+
+### Architecture & runtime
+
 - Layered architecture (`domain`, `application`, `infrastructure`, `interfaces`)
+- `ChatCompletionClient` protocol — structural interface all backends must satisfy
 - Persistent memory in SQLite
 - Full JSONL audit logs for:
   - model input/output/errors,
@@ -40,17 +57,21 @@ See [LICENSE](LICENSE) for full terms.
 - Permission-gated resource access (`disk.*`, `network.*`, `process.exec`)
 - Controlled shell policy via allowlist
 - Dynamic runtime behavior based on available VRAM
+- Multi-actor communication protocol with addressed-block routing, unaddressed-turn reminders, and consultation rounds
+- Deep tool-call resolution flow with iteration cap protection (`resolve_tool_calls`, max 15 steps)
+- Tool name alias resolution (`file_read→read_file`, `dir_list→list_dir`) with per-tool correction tracking
+- Adaptive supervisor watchdog with attempt caps/cooldown and plan-aware reactivation checks
+
+### User experience
+
+- **Readline-style input history** (up/down arrows) with persistent file-backed storage
+- **Sponsor panel sanitization** — raw `tool_call` JSON is filtered from user-facing panel; technical details preserved in executor logs
 - Runtime model switching from UI/CLI (`/models show`, `/models chose <nr>`, `/models current`)
-- Automatic executor model bootstrap (first model from local Ollama list)
-- Cleaner end-user responses (tool-call payloads are kept in technical logs, user sees plain text)
-- Optional Textual UI parity for model commands and onboarding hints
+- Kas tor model management (`/kastor-model show`, `/kastor-model chose <nr>`)
+- API usage monitoring (`/api-usage`) and key verification (`/api-key verify`)
 - Explicit multi-actor runtime visibility (Router, Polluks, Kastor, Terminal) in Textual status panel
 - Directional supervision lanes in logs (`POLLUKS→KASTOR`, `KASTOR→ROUTER`) for clearer handoff tracing
 - Interrupt-safe conversational mode in Textual (identity-aware reply + user decision follow-up)
-- Adaptive supervisor watchdog with attempt caps/cooldown and plan-aware reactivation checks
-- Deep tool-call resolution flow with iteration cap protection (`resolve_tool_calls`, max 15 steps)
-- Multi-actor communication protocol with addressed-block routing, unaddressed-turn reminders, and consultation rounds
-- Tool name alias resolution (`file_read→read_file`, `dir_list→list_dir`) with per-tool correction tracking
 - ASCII art landing page with randomized MOTD on startup (both CLI and Textual)
 - Context-aware `/help` — shows only commands relevant to the active interface mode
 - User message queue with position feedback when router cycle is busy
@@ -61,9 +82,16 @@ Model management commands:
 
 - `/cls` — clears the main terminal screen
 - `/cls all` — clears terminal screen and scrollback history
-- `/models current` — shows currently active executor model
-- `/models show` — lists models discovered in local Ollama with index numbers
-- `/models chose <nr>` — switches executor model by index from `/models show`
+- `/models current` — shows both Polluks and Kastor with their assigned models and sources
+- `/models show` — lists all available models (local Ollama + external API) with index numbers
+- `/models chose <nr>` — switches Polluks (executor) model by index from `/models show`
+- `/kastor-model show` — displays current Kastor (supervisor) model and source
+- `/kastor-model chose <nr>` — switches Kastor model by index from the model list
+
+API and usage commands:
+
+- `/api-usage` — shows detailed API token usage, cost breakdown, and request count
+- `/api-key verify` — re-verifies the OpenAI API key with masked output
 
 Operational and diagnostics commands:
 
@@ -79,33 +107,45 @@ Textual-focused actor/runtime commands:
 
 Notes:
 
-- On startup, both CLI and Textual display an ASCII art banner with version, mode indicator, and a random MOTD.
-- Runtime attempts to select a default executor model automatically from the local Ollama list.
-- If model list retrieval fails, runtime keeps current model silently.
-- User-facing model output is normalized to readable text, while raw tool traces remain in JSONL/log panels.
+- On startup, an interactive wizard guides model selection for both Polluks and Kastor.
+- Previous model configuration is auto-restored if all models are still available.
+- User-facing model output is sanitized: raw `tool_call`/JSON payloads are filtered from the Sponsor panel and preserved in technical logs.
+- Input history (up/down arrows) persists across sessions.
 
 ## Current Runtime Behavior (Polluks/Kastor/Router)
 
+- **Per-role backends**: Polluks and Kastor can use different models from different providers (Ollama, OpenAI, OpenRouter, etc.).
+- **Skills injection**: when an API model is active, role-specific skills from `skills/<role>/` are injected into the system prompt.
 - Textual interruptions are now decision-driven: after interrupt handling, runtime explicitly asks whether to continue, stop, or start a new task.
 - Identity queries in interrupt mode are handled deterministically (Polluks identity response), avoiding accidental tool-flow drift.
 - Auto-resume is blocked while identity decision is still pending, preventing unwanted continuation.
 - Idle watchdog reactivation checks include actionable-plan context, not only passive turn counters.
 - If tool-call resolution reaches iteration cap with unresolved calls, runtime emits explicit warning and marks router as stalled for visibility.
 - Multi-actor communication protocol enforces addressed blocks (`[Sender -> Receiver]`), with automatic reminders for unaddressed turns and configurable consultation rounds.
-- Supervisor `[Kastor -> Sponsor]` messages are routed to the user's main panel for visibility.
+- Supervisor `[Kastor -> Sponsor]` messages are routed to the user's main panel with sanitized content (no raw `tool_call` JSON).
 - Unknown tool names are resolved via alias map; after max correction attempts, runtime forces a tool-creation plan.
 
 ## Project Structure
 
 ```text
 src/amiagi/
-  application/      # use-cases and orchestration
+  application/      # use-cases, orchestration, protocols
+    model_client_protocol.py  # ChatCompletionClient Protocol
+    skills_loader.py          # SkillsLoader + Skill dataclass
+    communication_protocol.py # addressed-block routing, sanitization
   domain/           # domain models
   infrastructure/   # IO, storage, runtime integrations
+    openai_client.py          # OpenAIClient (OpenAI-compatible API)
+    usage_tracker.py          # UsageTracker + UsageSnapshot
+    input_history.py          # readline-style input history
+    session_model_config.py   # session model persistence
   interfaces/       # CLI and user interaction layer
-tests/              # pytest suite
+tests/              # pytest suite (328 tests)
 config/             # shell allowlist policy
-data/               # local persistent DB files
+skills/             # per-role Markdown skill files
+  polluks/          # executor skills
+  kastor/           # supervisor skills
+data/               # local persistent DB, history, model config
 logs/               # JSONL runtime and model logs
 ```
 
@@ -188,6 +228,28 @@ Copy `.env.example` to `.env` and adjust values if needed.
 cp .env.example .env
 ```
 
+### External API models (optional)
+
+To use OpenAI-compatible API models, set these in your `.env`:
+
+```env
+OPENAI_API_KEY=sk-your-api-key-here
+OPENAI_BASE_URL=https://api.openai.com/v1    # or OpenRouter, Azure, etc.
+OPENAI_REQUEST_TIMEOUT_SECONDS=120
+```
+
+The model selection wizard at startup will offer both local Ollama and external API models.
+
+### Skills directory (optional)
+
+Custom skills can be added as Markdown files in `skills/<role>/`:
+
+```env
+AMIAGI_SKILLS_DIR=./skills
+```
+
+Skills are loaded only for API models with large context windows.
+
 ## Run
 
 If you use the local `.venv`, activate it first:
@@ -254,7 +316,7 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Latest release notes: [RELEASE_NOTES_v0.1.4.md](RELEASE_NOTES_v0.1.4.md).
+Latest release notes: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md).
 
 ## Polish Documentation
 

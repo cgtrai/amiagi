@@ -119,7 +119,7 @@ def _clear_cli_screen(*, clear_scrollback: bool) -> None:
     sys.stdout.flush()
 
 _ALLOWED_TOOLS_TEXT = (
-    "read_file, list_dir, run_shell, run_python, check_python_syntax, fetch_web, search_web, capture_camera_frame, record_microphone_clip, check_capabilities, write_file, append_file"
+    "read_file, list_dir, run_shell, run_python, check_python_syntax, fetch_web, search_web, download_file, convert_pdf_to_markdown, capture_camera_frame, record_microphone_clip, check_capabilities, write_file, append_file"
 )
 _SUPPORTED_TOOL_NAMES = {
     "read_file",
@@ -129,6 +129,8 @@ _SUPPORTED_TOOL_NAMES = {
     "check_python_syntax",
     "fetch_web",
     "search_web",
+    "download_file",
+    "convert_pdf_to_markdown",
     "capture_camera_frame",
     "record_microphone_clip",
     "check_capabilities",

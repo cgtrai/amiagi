@@ -15,7 +15,7 @@ ModelRole = Literal["executor", "supervisor"]
 
 @dataclass
 class ModelQueuePolicy:
-    supervisor_min_free_vram_mb: int = 3000
+    supervisor_min_free_vram_mb: int = 0
     queue_max_wait_seconds: float = 1.0
     _wait_queue: deque[ModelRole] = field(default_factory=deque)
     _recent_decisions: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=30))
@@ -88,13 +88,24 @@ class ModelQueuePolicy:
                 )
 
     def can_run_for_vram(self, role: ModelRole, vram_advisor: VramAdvisor | None) -> tuple[bool, int | None]:
+        """Check whether the role may proceed given current VRAM.
+
+        When supervisor_min_free_vram_mb is 0 (the default), the check is
+        effectively disabled — Ollama manages model swapping on its own
+        (it unloads the executor model, loads the supervisor, and vice versa).
+        Blocking the supervisor before Ollama can swap defeats the purpose
+        on single-GPU setups where the executor alone fills most VRAM.
+        """
         if role != "supervisor" or vram_advisor is None:
             self._record_decision("vram_skip_check", role)
+            return True, None
+        if self.supervisor_min_free_vram_mb <= 0:
+            self._record_decision("vram_check_disabled", role)
             return True, None
         profile = vram_advisor.detect()
         if profile.free_mb is None:
             self._record_decision("vram_unknown", role)
-            return False, None
+            return True, None  # optimistic: let Ollama try
         allowed = profile.free_mb >= self.supervisor_min_free_vram_mb
         self._record_decision(
             "vram_allowed" if allowed else "vram_blocked",

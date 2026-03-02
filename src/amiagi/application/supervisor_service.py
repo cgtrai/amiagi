@@ -5,26 +5,16 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol
 
 from amiagi.application.communication_protocol import (
     CommunicationRules,
     build_kastor_communication_prompt,
     load_communication_rules,
 )
+from amiagi.application.model_client_protocol import ChatCompletionClient
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.ollama_client import OllamaClientError
-
-
-class ChatCompletionClient(Protocol):
-    def chat(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str,
-        num_ctx: int | None = None,
-    ) -> str:
-        ...
 
 # SUPERVISOR_SYSTEM_PROMPT = (
 #     "Jesteś modelem NADZORCY odpowiedzi modelu wykonawczego. "
@@ -62,6 +52,7 @@ class SupervisorService:
     max_repair_rounds: int = 2
     dialogue_log_path: Path | None = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
+    sponsor_task: str = ""
 
     def _full_system_prompt(self) -> str:
         comm_prompt = build_kastor_communication_prompt(self.comm_rules)
@@ -101,7 +92,7 @@ class SupervisorService:
         stage: str,
         attempt: int,
     ) -> str:
-        return (
+        base_prompt = (
             "Oceń odpowiedź od Polluksa. "
             "Jeśli jest poprawna, zwróć status=ok. "
             "Jeśli wymaga poprawy, zwróć status=repair i podaj poprawioną odpowiedź gotową do dalszego przetwarzania.\n\n"
@@ -137,15 +128,43 @@ class SupervisorService:
             "Nie oceniaj osoby, wspieraj decyzję i utrzymuj konkretny, życzliwy ton.\n\n"
             "14) Jeśli odpowiedź Polluksa kierowana do Sponsora nie zawiera nagłówka [Polluks -> Sponsor], "
             "dodaj go w repaired_answer. Bloki tool_call są zwolnione z adresowania.\n\n"
+            "15) DOSTĘPNE NARZĘDZIA W RUNTIME (używaj WYŁĄCZNIE tych nazw w repaired_answer):\n"
+            "    read_file, list_dir, run_shell, run_python, check_python_syntax, fetch_web, search_web,\n"
+            "    download_file, convert_pdf_to_markdown,\n"
+            "    capture_camera_frame, record_microphone_clip, check_capabilities, write_file, append_file.\n"
+            "    Aliasy automatyczne: file_read→read_file, read→read_file, run_command→run_shell, dir_list→list_dir,\n"
+            "    download→download_file, pdf_to_md→convert_pdf_to_markdown, convert_pdf→convert_pdf_to_markdown.\n"
+            "    NIE używaj nazw spoza tej listy (np. read_document, open_file, get_file).\n\n"
+            "16) ZAKOŃCZENIE PLANU vs ZADANIE SPONSORA (KLUCZOWE):\n"
+            "    Gdy Polluks oznacza plan jako 'completed' lub zadaje pytania typu 'co dalej?', 'czy chcesz?', 'czekam na instrukcje':\n"
+            "    a) Sprawdź czy ZADANIE SPONSORA (poniżej) zostało w pełni zrealizowane.\n"
+            "    b) Jeśli Polluks NIE wysłał komunikatu 'Zakończyłem zadanie' do Sponsora, to zadanie NIE jest zakończone.\n"
+            "    c) W takiej sytuacji zwróć status=repair z repaired_answer zawierającym konkretne następne kroki\n"
+            "       oparte na ZADANIU SPONSORA. Zaplanuj nowe zadania w main_plan.json.\n"
+            "    d) NIE ustawiaj work_state=WAITING_USER_DECISION, gdy zadanie Sponsora nie zostało w pełni zrealizowane.\n"
+            "    e) Polluks powinien działać autonomicznie, nie pytając Sponsora o kolejne kroki, dopóki\n"
+            "       nie zrealizuje CAŁEGO zadania opisanego przez Sponsora.\n"
+            "    f) W notes wskaż Polluksowi luki między tym co zrobił a tym czego wymaga zadanie Sponsora.\n\n"
             "Dozwolone statusy: ok | repair\n"
-            "Dozwolone reason_code: OK, NO_TOOL_CALL, PSEUDO_CODE, INVALID_FORMAT, TOOL_PROTOCOL_DRIFT, OTHER\n\n"
+            "Dozwolone reason_code: OK, NO_TOOL_CALL, PSEUDO_CODE, INVALID_FORMAT, TOOL_PROTOCOL_DRIFT, PREMATURE_COMPLETION, OTHER\n\n"
             "Wymagane work_state: RUNNING | STALLED | WAITING_USER_DECISION | WAITING_PERMISSION | COMPLETED\n"
             "ZWROT WYŁĄCZNIE W FORMIECIE JSON:\n"
             "{\"status\":\"ok|repair\",\"reason_code\":\"...\",\"work_state\":\"...\",\"repaired_answer\":\"...\",\"notes\":\"...\"}\n\n"
-            f"Etap: {stage}\n"
-            f"Próba: {attempt}\n"
-            f"Polecenie/wiadomość użytkownika lub systemowa:\n{user_message}\n\n"
-            f"Odpowiedź modelu wykonawczego do oceny:\n{model_answer}"
+        )
+        sponsor_task_block = ""
+        if self.sponsor_task:
+            sponsor_task_block = (
+                "[SPONSOR_TASK]\n"
+                + self.sponsor_task[:3000]
+                + "\n[/SPONSOR_TASK]\n\n"
+            )
+        return (
+            base_prompt
+            + sponsor_task_block
+            + f"Etap: {stage}\n"
+            + f"Próba: {attempt}\n"
+            + f"Polecenie/wiadomość użytkownika lub systemowa:\n{user_message}\n\n"
+            + f"Odpowiedź modelu wykonawczego do oceny:\n{model_answer}"
         )
 
     def _parse_json_object(self, text: str) -> dict | None:
@@ -247,6 +266,13 @@ class SupervisorService:
             return (
                 "Brakuje konkretnego kroku wykonawczego. "
                 "Wybierz jedno istniejące narzędzie, uruchom je i dopiero po wyniku TOOL_RESULT podejmij kolejną decyzję."
+            )[:500]
+
+        if reason_code == "PREMATURE_COMPLETION":
+            return (
+                "Plan został oznaczony jako ukończony, ale zadanie Sponsora nie zostało w pełni zrealizowane. "
+                "Sprawdź sekcję [SPONSOR_TASK] i zaplanuj kolejne kroki. "
+                "Zaktualizuj main_plan.json o nowe zadania."
             )[:500]
 
         if stage == "textual_watchdog_nudge":

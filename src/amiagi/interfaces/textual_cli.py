@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from urllib.parse import quote_plus, unquote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from amiagi.application.chat_service import ChatService
 from amiagi.application.communication_protocol import (
@@ -23,18 +23,28 @@ from amiagi.application.communication_protocol import (
     load_communication_rules,
     panels_for_target,
     parse_addressed_blocks,
+    strip_tool_call_blocks,
 )
 from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
 from amiagi.application.tool_registry import list_registered_tools, resolve_registered_tool_script
 from amiagi.application.shell_policy import default_shell_policy, load_shell_policy, parse_and_validate_shell_command
+from amiagi.config import Settings
 from amiagi.infrastructure.ollama_client import OllamaClientError
+from amiagi.infrastructure.openai_client import (
+    OpenAIClient,
+    OpenAIClientError,
+    SUPPORTED_OPENAI_MODELS,
+    mask_api_key,
+)
 from amiagi.infrastructure.activity_logger import ActivityLogger
+from amiagi.infrastructure.input_history import InputHistory
 from amiagi.infrastructure.script_executor import ScriptExecutor
+from amiagi.infrastructure.session_model_config import SessionModelConfig
+from amiagi.infrastructure.usage_tracker import UsageTracker
 from amiagi.interfaces.cli import (
     _AMIAGI_LOGO,
     _build_landing_banner,
-    _ensure_default_executor_model,
     _fetch_ollama_models,
     _format_user_facing_answer,
     _has_supported_tool_call,
@@ -42,6 +52,7 @@ from amiagi.interfaces.cli import (
     _network_resource_for_model,
     _parse_search_results_from_html,
     _select_executor_model_by_index,
+    _set_executor_model,
     _resolve_tool_path,
     _read_plan_tracking_snapshot,
     _repair_plan_tracking_file,
@@ -51,6 +62,7 @@ from amiagi.interfaces.permission_manager import PermissionManager
 try:
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
+    from textual.events import Key
     from textual.widgets import Input, Static, TextArea
 except (ImportError, ModuleNotFoundError) as error:  # pragma: no cover - runtime import guard
     raise RuntimeError(
@@ -73,6 +85,8 @@ _SUPPORTED_TEXTUAL_TOOLS = {
     "check_python_syntax",
     "fetch_web",
     "search_web",
+    "download_file",
+    "convert_pdf_to_markdown",
     "capture_camera_frame",
     "record_microphone_clip",
     "check_capabilities",
@@ -107,6 +121,10 @@ def _canonical_tool_name(name: str) -> str:
         "file_read": "read_file",
         "read": "read_file",
         "dir_list": "list_dir",
+        "download": "download_file",
+        "pdf_to_md": "convert_pdf_to_markdown",
+        "convert_pdf": "convert_pdf_to_markdown",
+        "pdf_to_markdown": "convert_pdf_to_markdown",
     }
     return _TOOL_ALIASES.get(cleaned, cleaned)
 
@@ -190,6 +208,10 @@ _TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
     ("/create-python <plik> <opis>", "wygeneruj i zapisz skrypt Python przez model"),
     ("/run-python <plik> [arg ...]", "uruchom skrypt Python z argumentami"),
     ("/run-shell <polecenie>", "uruchom polecenie shell z polityką whitelist"),
+    ("/kastor-model show", "pokaż aktualny model Kastora"),
+    ("/kastor-model chose <nr>", "zmień model Kastora na wybrany z listy"),
+    ("/api-usage", "pokaż szczegółowe zużycie tokenów i koszty API"),
+    ("/api-key verify", "zweryfikuj ponownie klucz API"),
     ("/bye", "zapisz podsumowanie sesji i zakończ"),
     ("/quit", "zakończ tryb textual"),
     ("/exit", "zakończ tryb textual"),
@@ -369,6 +391,7 @@ class _AmiagiTextualApp(App[None]):
     #busy_indicator { height: 3; border: round #9a6bff; padding: 0 1; }
     #input_box { dock: bottom; }
     #router_status { height: 8; border: round #9a6bff; }
+    #api_usage_bar { height: 2; border: round #ff9500; padding: 0 1; display: none; }
     #supervisor_log { height: 1fr; border: round #47c26b; }
     #executor_log { height: 1fr; border: round #f5a623; }
     .title { padding: 0 1; }
@@ -383,6 +406,7 @@ class _AmiagiTextualApp(App[None]):
         shell_policy_path: Path,
         router_mailbox_log_path: Path | None = None,
         activity_logger: ActivityLogger | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__()
         self._chat_service = chat_service
@@ -392,6 +416,22 @@ class _AmiagiTextualApp(App[None]):
         self._dialogue_log_offset = 0
         self._router_mailbox_log_path = router_mailbox_log_path or Path("./logs/router_mailbox.jsonl")
         self._activity_logger = activity_logger
+        self._settings = settings
+        self._usage_tracker = UsageTracker()
+        self._model_configured = False
+        self._wizard_phase = 0  # 0=inactive, 1=polluks, 2=kastor, 3=api_key_check
+        self._wizard_models: list[tuple[str, str]] = []  # (name, source) e.g. ("qwen3:14b","ollama")
+        self._wizard_kastor_models: list[tuple[str, str]] = []
+        self._wizard_polluks_choice: tuple[str, str] = ("", "")  # (name, source)
+        # --- Input history (up/down arrows like terminal readline) ---
+        history_path = Path("./data/input_history.txt")
+        if settings is not None:
+            history_path = getattr(settings, "input_history_path", history_path)
+        self._input_history = InputHistory(history_path)
+        # --- Session model config (persisted between restarts) ---
+        self._model_config_path = Path("./data/model_config.json")
+        if settings is not None:
+            self._model_config_path = getattr(settings, "model_config_path", self._model_config_path)
         self._script_executor = ScriptExecutor()
         self._work_dir = chat_service.work_dir.resolve()
         self._work_dir.mkdir(parents=True, exist_ok=True)
@@ -454,10 +494,31 @@ class _AmiagiTextualApp(App[None]):
             with Vertical(id="tech_column"):
                 yield Static("Router", classes="title")
                 yield Static("", id="router_status")
+                yield Static("", id="api_usage_bar")
                 yield Static("Kastor → Router", classes="title")
                 yield TextArea("", id="supervisor_log", read_only=True, show_line_numbers=False)
                 yield Static("Polluks → Kastor", classes="title")
                 yield TextArea("", id="executor_log", read_only=True, show_line_numbers=False)
+
+    def on_key(self, event: Key) -> None:
+        """Handle up/down arrows for input history (readline-like)."""
+        focused = self.focused
+        if not isinstance(focused, Input) or focused.id != "input_box":
+            return
+        if event.key == "up":
+            entry = self._input_history.older(focused.value)
+            if entry is not None:
+                focused.value = entry
+                focused.cursor_position = len(entry)
+            event.prevent_default()
+        elif event.key == "down":
+            entry = self._input_history.newer()
+            if entry is not None:
+                focused.value = entry
+                focused.cursor_position = len(entry)
+            else:
+                focused.value = ""
+            event.prevent_default()
 
     def _format_idle_until(self) -> str:
         if self._idle_until_epoch is None:
@@ -587,6 +648,114 @@ class _AmiagiTextualApp(App[None]):
 
     def _identity_reply(self) -> str:
         return "Jestem Polluks, modelem wykonawczym frameworka amiagi."
+
+    # ------------------------------------------------------------------
+    # Premature plan completion detection & Kastor-based redirection
+    # ------------------------------------------------------------------
+
+    _COMPLETION_SIGNAL = "zakończyłem zadanie"
+
+    def _is_premature_plan_completion(self, answer: str) -> bool:
+        """Return True when Polluks considers the plan done but hasn't sent
+        the expected completion signal to the Sponsor.
+
+        The Sponsor's task requires Polluks to send "Zakończyłem zadanie"
+        when ALL work is finished.  If the plan's current_stage is
+        'completed' (or all tasks are done) and that signal is absent,
+        the completion is premature and Kastor should redirect.
+        """
+        normalized = answer.strip().lower()
+        if self._COMPLETION_SIGNAL in normalized:
+            return False  # genuine completion
+
+        plan_path = self._work_dir / "notes" / "main_plan.json"
+        if not plan_path.exists():
+            return False
+        try:
+            payload = json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(payload, dict):
+            return False
+
+        current_stage = str(payload.get("current_stage", "")).strip().lower()
+        if current_stage == "completed":
+            return True
+
+        tasks = payload.get("tasks")
+        if isinstance(tasks, list) and tasks:
+            all_done = all(
+                str(t.get("status", "")).strip().lower() == "zakończona"
+                for t in tasks
+                if isinstance(t, dict)
+            )
+            if all_done:
+                return True
+        return False
+
+    def _redirect_premature_completion(
+        self, user_message: str, polluks_answer: str
+    ) -> str | None:
+        """Ask Kastor to redirect Polluks when plan completion is premature.
+
+        Returns the redirected answer (with tool_call) or None if
+        the supervisor is unavailable or fails.
+        """
+        supervisor = self._chat_service.supervisor_service
+        if supervisor is None:
+            return None
+
+        supervision_context = {
+            "passive_turns": self._passive_turns,
+            "should_remind_continuation": True,
+            "gpu_busy_over_50": False,
+            "plan_persistence": {"required": True},
+            "premature_completion": True,
+            "interrupt_mode": False,
+        }
+
+        prompt = (
+            "[RUNTIME_SUPERVISION_CONTEXT]\n"
+            + json.dumps(supervision_context, ensure_ascii=False)
+            + "\n[/RUNTIME_SUPERVISION_CONTEXT]\n"
+            "Polluks oznaczył plan jako zakończony i pyta Sponsora o dalsze kroki, "
+            "ale NIE wysłał komunikatu 'Zakończyłem zadanie'. "
+            "Zadanie Sponsora NIE zostało w pełni zrealizowane. "
+            "Przeanalizuj SPONSOR_TASK i wskaż Polluksowi konkretne następne kroki. "
+            "Zwróć status=repair z repaired_answer zawierającym write_file do notes/main_plan.json "
+            "z nowym planem obejmującym niezrealizowane elementy zadania Sponsora.\n"
+            f"Polecenie użytkownika: {user_message}"
+        )
+
+        try:
+            self._set_actor_state("supervisor", "REDIRECT", "Kastor przekierowuje Polluksa po przedwczesnym zakończeniu planu")
+            recent_msgs = self._chat_service.memory_repository.recent_messages(limit=6)
+            conv_excerpt = format_conversation_excerpt(recent_msgs, limit=6)
+            result = supervisor.refine(
+                user_message=prompt,
+                model_answer=polluks_answer,
+                stage="premature_completion_redirect",
+                conversation_excerpt=conv_excerpt,
+            )
+            self._set_actor_state("supervisor", "READY", "Kastor zakończył przekierowanie")
+
+            self._enqueue_supervisor_message(
+                stage="premature_completion_redirect",
+                reason_code=result.reason_code or "PREMATURE_COMPLETION",
+                notes=self._merge_supervisor_notes(
+                    "Kastor przekierował Polluksa po przedwczesnym zakończeniu planu.",
+                    result.notes,
+                ),
+                answer=result.answer,
+            )
+            self._append_log(
+                "supervisor_log",
+                f"[Kastor -> Polluks] Plan nie jest ukończony wobec zadania Sponsora. {result.notes[:300]}",
+            )
+            return result.answer
+        except (OllamaClientError, OSError):
+            self._set_actor_state("supervisor", "ERROR", "Kastor — przekierowanie przerwane błędem")
+            return None
 
     def _single_sentence(self, text: str) -> str:
         compact = " ".join(text.strip().split())
@@ -806,27 +975,35 @@ class _AmiagiTextualApp(App[None]):
             )
             if first_supported is not None:
                 suggested_step = f"{_canonical_tool_name(first_supported.tool)} ({first_supported.intent})"
+
+        payload = {
+            "stage": stage,
+            "reason_code": reason_code,
+            "notes": notes[:500],
+            "suggested_step": suggested_step,
+        }
+
+        # --- Dedup: skip if identical to the last enqueued message ---
+        if self._supervisor_outbox:
+            last = self._supervisor_outbox[-1]
+            if (
+                last.get("stage") == stage
+                and last.get("reason_code") == reason_code
+                and last.get("notes") == notes[:500]
+                and last.get("suggested_step") == suggested_step
+            ):
+                return  # duplicate — skip
+
         self._supervisor_outbox.append(
             {
                 "actor": "Kastor",
                 "target": "Polluks",
-                "stage": stage,
-                "reason_code": reason_code,
-                "notes": notes[:500],
-                "suggested_step": suggested_step,
+                **payload,
             }
         )
         if len(self._supervisor_outbox) > 10:
             del self._supervisor_outbox[:-10]
-        self._append_router_mailbox_log(
-            "enqueue",
-            {
-                "stage": stage,
-                "reason_code": reason_code,
-                "notes": notes[:500],
-                "suggested_step": suggested_step,
-            },
-        )
+        self._append_router_mailbox_log("enqueue", payload)
 
         # --- Route Kastor's addressed blocks to correct panels ---
         # Notes and answer may contain [Kastor -> Sponsor] or other addressed
@@ -846,8 +1023,19 @@ class _AmiagiTextualApp(App[None]):
                 extra_panels = [p for p in target_panels if p != "supervisor_log"]
                 if extra_panels:
                     label = f"[{block.sender} -> {block.target}]" if block.sender else ""
+                    block_content = block.content
+                    # Sanitize tool_call content before sending to Sponsor panel
+                    if "user_model_log" in extra_panels:
+                        sanitized = self._sanitize_block_for_sponsor(block_content, label)
+                        if sanitized is None:
+                            # Nothing readable — already redirected to executor_log
+                            extra_panels = [p for p in extra_panels if p != "user_model_log"]
+                            if not extra_panels:
+                                continue
+                        else:
+                            block_content = sanitized
                     for panel_id in extra_panels:
-                        self._append_log(panel_id, f"{label} {block.content}" if label else block.content)
+                        self._append_log(panel_id, f"{label} {block_content}" if label else block_content)
 
     def _drain_supervisor_outbox_context(self) -> str:
         if not self._supervisor_outbox:
@@ -920,6 +1108,40 @@ class _AmiagiTextualApp(App[None]):
             area.scroll_end(animate=False)
 
         self._run_on_ui_thread(_apply)
+
+    def _sanitize_block_for_sponsor(
+        self,
+        block_content: str,
+        label: str,
+    ) -> str | None:
+        """Strip tool_call blocks from content destined for the Sponsor panel.
+
+        Returns sanitised content ready for ``user_model_log``, or ``None``
+        when nothing human-readable remains (caller should redirect / skip).
+
+        Side-effect: if any tool_call material was removed, the *original*
+        (full) content is echoed to ``executor_log`` so the information is
+        not lost.
+        """
+        sanitized = strip_tool_call_blocks(block_content)
+        if not sanitized or not is_sponsor_readable(sanitized):
+            # Nothing readable for Sponsor — redirect entirely to executor
+            self._append_log(
+                "executor_log",
+                f"{label} {block_content}" if label else block_content,
+            )
+            self._append_log(
+                "supervisor_log",
+                f"[Koordynator] Treść do Sponsora zawierała wyłącznie tool_call/JSON — przekierowano do executor_log.",
+            )
+            return None
+        if sanitized != block_content:
+            # Had tool_call material stripped — echo full version to executor
+            self._append_log(
+                "executor_log",
+                f"{label} {block_content}" if label else block_content,
+            )
+        return sanitized
 
     def _clear_textual_panels(self, *, clear_all: bool) -> None:
         panel_ids = ["user_model_log"] if not clear_all else ["user_model_log", "supervisor_log", "executor_log"]
@@ -997,20 +1219,48 @@ class _AmiagiTextualApp(App[None]):
 
             action = parts[1].lower()
             if action == "current":
-                current_model = str(getattr(self._chat_service.ollama_client, "model", ""))
-                return _CommandOutcome(True, [f"Aktywny model wykonawczy: {current_model}"])
+                # Polluks (executor)
+                polluks_model = str(getattr(self._chat_service.ollama_client, "model", "")) or "(nie ustawiony)"
+                polluks_api = getattr(self._chat_service.ollama_client, "_is_api_client", False)
+                polluks_label = f"☁ {polluks_model}" if polluks_api else polluks_model
+
+                # Kastor (supervisor)
+                supervisor = self._chat_service.supervisor_service
+                if supervisor is not None:
+                    kastor_model = str(getattr(supervisor.ollama_client, "model", "")) or "(nie ustawiony)"
+                    kastor_api = getattr(supervisor.ollama_client, "_is_api_client", False)
+                    kastor_label = f"☁ {kastor_model}" if kastor_api else kastor_model
+                else:
+                    kastor_label = "(nieaktywny)"
+
+                return _CommandOutcome(True, [
+                    "--- AKTYWNE MODELE ---",
+                    f"  Polluks (wykonawca): {polluks_label}",
+                    f"  Kastor  (nadzorca):  {kastor_label}",
+                ])
             if action == "show":
-                models, error = _fetch_ollama_models(self._chat_service)
-                if error is not None:
-                    return _CommandOutcome(True, [f"Nie udało się pobrać listy modeli: {error}"])
-                if not models:
-                    return _CommandOutcome(True, ["Brak modeli dostępnych w Ollama."])
+                combined = self._build_wizard_model_list()
+                if not combined:
+                    return _CommandOutcome(True, ["Brak modeli dostępnych."])
 
                 current_model = str(getattr(self._chat_service.ollama_client, "model", ""))
-                messages = ["--- MODELE OLLAMA ---"]
-                for index, model_name in enumerate(models, start=1):
-                    marker = "  [aktywny]" if model_name == current_model else ""
-                    messages.append(f"{index}. {model_name}{marker}")
+                is_api = getattr(self._chat_service.ollama_client, "_is_api_client", False)
+                messages = ["--- MODELE POLLUKSA ---"]
+                idx = 1
+                ollama_models = [(n, s) for n, s in combined if s == "ollama"]
+                api_models = [(n, s) for n, s in combined if s != "ollama"]
+                if ollama_models:
+                    messages.append("Modele lokalne (Ollama):")
+                    for name, _ in ollama_models:
+                        marker = "  [aktywny]" if name == current_model and not is_api else ""
+                        messages.append(f"  {idx}. {name}{marker}")
+                        idx += 1
+                if api_models:
+                    messages.append("Modele zewnętrzne (API):")
+                    for name, source in api_models:
+                        marker = "  [aktywny]" if name == current_model and is_api else ""
+                        messages.append(f"  {idx}. ☁ {name}  [{source.upper()}]{marker}")
+                        idx += 1
                 messages.append("Użycie: /models chose <nr>")
                 return _CommandOutcome(True, messages)
 
@@ -1025,10 +1275,46 @@ class _AmiagiTextualApp(App[None]):
                         ["Nieprawidłowy numer modelu. Użyj wartości całkowitej, np. /models chose 1"],
                     )
 
-                ok, payload, _models = _select_executor_model_by_index(self._chat_service, index)
-                if not ok:
-                    return _CommandOutcome(True, [payload])
-                return _CommandOutcome(True, [f"Aktywny model wykonawczy: {payload}"])
+                combined = self._build_wizard_model_list()
+                if index < 1 or index > len(combined):
+                    return _CommandOutcome(
+                        True,
+                        [f"Nieprawidłowy numer. Zakres: 1..{len(combined)}."],
+                    )
+                name, source = combined[index - 1]
+                if source == "ollama":
+                    ok, payload, _models = _select_executor_model_by_index(self._chat_service, index)
+                    if not ok:
+                        return _CommandOutcome(True, [payload])
+                    self._persist_model_config()
+                    return _CommandOutcome(True, [f"Aktywny model wykonawczy: {payload}"])
+                else:
+                    # Switch Polluks to API model
+                    api_key = os.environ.get("OPENAI_API_KEY", "")
+                    settings = self._settings
+                    if not api_key and settings is not None:
+                        api_key = settings.openai_api_key
+                    if not api_key:
+                        return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY)."])
+                    base_url = "https://api.openai.com/v1"
+                    timeout = 120
+                    if settings is not None:
+                        base_url = settings.openai_base_url or base_url
+                        timeout = settings.openai_request_timeout_seconds or timeout
+                    openai_client = OpenAIClient(
+                        api_key=api_key,
+                        model=name,
+                        base_url=base_url,
+                        io_logger=getattr(self._chat_service.ollama_client, "io_logger", None),
+                        activity_logger=self._activity_logger,
+                        client_role="executor",
+                        request_timeout_seconds=timeout,
+                        usage_tracker=self._usage_tracker,
+                    )
+                    self._chat_service.ollama_client = openai_client
+                    self._show_api_usage_bar()
+                    self._persist_model_config()
+                    return _CommandOutcome(True, [f"Aktywny model wykonawczy: ☁ {name} [{source.upper()}]"])
 
             return _CommandOutcome(True, ["Użycie: /models show | /models chose <nr>"])
 
@@ -1272,17 +1558,521 @@ class _AmiagiTextualApp(App[None]):
                 should_exit=True,
             )
 
+        if lower.startswith("/kastor-model"):
+            parts = text.split()
+            supervisor = self._chat_service.supervisor_service
+            if supervisor is None:
+                return _CommandOutcome(True, ["Kastor jest nieaktywny w tej sesji."])
+
+            action = parts[1].lower() if len(parts) > 1 else "show"
+            if action in {"show", "current"}:
+                current = str(getattr(supervisor.ollama_client, "model", ""))
+                is_api = getattr(supervisor.ollama_client, "_is_api_client", False)
+                label = f"☁ {current}" if is_api else current
+                return _CommandOutcome(True, [f"Aktywny model Kastora: {label}"])
+
+            if action in {"chose", "choose"}:
+                if len(parts) < 3:
+                    return _CommandOutcome(True, ["Użycie: /kastor-model chose <nr>"])
+                try:
+                    idx = int(parts[2])
+                except ValueError:
+                    return _CommandOutcome(True, ["Podaj numer modelu."])
+
+                combined = self._build_wizard_model_list()
+                if idx < 1 or idx > len(combined):
+                    return _CommandOutcome(
+                        True,
+                        [f"Nieprawidłowy numer. Zakres: 1..{len(combined)}."],
+                    )
+                name, source = combined[idx - 1]
+                if source == "ollama":
+                    try:
+                        supervisor.ollama_client = replace(
+                            cast(Any, supervisor.ollama_client), model=name
+                        )
+                    except Exception:
+                        return _CommandOutcome(True, [f"Nie udało się zmienić modelu Kastora na {name}."])
+                    self._persist_model_config()
+                    return _CommandOutcome(True, [f"Kastor: model zmieniony na {name}"])
+                else:
+                    api_key = os.environ.get("OPENAI_API_KEY", "")
+                    settings = self._settings
+                    if not api_key and settings is not None:
+                        api_key = settings.openai_api_key
+                    if not api_key:
+                        return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY)."])
+                    base_url = "https://api.openai.com/v1"
+                    timeout = 120
+                    if settings is not None:
+                        base_url = settings.openai_base_url or base_url
+                        timeout = settings.openai_request_timeout_seconds or timeout
+                    kastor_openai = OpenAIClient(
+                        api_key=api_key,
+                        model=name,
+                        base_url=base_url,
+                        io_logger=getattr(supervisor.ollama_client, "io_logger", None),
+                        activity_logger=self._activity_logger,
+                        client_role="supervisor",
+                        request_timeout_seconds=timeout,
+                        usage_tracker=self._usage_tracker,
+                    )
+                    supervisor.ollama_client = cast(Any, kastor_openai)
+                    self._show_api_usage_bar()
+                    self._persist_model_config()
+                    return _CommandOutcome(True, [f"Kastor: ☁ {name} [{source.upper()}]"])
+
+            # Show available models list
+            combined = self._build_wizard_model_list()
+            body = self._format_wizard_model_list(combined)
+            return _CommandOutcome(True, ["--- MODELE DLA KASTORA ---", body, "Użycie: /kastor-model chose <nr>"])
+
+        if lower == "/api-usage":
+            detailed = self._usage_tracker.format_detailed()
+            if not detailed:
+                return _CommandOutcome(True, ["Brak danych o zużyciu API w tej sesji."])
+            return _CommandOutcome(True, ["--- API USAGE ---", detailed])
+
+        if lower == "/api-key verify":
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            settings = self._settings
+            if not api_key and settings is not None:
+                api_key = settings.openai_api_key
+            if not api_key:
+                return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY nie ustawiony)."])
+            masked = mask_api_key(api_key)
+            try:
+                test_client = OpenAIClient(api_key=api_key, model="gpt-5-mini")
+                reachable = test_client.ping()
+            except Exception:
+                reachable = False
+            if reachable:
+                return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✓ (aktywny)"])
+            return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✗ (nie udało się połączyć)"])
+
         return _CommandOutcome(False, [])
+
+    # ------------------------------------------------------------------
+    # Model Selection Wizard
+    # ------------------------------------------------------------------
+
+    def _build_wizard_model_list(self) -> list[tuple[str, str]]:
+        """Return a combined list of (model_name, source) for the wizard."""
+        entries: list[tuple[str, str]] = []
+        # Ollama local models
+        models, error = _fetch_ollama_models(self._chat_service)
+        if error is None and models:
+            for name in models:
+                entries.append((name, "ollama"))
+        # OpenAI API models
+        for name in SUPPORTED_OPENAI_MODELS:
+            entries.append((name, "openai"))
+        return entries
+
+    def _format_wizard_model_list(
+        self, models: list[tuple[str, str]], *, default_name: str = ""
+    ) -> str:
+        lines: list[str] = []
+        ollama_models = [(n, s) for n, s in models if s == "ollama"]
+        api_models = [(n, s) for n, s in models if s != "ollama"]
+        idx = 1
+        if ollama_models:
+            lines.append("  Modele lokalne (Ollama):")
+            for name, _ in ollama_models:
+                marker = "  [domyślny]" if name == default_name else ""
+                lines.append(f"    {idx}. {name}{marker}")
+                idx += 1
+        if api_models:
+            lines.append("  Modele zewnętrzne (API):")
+            for name, source in api_models:
+                marker = "  [domyślny]" if name == default_name else ""
+                lines.append(f"    {idx}. ☁ {name}  [{source.upper()}]{marker}")
+                idx += 1
+        return "\n".join(lines)
+
+    def _start_model_selection_wizard(self) -> None:
+        """Begin the interactive model selection wizard on mount.
+
+        If a saved model config exists, auto-restore it and skip the wizard.
+        """
+        # --- Try to restore from previous session ---
+        saved = SessionModelConfig.load(self._model_config_path)
+        if saved and saved.polluks_model:
+            available = self._build_wizard_model_list()
+            available_names = {n for n, _s in available}
+            polluks_ok = saved.polluks_model in available_names or saved.polluks_source != "ollama"
+            kastor_ok = (
+                not saved.kastor_model
+                or saved.kastor_model in available_names
+                or saved.kastor_source != "ollama"
+            )
+            if polluks_ok:
+                self._wizard_polluks_choice = (saved.polluks_model, saved.polluks_source)
+                self._wizard_kastor_models = available
+                self._wizard_models = available
+                self._wizard_finalize(saved.kastor_model if kastor_ok else "", saved.kastor_source if kastor_ok else "ollama")
+                self._append_log(
+                    "user_model_log",
+                    "  ↻ Przywrócono konfigurację modeli z poprzedniej sesji.\n"
+                    "  Użyj /models chose <nr> aby zmienić.",
+                )
+                return
+
+        self._wizard_models = self._build_wizard_model_list()
+        if not self._wizard_models:
+            self._append_log(
+                "user_model_log",
+                "⚠ Brak dostępnych modeli LLM.\n"
+                "  Upewnij się, że Ollama działa (ollama serve) lub ustaw OPENAI_API_KEY.\n"
+                "  Po naprawieniu wpisz /models show aby odświeżyć listę.",
+            )
+            self._model_configured = True  # Unblock input
+            return
+
+        self._wizard_phase = 1
+        self._wizard_show_polluks_prompt()
+
+    def _wizard_show_polluks_prompt(self) -> None:
+        """Display (or re-display) the Polluks model selection prompt."""
+        header = "╭─ Konfiguracja modeli LLM ─────────────────────────────────╮"
+        footer = "╰───────────────────────────────────────────────────────────╯"
+        body = self._format_wizard_model_list(self._wizard_models)
+        self._append_log(
+            "user_model_log",
+            f"\n{header}\n"
+            f"  Do poprawnej pracy systemu wybierz model wykonawczy\n"
+            f"  (agent Polluks).\n\n"
+            f"  Oto lista dostępnych modeli:\n\n"
+            f"{body}\n\n"
+            f"  Wpisz numer modelu (np. 1):\n"
+            f"  💡 Komendy /help, /cls dostępne w każdym momencie.\n"
+            f"{footer}",
+        )
+
+    def _wizard_show_kastor_prompt(self, default_name: str = "") -> None:
+        """Display (or re-display) the Kastor model selection prompt."""
+        header = "╭─ Model nadzorcy (Kastor) ─────────────────────────────────╮"
+        footer = "╰───────────────────────────────────────────────────────────╯"
+        body = self._format_wizard_model_list(
+            self._wizard_kastor_models, default_name=default_name
+        )
+        self._append_log(
+            "user_model_log",
+            f"\n{header}\n"
+            f"  Wybierz model nadzorcy (agent Kastor).\n\n"
+            f"  Oto lista dostępnych modeli:\n\n"
+            f"{body}\n\n"
+            f"  Enter = domyślny, lub wpisz numer:\n"
+            f"  💡 Komendy /help, /cls dostępne w każdym momencie.\n"
+            f"{footer}",
+        )
+
+    def _wizard_redisplay_prompt(self) -> None:
+        """Re-show the current wizard step after a / command."""
+        if self._wizard_phase == 1:
+            self._wizard_show_polluks_prompt()
+        elif self._wizard_phase == 2:
+            default_kastor = self._wizard_get_default_kastor()
+            self._wizard_show_kastor_prompt(default_kastor)
+
+    def _wizard_get_default_kastor(self) -> str:
+        """Return the default Kastor model name for the wizard prompt."""
+        default_kastor = ""
+        settings = self._settings
+        if settings is not None:
+            default_kastor = settings.supervisor_model or ""
+        if not default_kastor and self._wizard_kastor_models:
+            default_kastor = self._wizard_kastor_models[0][0]
+        return default_kastor
+
+    def _wizard_handle_input(self, text: str) -> bool:
+        """Process wizard-phase input. Return True if consumed."""
+        if self._wizard_phase == 0:
+            return False
+
+        if self._wizard_phase == 1:
+            return self._wizard_handle_polluks_choice(text)
+        if self._wizard_phase == 2:
+            return self._wizard_handle_kastor_choice(text)
+        return False
+
+    def _wizard_handle_polluks_choice(self, text: str) -> bool:
+        """Phase 1: user picks the executor (Polluks) model."""
+        try:
+            idx = int(text.strip())
+        except ValueError:
+            total = len(self._wizard_models)
+            self._append_log(
+                "user_model_log",
+                f"Oczekiwany numer modelu z listy (1..{total}).\n"
+                "Wpisz numer lub /help aby zobaczyć dostępne komendy.",
+            )
+            return True
+
+        if idx < 1 or idx > len(self._wizard_models):
+            self._append_log(
+                "user_model_log",
+                f"Nieprawidłowy numer. Dostępny zakres: 1..{len(self._wizard_models)}.",
+            )
+            return True
+
+        name, source = self._wizard_models[idx - 1]
+        self._wizard_polluks_choice = (name, source)
+        self._append_log("user_model_log", f"  → Polluks: {name} ({source})")
+
+        # Move to phase 2: Kastor model
+        self._wizard_phase = 2
+        self._wizard_kastor_models = self._build_wizard_model_list()
+        default_kastor = self._wizard_get_default_kastor()
+        self._wizard_show_kastor_prompt(default_kastor)
+        return True
+
+    def _wizard_handle_kastor_choice(self, text: str) -> bool:
+        """Phase 2: user picks the supervisor (Kastor) model or presses Enter for default."""
+        stripped = text.strip()
+
+        # Default selection (empty input)
+        if stripped == "":
+            kastor_name = ""
+            kastor_source = "ollama"
+            settings = self._settings
+            if settings is not None and settings.supervisor_model:
+                kastor_name = settings.supervisor_model
+                kastor_source = "ollama"
+            elif self._wizard_kastor_models:
+                kastor_name = self._wizard_kastor_models[0][0]
+                kastor_source = self._wizard_kastor_models[0][1]
+        else:
+            try:
+                idx = int(stripped)
+            except ValueError:
+                total = len(self._wizard_kastor_models)
+                self._append_log(
+                    "user_model_log",
+                    f"Oczekiwany numer modelu z listy (1..{total}) lub Enter dla domyślnego.\n"
+                    "Wpisz numer lub /help aby zobaczyć dostępne komendy.",
+                )
+                return True
+            if idx < 1 or idx > len(self._wizard_kastor_models):
+                self._append_log(
+                    "user_model_log",
+                    f"Nieprawidłowy numer. Dostępny zakres: 1..{len(self._wizard_kastor_models)}.",
+                )
+                return True
+            kastor_name, kastor_source = self._wizard_kastor_models[idx - 1]
+
+        self._append_log("user_model_log", f"  → Kastor: {kastor_name} ({kastor_source})")
+        self._wizard_finalize(kastor_name, kastor_source)
+        return True
+
+    def _wizard_finalize(self, kastor_name: str, kastor_source: str) -> None:
+        """Apply wizard selections and unblock the UI."""
+        polluks_name, polluks_source = self._wizard_polluks_choice
+        errors: list[str] = []
+
+        # --- Apply Polluks model ---
+        if polluks_source == "ollama":
+            ok, _prev = _set_executor_model(self._chat_service, polluks_name)
+            if not ok:
+                errors.append(f"Nie udało się ustawić modelu Polluksa: {polluks_name}")
+        else:
+            # OpenAI model for Polluks
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            if not api_key:
+                settings = self._settings
+                if settings is not None:
+                    api_key = settings.openai_api_key
+            if not api_key:
+                errors.append(
+                    "⚠ Brak klucza API. Ustaw zmienną OPENAI_API_KEY i uruchom ponownie.\n"
+                    "  Wycofuję do pierwszego modelu lokalnego."
+                )
+                # Fallback to first local model
+                local = [n for n, s in self._wizard_models if s == "ollama"]
+                if local:
+                    _set_executor_model(self._chat_service, local[0])
+                    polluks_name = local[0]
+                    polluks_source = "ollama"
+            else:
+                base_url = "https://api.openai.com/v1"
+                timeout = 120
+                settings = self._settings
+                if settings is not None:
+                    base_url = settings.openai_base_url or base_url
+                    timeout = settings.openai_request_timeout_seconds or timeout
+
+                openai_client = OpenAIClient(
+                    api_key=api_key,
+                    model=polluks_name,
+                    base_url=base_url,
+                    io_logger=getattr(self._chat_service.ollama_client, "io_logger", None),
+                    activity_logger=self._activity_logger,
+                    client_role="executor",
+                    request_timeout_seconds=timeout,
+                    usage_tracker=self._usage_tracker,
+                )
+                # Validate API key
+                try:
+                    reachable = openai_client.ping()
+                except Exception:
+                    reachable = False
+
+                if reachable:
+                    self._chat_service.ollama_client = openai_client
+                    self._append_log(
+                        "user_model_log",
+                        f"  ☁ Klucz API: {mask_api_key(api_key)} — weryfikacja ✓",
+                    )
+                else:
+                    errors.append(
+                        f"⚠ Nie udało się połączyć z OpenAI ({mask_api_key(api_key)}). "
+                        "Sprawdź klucz i połączenie sieciowe."
+                    )
+                    local = [n for n, s in self._wizard_models if s == "ollama"]
+                    if local:
+                        _set_executor_model(self._chat_service, local[0])
+                        polluks_name = local[0]
+                        polluks_source = "ollama"
+
+        # --- Apply Kastor model ---
+        supervisor = self._chat_service.supervisor_service
+        if supervisor is not None and kastor_name:
+            if kastor_source == "ollama":
+                try:
+                    supervisor.ollama_client = replace(
+                        cast(Any, supervisor.ollama_client), model=kastor_name
+                    )
+                except Exception:
+                    try:
+                        supervisor.ollama_client.model = kastor_name  # type: ignore[attr-defined]
+                    except Exception:
+                        errors.append(f"Nie udało się ustawić modelu Kastora: {kastor_name}")
+            else:
+                # OpenAI for Kastor
+                api_key = os.environ.get("OPENAI_API_KEY", "")
+                settings = self._settings
+                if not api_key and settings is not None:
+                    api_key = settings.openai_api_key
+                if api_key:
+                    base_url = "https://api.openai.com/v1"
+                    timeout = 120
+                    if settings is not None:
+                        base_url = settings.openai_base_url or base_url
+                        timeout = settings.openai_request_timeout_seconds or timeout
+
+                    kastor_openai = OpenAIClient(
+                        api_key=api_key,
+                        model=kastor_name,
+                        base_url=base_url,
+                        io_logger=getattr(supervisor.ollama_client, "io_logger", None),
+                        activity_logger=self._activity_logger,
+                        client_role="supervisor",
+                        request_timeout_seconds=timeout,
+                        usage_tracker=self._usage_tracker,
+                    )
+                    supervisor.ollama_client = cast(Any, kastor_openai)
+                else:
+                    errors.append(
+                        "⚠ Brak klucza API dla modelu Kastora. "
+                        "Kastor zachowa domyślny model lokalny."
+                    )
+
+        # --- Show errors ---
+        for msg in errors:
+            self._append_log("user_model_log", msg)
+
+        # --- Configuration summary ---
+        polluks_label = polluks_name
+        if polluks_source != "ollama":
+            polluks_label = f"☁ {polluks_name} [{polluks_source.upper()}]"
+        kastor_label = kastor_name or "(wyłączony)"
+        if kastor_source != "ollama" and kastor_name:
+            kastor_label = f"☁ {kastor_name} [{kastor_source.upper()}]"
+
+        summary = (
+            "\n╭─ Konfiguracja sesji ──────────────────────────────────────╮\n"
+            f"  Polluks: {polluks_label}\n"
+            f"  Kastor:  {kastor_label}\n"
+            "╰──────────────────────────────────────────────────────────╯\n"
+            "\nGotowe. Wpisz polecenie lub /help."
+        )
+        self._append_log("user_model_log", summary)
+
+        # --- Activate API usage bar if API model ---
+        if polluks_source != "ollama" or (kastor_source != "ollama" and kastor_name):
+            self._show_api_usage_bar()
+
+        # --- Persist model assignment for next session ---
+        SessionModelConfig(
+            polluks_model=polluks_name,
+            polluks_source=polluks_source,
+            kastor_model=kastor_name,
+            kastor_source=kastor_source,
+        ).save(self._model_config_path)
+
+        # --- Unblock ---
+        self._wizard_phase = 0
+        self._model_configured = True
+        self._log_activity(
+            action="wizard.completed",
+            intent="Użytkownik wybrał modele w wizardzie startowym.",
+            details={
+                "polluks_model": polluks_name,
+                "polluks_source": polluks_source,
+                "kastor_model": kastor_name,
+                "kastor_source": kastor_source,
+            },
+        )
+
+    def _persist_model_config(self) -> None:
+        """Snapshot current model assignments and save to disk."""
+        polluks_model = str(getattr(self._chat_service.ollama_client, "model", ""))
+        polluks_api = getattr(self._chat_service.ollama_client, "_is_api_client", False)
+        polluks_source = "openai" if polluks_api else "ollama"
+
+        kastor_model = ""
+        kastor_source = "ollama"
+        supervisor = self._chat_service.supervisor_service
+        if supervisor is not None:
+            kastor_model = str(getattr(supervisor.ollama_client, "model", ""))
+            kastor_api = getattr(supervisor.ollama_client, "_is_api_client", False)
+            kastor_source = "openai" if kastor_api else "ollama"
+
+        SessionModelConfig(
+            polluks_model=polluks_model,
+            polluks_source=polluks_source,
+            kastor_model=kastor_model,
+            kastor_source=kastor_source,
+        ).save(self._model_config_path)
+
+    def _show_api_usage_bar(self) -> None:
+        """Make the API usage status bar visible and start refresh timer."""
+        try:
+            bar = self.query_one("#api_usage_bar", Static)
+            bar.styles.display = "block"
+            self.set_interval(2.0, self._refresh_api_usage_bar)
+        except Exception:
+            pass
+
+    def _refresh_api_usage_bar(self) -> None:
+        """Update the API usage status bar with current token/cost info."""
+        try:
+            bar = self.query_one("#api_usage_bar", Static)
+        except Exception:
+            return
+        line = self._usage_tracker.format_status_line()
+        if line:
+            bar.update(line)
 
     def on_mount(self) -> None:
         self._set_actor_state("router", "ACTIVE", "Inicjalizacja panelu statusu")
 
-        # --- Auto-select default executor model (silent) ---
-        _ensure_default_executor_model(self._chat_service)
-
         # --- Landing page ---
         banner = _build_landing_banner(mode="textual")
         self._append_log("user_model_log", banner)
+
+        # --- Start model selection wizard ---
+        self._start_model_selection_wizard()
 
         self._append_log("executor_log", "Oczekiwanie na odpowiedź modelu wykonawczego.")
         if self._chat_service.supervisor_service is None:
@@ -1301,8 +2091,27 @@ class _AmiagiTextualApp(App[None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         event.input.value = ""
+
+        # --- Record in history (all non-empty inputs) ---
+        if text:
+            self._input_history.add(text)
+
+        # --- Wizard input intercept ---
+        if self._wizard_phase > 0 and not text.startswith("/"):
+            # Phase 2 (Kastor) allows empty input for default
+            if self._wizard_phase == 2 and text == "":
+                self._wizard_handle_input("")
+                return
+            if not text:
+                return
+            if self._wizard_handle_input(text):
+                return
+
         if not text:
             return
+
+        # --- During wizard, handle / commands and then re-show the prompt ---
+        _wizard_active = self._wizard_phase > 0
 
         if self._watchdog_suspended_until_user_input:
             self._watchdog_suspended_until_user_input = False
@@ -1320,6 +2129,9 @@ class _AmiagiTextualApp(App[None]):
                 self._append_log("user_model_log", message)
             if command_outcome.should_exit:
                 self.exit()
+                return
+            if _wizard_active:
+                self._wizard_redisplay_prompt()
             return
 
         cli_like_outcome = self._handle_cli_like_commands(text)
@@ -1328,6 +2140,9 @@ class _AmiagiTextualApp(App[None]):
                 self._append_log("user_model_log", message)
             if cli_like_outcome.should_exit:
                 self.exit()
+                return
+            if _wizard_active:
+                self._wizard_redisplay_prompt()
             return
 
         if self._pending_user_decision:
@@ -1592,12 +2407,29 @@ class _AmiagiTextualApp(App[None]):
 
         # --- Model asks user a question → pause plan & suspend watchdog ---
         if not interrupt_mode and self._model_response_awaits_user(answer):
-            self._set_plan_paused(paused=True, reason="model_awaits_user", source="process_user_turn")
-            self._pending_user_decision = True
-            self._pending_decision_identity_query = False
-            self._watchdog_suspended_until_user_input = True
-            self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika")
-            self._record_collaboration_signal("model_awaits_user", {"excerpt": answer[-200:]})
+            # Check for premature completion: plan is "completed" but task isn't truly done
+            if self._is_premature_plan_completion(answer):
+                self._set_actor_state("router", "REDIRECT", "Przedwczesne zakończenie planu — Kastor przekierowuje Polluksa")
+                redirected = self._redirect_premature_completion(text, answer)
+                if redirected is not None:
+                    answer = redirected
+                    self._passive_turns = 0
+                    self._last_progress_monotonic = time.monotonic()
+                else:
+                    # Redirect failed — fall through to normal pause
+                    self._set_plan_paused(paused=True, reason="model_awaits_user", source="process_user_turn")
+                    self._pending_user_decision = True
+                    self._pending_decision_identity_query = False
+                    self._watchdog_suspended_until_user_input = True
+                    self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika")
+                    self._record_collaboration_signal("model_awaits_user", {"excerpt": answer[-200:]})
+            else:
+                self._set_plan_paused(paused=True, reason="model_awaits_user", source="process_user_turn")
+                self._pending_user_decision = True
+                self._pending_decision_identity_query = False
+                self._watchdog_suspended_until_user_input = True
+                self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika")
+                self._record_collaboration_signal("model_awaits_user", {"excerpt": answer[-200:]})
 
         display_answer = _format_user_facing_answer(answer)
 
@@ -1612,17 +2444,21 @@ class _AmiagiTextualApp(App[None]):
             for block in blocks:
                 target_panels = panels_for_target(block.target, panel_map)
                 label = f"[{block.sender} -> {block.target}]" if block.sender else ""
-                for panel_id in target_panels:
-                    self._append_log(panel_id, f"{label} {block.content}" if label else block.content)
-                if "user_model_log" in target_panels:
-                    routed_to_user_panel = True
 
-                # Sponsor readability check
-                if block.target in ("Sponsor", "all") and not is_sponsor_readable(block.content):
-                    self._append_log(
-                        "supervisor_log",
-                        f"[Koordynator] Uwaga: treść kierowana do Sponsora zawiera surowy JSON/markup — proszę przeformułuj.",
-                    )
+                # --- Sanitize content for Sponsor panel ---
+                sponsor_targeted = "user_model_log" in target_panels
+                block_content = block.content
+                if sponsor_targeted:
+                    sanitized = self._sanitize_block_for_sponsor(block_content, label)
+                    if sanitized is None:
+                        # Nothing readable — already redirected to executor_log
+                        continue
+                    block_content = sanitized
+
+                for panel_id in target_panels:
+                    self._append_log(panel_id, f"{label} {block_content}" if label else block_content)
+                if sponsor_targeted:
+                    routed_to_user_panel = True
 
                 # Consultation: Polluks -> Kastor (with round limit)
                 max_consult = getattr(self._comm_rules, 'consultation_max_rounds', 1)
@@ -1817,12 +2653,28 @@ class _AmiagiTextualApp(App[None]):
 
         # --- Model asks user a question after watchdog → pause & suspend ---
         if self._model_response_awaits_user(answer):
-            self._set_plan_paused(paused=True, reason="model_awaits_user", source="watchdog")
-            self._pending_user_decision = True
-            self._pending_decision_identity_query = False
-            self._watchdog_suspended_until_user_input = True
-            self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika po watchdog")
-            self._record_collaboration_signal("model_awaits_user", {"source": "watchdog", "excerpt": answer[-200:]})
+            if self._is_premature_plan_completion(answer):
+                redirected = self._redirect_premature_completion(self._last_user_message, answer)
+                if redirected is not None:
+                    answer = redirected
+                    self._passive_turns = 0
+                    self._last_progress_monotonic = time.monotonic()
+                    answer = self._resolve_tool_calls(answer)
+                    self._last_model_answer = answer
+                else:
+                    self._set_plan_paused(paused=True, reason="model_awaits_user", source="watchdog")
+                    self._pending_user_decision = True
+                    self._pending_decision_identity_query = False
+                    self._watchdog_suspended_until_user_input = True
+                    self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika po watchdog")
+                    self._record_collaboration_signal("model_awaits_user", {"source": "watchdog", "excerpt": answer[-200:]})
+            else:
+                self._set_plan_paused(paused=True, reason="model_awaits_user", source="watchdog")
+                self._pending_user_decision = True
+                self._pending_decision_identity_query = False
+                self._watchdog_suspended_until_user_input = True
+                self._set_actor_state("router", "PAUSED", "Model oczekuje na decyzję użytkownika po watchdog")
+                self._record_collaboration_signal("model_awaits_user", {"source": "watchdog", "excerpt": answer[-200:]})
 
         display_answer = _format_user_facing_answer(answer)
         self._append_log("user_model_log", f"Model(auto): {display_answer}")
@@ -1918,8 +2770,18 @@ class _AmiagiTextualApp(App[None]):
                         poll_extra = [p for p in poll_target_panels if p != "supervisor_log"]
                         if poll_extra:
                             poll_label = f"[{poll_block.sender} -> {poll_block.target}]" if poll_block.sender else ""
+                            poll_content = poll_block.content
+                            # Sanitize tool_call content before sending to Sponsor panel
+                            if "user_model_log" in poll_extra:
+                                sanitized = self._sanitize_block_for_sponsor(poll_content, poll_label)
+                                if sanitized is None:
+                                    poll_extra = [p for p in poll_extra if p != "user_model_log"]
+                                    if not poll_extra:
+                                        continue
+                                else:
+                                    poll_content = sanitized
                             for poll_panel_id in poll_extra:
-                                self._append_log(poll_panel_id, f"{poll_label} {poll_block.content}" if poll_label else poll_block.content)
+                                self._append_log(poll_panel_id, f"{poll_label} {poll_content}" if poll_label else poll_content)
 
             status = str(payload.get("status", "")).strip()
             reason = str(payload.get("reason_code", "")).strip()
@@ -2047,11 +2909,14 @@ class _AmiagiTextualApp(App[None]):
             else:
                 corrective_instruction += " Odpowiedź musi uruchamiać realne działanie narzędziowe."
 
+            available_tools_list = sorted(self._runtime_supported_tool_names())
             corrective_prompt = (
                 "[RUNTIME_SUPERVISION_CONTEXT]\n"
                 + json.dumps(supervision_context, ensure_ascii=False)
                 + "\n[/RUNTIME_SUPERVISION_CONTEXT]\n"
                 + corrective_instruction
+                + "\nDOSTĘPNE NARZĘDZIA: " + ", ".join(available_tools_list) + "."
+                + "\nUżywaj WYŁĄCZNIE narzędzi z powyższej listy. Nie używaj nazw, których tu nie ma."
                 + "\nPolecenie użytkownika: "
                 + user_message
             )
@@ -2143,20 +3008,35 @@ class _AmiagiTextualApp(App[None]):
                 return {"ok": False, "error": "permission_denied:disk.read"}
             path = self._resolve_model_path(str(args.get("path", "")))
             max_chars = int(args.get("max_chars", 12000))
+            offset = max(0, int(args.get("offset", 0)))
             if not path.exists() or not path.is_file():
                 return {"ok": False, "error": "file_not_found", "path": str(path)}
             try:
                 content = path.read_text(encoding="utf-8")
             except Exception as error:
                 return {"ok": False, "error": str(error), "path": str(path)}
-            return {
+            total_chars = len(content)
+            chunk = content[offset : offset + max_chars]
+            chunk_end = offset + len(chunk)
+            has_more = chunk_end < total_chars
+            read_result: dict = {
                 "ok": True,
                 "tool": "read_file",
                 "path": str(path),
-                "content": content[:max_chars],
-                "truncated": len(content) > max_chars,
-                "total_chars": len(content),
+                "content": chunk,
+                "total_chars": total_chars,
+                "offset": offset,
+                "chunk_end": chunk_end,
+                "has_more": has_more,
             }
+            if has_more:
+                read_result["next_offset"] = chunk_end
+                read_result["hint"] = (
+                    "Plik jest dłuższy niż jeden chunk. "
+                    "Użyj read_file z offset=" + str(chunk_end) + " aby kontynuować. "
+                    "Zalecenie: rób notatki w notes/ z kluczowymi informacjami z każdego chunka."
+                )
+            return read_result
 
         if tool == "list_dir":
             if not self._ensure_resource("disk.read", "Tool list_dir wymaga odczytu katalogu"):
@@ -2285,13 +3165,150 @@ class _AmiagiTextualApp(App[None]):
                     content = response.read().decode(charset, errors="replace")
             except (HTTPError, URLError, TimeoutError) as error:
                 return {"ok": False, "error": str(error), "url": url}
-            return {
+            total_chars = len(content)
+            offset = max(0, int(args.get("offset", 0)))
+            chunk = content[offset : offset + max_chars]
+            chunk_end = offset + len(chunk)
+            has_more = chunk_end < total_chars
+            result_payload: dict = {
                 "ok": True,
                 "tool": "fetch_web",
                 "url": url,
-                "content": content[:max_chars],
-                "truncated": len(content) > max_chars,
-                "total_chars": len(content),
+                "content": chunk,
+                "total_chars": total_chars,
+                "offset": offset,
+                "chunk_end": chunk_end,
+                "has_more": has_more,
+            }
+            if has_more:
+                result_payload["next_offset"] = chunk_end
+                result_payload["hint"] = (
+                    "Treść strony jest dłuższa niż jeden chunk. "
+                    "Użyj fetch_web z tym samym url i offset=" + str(chunk_end) + " aby kontynuować. "
+                    "Zalecenie: rób notatki w notes/ z kluczowymi informacjami z każdego chunka."
+                )
+            return result_payload
+
+        if tool == "download_file":
+            if not self._ensure_resource("network.internet", "Tool download_file wymaga dostępu do internetu"):
+                return {"ok": False, "error": "permission_denied:network.internet"}
+            if not self._ensure_resource("disk.write", "Tool download_file wymaga zapisu pliku"):
+                return {"ok": False, "error": "permission_denied:disk.write"}
+            url = str(args.get("url", "")).strip()
+            parsed = urlparse(url)
+            if parsed.scheme not in {"http", "https"}:
+                return {"ok": False, "error": "invalid_url_scheme", "url": url}
+            max_size_mb = max(1, min(200, int(args.get("max_size_mb", 50))))
+            max_bytes = max_size_mb * 1024 * 1024
+            raw_output = str(args.get("output_path", "")).strip()
+            if raw_output:
+                output_path = self._resolve_model_path(raw_output)
+            else:
+                downloads_dir = self._work_dir / "downloads"
+                filename = Path(parsed.path).name or "download"
+                output_path = downloads_dir / filename
+            if not _is_path_within_work_dir(output_path, self._work_dir):
+                return {"ok": False, "error": "path_outside_work_dir", "path": str(output_path)}
+            try:
+                request = Request(url=url, headers={"User-Agent": "amiagi/0.1"}, method="GET")
+                with urlopen(request, timeout=60) as response:
+                    content_type = response.headers.get("Content-Type", "")
+                    data = response.read(max_bytes + 1)
+                    if len(data) > max_bytes:
+                        return {"ok": False, "error": "file_too_large", "max_size_mb": max_size_mb, "url": url}
+            except (HTTPError, URLError, TimeoutError) as error:
+                return {"ok": False, "error": str(error), "url": url}
+            try:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(data)
+            except Exception as error:
+                return {"ok": False, "error": str(error), "path": str(output_path)}
+            return {
+                "ok": True,
+                "tool": "download_file",
+                "url": url,
+                "path": str(output_path),
+                "size_bytes": len(data),
+                "content_type": content_type,
+            }
+
+        if tool == "convert_pdf_to_markdown":
+            if not self._ensure_resource("disk.read", "Tool convert_pdf_to_markdown wymaga odczytu pliku"):
+                return {"ok": False, "error": "permission_denied:disk.read"}
+            if not self._ensure_resource("disk.write", "Tool convert_pdf_to_markdown wymaga zapisu pliku"):
+                return {"ok": False, "error": "permission_denied:disk.write"}
+            src_path = self._resolve_model_path(str(args.get("path", "")))
+            if not src_path.exists() or not src_path.is_file():
+                return {"ok": False, "error": "file_not_found", "path": str(src_path)}
+            raw_out = str(args.get("output_path", "")).strip()
+            if raw_out:
+                out_path = self._resolve_model_path(raw_out)
+            else:
+                converted_dir = self._work_dir / "converted"
+                out_path = converted_dir / (src_path.stem + ".md")
+            if not _is_path_within_work_dir(out_path, self._work_dir):
+                return {"ok": False, "error": "path_outside_work_dir", "path": str(out_path)}
+            md_content = ""
+            method_used = ""
+            # Strategy 1: markitdown CLI
+            try:
+                import subprocess as _sp
+                proc = _sp.run(
+                    ["markitdown", str(src_path)],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if proc.returncode == 0 and proc.stdout.strip():
+                    md_content = proc.stdout
+                    method_used = "markitdown"
+            except Exception:
+                pass
+            # Strategy 2: PyPDF2 page-by-page text extraction
+            if not md_content:
+                try:
+                    from pypdf import PdfReader as _PdfReader
+                    reader = _PdfReader(str(src_path))
+                    pages_text: list[str] = []
+                    for page_num, page in enumerate(reader.pages, 1):
+                        text = page.extract_text() or ""
+                        if text.strip():
+                            pages_text.append(f"<!-- page {page_num} -->\n{text}")
+                    if pages_text:
+                        md_content = "\n\n---\n\n".join(pages_text)
+                        method_used = "PyPDF2"
+                except Exception:
+                    pass
+            # Strategy 3: pdftotext CLI
+            if not md_content:
+                try:
+                    import subprocess as _sp
+                    proc = _sp.run(
+                        ["pdftotext", "-layout", str(src_path), "-"],
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    if proc.returncode == 0 and proc.stdout.strip():
+                        md_content = proc.stdout
+                        method_used = "pdftotext"
+                except Exception:
+                    pass
+            if not md_content:
+                return {"ok": False, "error": "conversion_failed", "path": str(src_path),
+                        "hint": "Nie udało się wydobyć tekstu. Plik może być zeskanowany — spróbuj OCR (glm-ocr via Ollama)."}
+            try:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(md_content, encoding="utf-8")
+            except Exception as error:
+                return {"ok": False, "error": str(error), "path": str(out_path)}
+            return {
+                "ok": True,
+                "tool": "convert_pdf_to_markdown",
+                "source_path": str(src_path),
+                "output_path": str(out_path),
+                "chars": len(md_content),
+                "method": method_used,
+                "hint": (
+                    "Plik skonwertowany. Użyj read_file z output_path aby przeczytać treść. "
+                    "Jeśli plik jest duży, użyj offset do przeglądania chunkami."
+                ),
             }
 
         if tool == "search_web":
@@ -2380,6 +3397,9 @@ class _AmiagiTextualApp(App[None]):
         iteration = 0
         unknown_tool_correction_attempts: dict[str, int] = {}
         _MAX_CORRECTIONS_PER_TOOL = 2
+        # --- Loop-detection: track consecutive identical tool invocations ---
+        _tool_call_history: list[str] = []
+        _MAX_SAME_TOOL_CONSECUTIVE = 3
         while iteration < max_steps:
             iteration += 1
             tool_calls = parse_tool_calls(current)
@@ -2419,6 +3439,44 @@ class _AmiagiTextualApp(App[None]):
                         "result": result,
                     }
                 )
+
+            if unknown_tools:
+                # --- Loop detection: check for repeated tool signatures ---
+                pass  # handled below in the unknown_tools block
+            else:
+                # Track tool call signatures for loop detection
+                sig = "|".join(
+                    f"{r['tool']}:{json.dumps(r.get('result', {}).get('ok', ''), ensure_ascii=False)}"
+                    for r in aggregated_results
+                )
+                _tool_call_history.append(sig)
+                if len(_tool_call_history) >= _MAX_SAME_TOOL_CONSECUTIVE:
+                    recent = _tool_call_history[-_MAX_SAME_TOOL_CONSECUTIVE:]
+                    if len(set(recent)) == 1:
+                        self._append_log(
+                            "user_model_log",
+                            (
+                                f"Ostrzeżenie runtime: wykryto pętlę — to samo narzędzie ({tool_calls[0].tool}) "
+                                f"wywołane {_MAX_SAME_TOOL_CONSECUTIVE} razy z identycznym wynikiem. "
+                                "Przerywam pętlę tool_flow."
+                            ),
+                        )
+                        self._log_activity(
+                            action="tool_flow.loop_detected",
+                            intent="Przerwanie pętli tool_flow po wykryciu powtarzających się wywołań.",
+                            details={
+                                "tool": tool_calls[0].tool,
+                                "consecutive_repeats": _MAX_SAME_TOOL_CONSECUTIVE,
+                                "iteration": iteration,
+                            },
+                        )
+                        self._set_actor_state("router", "STALLED", "Pętla tool_flow — przerywam")
+                        # Return a text summary instead of continuing the loop
+                        tools_used = ", ".join(r["tool"] for r in aggregated_results)
+                        return (
+                            f"Wykonano narzędzie {tools_used}, ale powstała pętla powtarzających się wywołań. "
+                            "Proszę o doprecyzowanie polecenia lub ręczne wskazanie następnego kroku."
+                        )
 
             if unknown_tools:
                 # Track per-tool correction attempts to prevent infinite loops
@@ -2523,7 +3581,8 @@ class _AmiagiTextualApp(App[None]):
 
             try:
                 self._set_actor_state("creator", "THINKING", "Polluks analizuje TOOL_RESULT")
-                current = self._ask_executor_with_router_mailbox(followup)
+                executor_answer = self._ask_executor_with_router_mailbox(followup)
+                current = executor_answer
                 if self._chat_service.supervisor_service is not None:
                     self._set_actor_state("supervisor", "REVIEWING", "Kastor ocenia odpowiedź po TOOL_RESULT")
                     supervision_result = self._chat_service.supervisor_service.refine(
@@ -2531,7 +3590,24 @@ class _AmiagiTextualApp(App[None]):
                         model_answer=current,
                         stage="tool_flow",
                     )
-                    current = supervision_result.answer
+                    # Validate: do not accept supervisor answer that introduces unsupported tools
+                    supervisor_calls = parse_tool_calls(supervision_result.answer)
+                    runtime_supported = self._runtime_supported_tool_names()
+                    has_unsupported = any(
+                        _canonical_tool_name(c.tool) not in runtime_supported
+                        for c in supervisor_calls
+                    )
+                    if has_unsupported:
+                        # Supervisor suggested an unsupported tool; keep executor's answer
+                        self._log_activity(
+                            action="supervisor.tool_flow.rejected",
+                            intent="Odrzucono odpowiedź nadzorcy z nieobsługiwanym narzędziem.",
+                            details={
+                                "rejected_tools": [c.tool for c in supervisor_calls],
+                            },
+                        )
+                    else:
+                        current = supervision_result.answer
                     self._enqueue_supervisor_message(
                         stage="tool_flow",
                         reason_code=supervision_result.reason_code,
@@ -2571,6 +3647,7 @@ def run_textual_cli(
     shell_policy_path: Path = Path("config/shell_allowlist.json"),
     router_mailbox_log_path: Path | None = None,
     activity_logger: ActivityLogger | None = None,
+    settings: Settings | None = None,
 ) -> None:
     _AmiagiTextualApp(
         chat_service=chat_service,
@@ -2579,4 +3656,5 @@ def run_textual_cli(
         shell_policy_path=shell_policy_path,
         router_mailbox_log_path=router_mailbox_log_path,
         activity_logger=activity_logger,
+        settings=settings,
     ).run()

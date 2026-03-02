@@ -65,12 +65,21 @@ def _query_nvidia_smi() -> tuple[int | None, int | None]:
 
 
 def _suggest_num_ctx(free_mb: int | None) -> int:
+    """Return a safe num_ctx based on available VRAM.
+
+    The minimum is 4096 because the system prompt for the executor
+    alone occupies ~3500-4000 tokens.  Returning 1024 or 2048 would
+    leave essentially zero room for conversation history, making the
+    model unable to act.
+    """
     if free_mb is None:
         return 4096
     if free_mb < 2048:
-        return 1024
+        return 4096  # absolute floor – system prompt needs ~4k tokens
     if free_mb < 4096:
-        return 2048
+        return 4096
     if free_mb < 8192:
-        return 3072
-    return 4096
+        return 6144
+    if free_mb < 12288:
+        return 8192
+    return 8192

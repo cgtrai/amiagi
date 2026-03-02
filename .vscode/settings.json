@@ -1,5 +1,19 @@
 {
   "python.analysis.extraPaths": [
     "src"
-  ]
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "/^cd /home/chestr/Documents/projekty/amiagi && head -1 logs/model_io_executor\\.jsonl \\| python3 -c \"\nimport sys, json\nd = json\\.loads\\(sys\\.stdin\\.readline\\(\\)\\.strip\\(\\)\\)\nprint\\(list\\(d\\.keys\\(\\)\\)\\)\n\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^cd /home/chestr/Documents/projekty/amiagi && tail -5 logs/model_io_executor\\.jsonl \\| python3 -c \"\nimport sys, json\nfor line in sys\\.stdin:\n    d = json\\.loads\\(line\\.strip\\(\\)\\)\n    event = d\\.get\\('event',''\\)\n    model_role = d\\.get\\('model_role',''\\)\n    payload = d\\.get\\('payload', \\{\\}\\)\n    if event == 'response':\n        msg = payload\\.get\\('message',\\{\\}\\)\\.get\\('content',''\\)\\[:500\\]\n        print\\(f'\\[\\{event\\}/\\{model_role\\}\\] \\{msg\\[:500\\]\\}'\\)\n    else:\n        msgs = payload\\.get\\('messages',\\[\\]\\)\n        if msgs:\n            last = msgs\\[-1\\]\n            print\\(f'\\[\\{event\\}/\\{model_role\\}\\] last_msg_role=\\{last\\.get\\(\\\\\"role\\\\\",\\\\\"\\\\\"\\)\\} content=\\{last\\.get\\(\\\\\"content\\\\\",\\\\\"\\\\\"\\)\\[:300\\]\\}'\\)\n        else:\n            print\\(f'\\[\\{event\\}/\\{model_role\\}\\] no messages'\\)\n    print\\(\\)\n\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^cd /home/chestr/Documents/projekty/amiagi && python3 -c \"\nimport json\nwith open\\('logs/model_io_executor\\.jsonl'\\) as f:\n    lines = f\\.readlines\\(\\)\n# Get last response\nfor line in reversed\\(lines\\):\n    d = json\\.loads\\(line\\.strip\\(\\)\\)\n    if d\\.get\\('event'\\) == 'model_output':\n        payload = d\\.get\\('payload', \\{\\}\\)\n        msg = payload\\.get\\('message', \\{\\}\\)\\.get\\('content', ''\\)\n        if msg\\.strip\\(\\):\n            print\\(msg\\[:2000\\]\\)\n            break\nelse:\n    # Try alternate structure\n    for line in reversed\\(lines\\):\n        d = json\\.loads\\(line\\.strip\\(\\)\\)\n        if d\\.get\\('event'\\) == 'response':\n            payload = d\\.get\\('payload', \\{\\}\\)\n            msg = payload\\.get\\('message', \\{\\}\\)\\.get\\('content', ''\\)\n            if msg\\.strip\\(\\):\n                print\\(msg\\[:2000\\]\\)\n                break\n\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
 }

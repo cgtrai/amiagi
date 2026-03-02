@@ -19,6 +19,7 @@ from amiagi.application.communication_protocol import (
     load_communication_rules,
     panels_for_target,
     parse_addressed_blocks,
+    strip_tool_call_blocks,
 )
 from amiagi.domain.models import Message
 
@@ -345,8 +346,16 @@ class TestSupervisorServiceComm:
         from amiagi.application.supervisor_service import SupervisorService
 
         class FakeClient:
+            model = "fake-model"
+
             def chat(self, messages, system_prompt, num_ctx=None):
                 return '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}'
+
+            def ping(self) -> bool:
+                return True
+
+            def list_models(self) -> list[str]:
+                return ["fake-model"]
 
         service = SupervisorService(ollama_client=FakeClient())
         prompt = service._full_system_prompt()
@@ -356,8 +365,16 @@ class TestSupervisorServiceComm:
         from amiagi.application.supervisor_service import SupervisorService
 
         class FakeClient:
+            model = "fake-model"
+
             def chat(self, messages, system_prompt, num_ctx=None):
                 return '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}'
+
+            def ping(self) -> bool:
+                return True
+
+            def list_models(self) -> list[str]:
+                return ["fake-model"]
 
         service = SupervisorService(ollama_client=FakeClient())
         result = service.refine(
@@ -372,11 +389,19 @@ class TestSupervisorServiceComm:
         from amiagi.application.supervisor_service import SupervisorService
 
         class FakeClient:
+            model = "fake-model"
+
             def chat(self, messages, system_prompt, num_ctx=None):
                 # Verify the review prompt contains rule 14
                 content = messages[0]["content"] if messages else ""
                 assert "14)" in content or "nagłówka" in content or True
                 return '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":""}'
+
+            def ping(self) -> bool:
+                return True
+
+            def list_models(self) -> list[str]:
+                return ["fake-model"]
 
         service = SupervisorService(ollama_client=FakeClient())
         # Trigger _build_review_prompt through refine
@@ -486,3 +511,64 @@ class TestPanelRoutingDedup:
         assert blocks[0].sender == ""
         assert blocks[0].target == ""
         assert blocks[0].content == "prefix text"
+
+
+# ---------------------------------------------------------------------------
+# strip_tool_call_blocks
+# ---------------------------------------------------------------------------
+
+class TestStripToolCallBlocks:
+    """Unit tests for strip_tool_call_blocks – Sponsor panel sanitisation."""
+
+    def test_removes_fenced_tool_call(self) -> None:
+        text = (
+            "Oto raport:\n"
+            "```tool_call\n"
+            '{"tool": "read_file", "args": {"path": "x.py"}}\n'
+            "```\n"
+            "Kontynuuję pracę."
+        )
+        result = strip_tool_call_blocks(text)
+        assert "tool_call" not in result
+        assert "read_file" not in result
+        assert "Oto raport:" in result
+        assert "Kontynuuję pracę." in result
+
+    def test_removes_fenced_json_block(self) -> None:
+        text = (
+            "Informacja:\n"
+            "```json\n"
+            '{"tool": "list_dir", "args": {"path": "/tmp"}}\n'
+            "```\n"
+            "Gotowe."
+        )
+        result = strip_tool_call_blocks(text)
+        assert "list_dir" not in result
+        assert "Informacja:" in result
+        assert "Gotowe." in result
+
+    def test_removes_bare_tool_json(self) -> None:
+        text = 'Pracuję. {"tool": "run_shell", "args": {"command": "ls"}} Dalej.'
+        result = strip_tool_call_blocks(text)
+        assert "run_shell" not in result
+        assert "Pracuję." in result
+        assert "Dalej." in result
+
+    def test_preserves_clean_text(self) -> None:
+        text = "Wszystko gotowe. Raport przesłany do Sponsora."
+        assert strip_tool_call_blocks(text) == text
+
+    def test_returns_empty_for_only_tool_call(self) -> None:
+        text = (
+            "```tool_call\n"
+            '{"tool": "read_file", "args": {"path": "a.py"}}\n'
+            "```"
+        )
+        assert strip_tool_call_blocks(text) == ""
+
+    def test_collapses_blank_lines(self) -> None:
+        text = "Akapit 1.\n\n\n\n\nAkapit 2."
+        result = strip_tool_call_blocks(text)
+        assert "\n\n\n" not in result
+        assert "Akapit 1." in result
+        assert "Akapit 2." in result

@@ -222,6 +222,29 @@ def is_sponsor_readable(content: str) -> bool:
     return True
 
 
+_TOOL_CALL_BLOCK_RE = re.compile(
+    r"```(?:tool_call|json)\s*\n.*?```",
+    re.DOTALL,
+)
+_BARE_TOOL_JSON_RE = re.compile(
+    r'\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"args"\s*:\s*\{.*?\}\s*(?:,\s*"intent"\s*:\s*"[^"]*"\s*)?\}',
+    re.DOTALL,
+)
+
+
+def strip_tool_call_blocks(text: str) -> str:
+    """Remove tool_call fenced blocks and bare tool JSON from *text*.
+
+    Returns the remaining human-readable portion, stripped and with
+    collapsed blank lines.
+    """
+    cleaned = _TOOL_CALL_BLOCK_RE.sub("", text)
+    cleaned = _BARE_TOOL_JSON_RE.sub("", cleaned)
+    # Collapse multiple blank lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 # ---------------------------------------------------------------------------
 # Panel routing helper
 # ---------------------------------------------------------------------------

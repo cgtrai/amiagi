@@ -223,3 +223,53 @@ def test_autonomy_trigger_includes_existing_intro_path(tmp_path: Path, monkeypat
     augmented = service._augment_user_message("działaj")
 
     assert str(intro.resolve()) in augmented
+
+
+# ---------------------------------------------------------------------------
+# extract_sponsor_task
+# ---------------------------------------------------------------------------
+
+
+def test_extract_sponsor_task_returns_section_content(tmp_path: Path) -> None:
+    """extract_sponsor_task extracts the '## Twoje zadanie' section."""
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, ollama_client=client)
+
+    body = (
+        "# Wprowadzenie\n"
+        "Witaj Polluksie.\n\n"
+        "## Twoje zadanie\n"
+        "Zgromadź informacje o AI. Po zakończeniu wyślij 'Zakończyłem zadanie'.\n"
+    )
+    repository.add_memory(kind="discussion_context", content=body, source="imported_dialogue")
+
+    result = service.extract_sponsor_task()
+
+    assert "Zgromadź informacje o AI" in result
+    assert "Zakończyłem zadanie" in result
+
+
+def test_extract_sponsor_task_fallback_when_no_heading(tmp_path: Path) -> None:
+    """Without '## Twoje zadanie', extract_sponsor_task falls back to last 800 chars."""
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, ollama_client=client)
+
+    body = "Zbierz dane i napisz raport."
+    repository.add_memory(kind="discussion_context", content=body, source="imported_dialogue")
+
+    result = service.extract_sponsor_task()
+
+    assert "Zbierz dane" in result
+
+
+def test_extract_sponsor_task_empty_when_no_memory(tmp_path: Path) -> None:
+    """When no discussion_context memory exists, returns empty string."""
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, ollama_client=client)
+
+    result = service.extract_sponsor_task()
+
+    assert result == ""
