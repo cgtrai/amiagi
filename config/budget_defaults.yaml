@@ -1,0 +1,17 @@
+# Budget defaults — loaded by BudgetManager at startup.
+# Limits are in USD per day.
+
+session:
+  limit_usd: 50.0
+
+agents:
+  polluks:
+    limit_usd: 10.0
+  kastor:
+    limit_usd: 10.0
+  default:
+    limit_usd: 5.0
+
+thresholds:
+  warning_pct: 80
+  blocked_pct: 100

@@ -1,0 +1,36 @@
+# Benchmark: Planning — basic scenarios
+scenarios:
+  - scenario_id: plan_project
+    prompt: "Zaplanuj projekt implementacji REST API dla systemu zarządzania zadaniami."
+    expected_keywords:
+      - plan
+      - API
+      - endpoint
+
+  - scenario_id: plan_migration
+    prompt: "Zaplanuj migrację monolitu do mikroserwisów. Jakie kroki są wymagane?"
+    expected_keywords:
+      - migracja
+      - mikroserwis
+      - krok
+
+  - scenario_id: plan_testing
+    prompt: "Zaplanuj strategię testów dla aplikacji e-commerce z frontendem React i backendem Python."
+    expected_keywords:
+      - test
+      - strategia
+      - plan
+
+  - scenario_id: plan_deployment
+    prompt: "Rozpisz plan wdrożenia aplikacji z Docker i Kubernetes."
+    expected_keywords:
+      - deployment
+      - Docker
+      - Kubernetes
+
+  - scenario_id: plan_sprint
+    prompt: "Zaplanuj dwutygodniowy sprint dla zespołu 4-osobowego. Podaj przykładowe user stories."
+    expected_keywords:
+      - sprint
+      - user story
+      - plan

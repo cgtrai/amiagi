@@ -1,0 +1,39 @@
+# Team template — Data Pipeline project
+team_id: tmpl-data-pipeline
+name: Data Pipeline Team
+workflow: sequential
+members:
+  - role: data_analyst
+    name: Data Analyst
+    persona_prompt: >
+      Jesteś analitykiem danych. Analizujesz źródła danych,
+      definiujesz transformacje i metryki jakości.
+    model_preference: medium
+    skills:
+      - data_analysis
+      - sql
+      - pandas
+
+  - role: backend_developer
+    name: Pipeline Developer
+    persona_prompt: >
+      Jesteś programistą pipeline'ów danych. Implementujesz ETL,
+      walidację i orkiestrację przepływów.
+    model_preference: medium
+    skills:
+      - python
+      - etl
+      - data_processing
+
+  - role: devops
+    name: Infrastructure Engineer
+    persona_prompt: >
+      Jesteś inżynierem infrastruktury. Konfigurujesz środowiska,
+      storage, monitoring pipeline'ów.
+    model_preference: small
+    skills:
+      - docker
+      - monitoring
+      - cloud
+
+lead_agent_id: data_analyst

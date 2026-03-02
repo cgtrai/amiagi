@@ -1,0 +1,36 @@
+# Benchmark: Code Generation — basic scenarios
+scenarios:
+  - scenario_id: codegen_hello
+    prompt: "Napisz funkcję w Pythonie, która przyjmuje listę liczb i zwraca ich sumę."
+    expected_keywords:
+      - def
+      - return
+      - sum
+
+  - scenario_id: codegen_fibonacci
+    prompt: "Zaimplementuj funkcję obliczającą n-ty wyraz ciągu Fibonacciego."
+    expected_keywords:
+      - def
+      - fibonacci
+      - return
+
+  - scenario_id: codegen_sort
+    prompt: "Napisz algorytm sortowania bąbelkowego w Pythonie."
+    expected_keywords:
+      - def
+      - sort
+      - for
+
+  - scenario_id: codegen_class
+    prompt: "Zdefiniuj klasę Pythonową 'Kalkulator' z metodami dodaj, odejmij, mnóż, dziel."
+    expected_keywords:
+      - class
+      - def
+      - return
+
+  - scenario_id: codegen_file_io
+    prompt: "Napisz skrypt który czyta plik CSV i wypisuje średnią wartości z drugiej kolumny."
+    expected_keywords:
+      - open
+      - csv
+      - read

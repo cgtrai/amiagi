@@ -1,0 +1,20 @@
+# Quota defaults — per-role quotas loaded by QuotaPolicy.
+# daily_token_limit: max tokens per day
+# daily_cost_limit_usd: max cost per day
+# max_requests_per_hour: rate limiter (0 = unlimited)
+
+roles:
+  executor:
+    daily_token_limit: 100000
+    daily_cost_limit_usd: 5.0
+    max_requests_per_hour: 120
+
+  supervisor:
+    daily_token_limit: 50000
+    daily_cost_limit_usd: 3.0
+    max_requests_per_hour: 60
+
+  specialist:
+    daily_token_limit: 80000
+    daily_cost_limit_usd: 4.0
+    max_requests_per_hour: 100

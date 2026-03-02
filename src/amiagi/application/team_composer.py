@@ -39,6 +39,64 @@ _KEYWORD_MAP: dict[str, str] = {
 }
 
 
+# ---- per-role persona prompts ----
+
+_PERSONA_PROMPTS: dict[str, str] = {
+    "backend_developer": (
+        "Jesteś doświadczonym programistą backendowym. Implementujesz "
+        "API, logikę biznesową, integracje z bazami danych i serwisy. "
+        "Piszesz czysty, testowalny kod w Pythonie."
+    ),
+    "frontend_developer": (
+        "Jesteś programistą frontendowym specjalizującym się w React "
+        "i TypeScript. Tworzysz responsywne UI, dbasz o UX i dostępność."
+    ),
+    "tester": (
+        "Jesteś testerem QA. Piszesz testy jednostkowe, integracyjne "
+        "i E2E. Weryfikujesz poprawność i jakość implementacji."
+    ),
+    "devops": (
+        "Jesteś inżynierem DevOps. Konfigurujesz CI/CD, kontenery Docker, "
+        "monitoring, infrastrukturę i automatyzujesz wdrożenia."
+    ),
+    "researcher": (
+        "Jesteś badaczem. Analizujesz technologie, porównujesz rozwiązania "
+        "i dostarczasz źródłowe rekomendacje."
+    ),
+    "data_analyst": (
+        "Jesteś analitykiem danych. Analizujesz dane, budujesz pipeline'y "
+        "ETL, tworzysz wizualizacje i raporty."
+    ),
+    "designer": (
+        "Jesteś projektantem UX/UI. Projektujesz interfejsy, tworzysz "
+        "prototypy i dbasz o spójność designu."
+    ),
+    "code_reviewer": (
+        "Jesteś recenzentem kodu. Analizujesz jakość, bezpieczeństwo, "
+        "wydajność i zgodność ze standardami zespołu."
+    ),
+    "architect": (
+        "Jesteś architektem oprogramowania. Projektujesz strukturę systemu, "
+        "definiujesz kontrakty między modułami i dbasz o skalowalność."
+    ),
+}
+
+
+# ---- per-role model size preference ----
+
+_MODEL_PREFERENCES: dict[str, str] = {
+    "architect": "large",
+    "code_reviewer": "large",
+    "backend_developer": "medium",
+    "frontend_developer": "medium",
+    "tester": "medium",
+    "data_analyst": "medium",
+    "researcher": "large",
+    "designer": "small",
+    "devops": "small",
+}
+
+
 @dataclass
 class CompositionAdvice:
     """Recommendation produced by TeamComposer."""
@@ -75,9 +133,14 @@ class TeamComposer:
         d = Path(templates_dir)
         if not d.is_dir():
             return
-        for f in d.glob("*.json"):
+        for f in d.glob("*"):
             try:
-                td = TeamDefinition.load_json(f)
+                if f.suffix == ".json":
+                    td = TeamDefinition.load_json(f)
+                elif f.suffix in (".yaml", ".yml"):
+                    td = TeamDefinition.load_yaml(f)
+                else:
+                    continue
                 self._templates[td.team_id or f.stem] = td
             except Exception:  # noqa: BLE001
                 pass
@@ -135,7 +198,12 @@ class TeamComposer:
             team_id = "team-" + hashlib.md5(project_description.encode()).hexdigest()[:8]
 
         members = [
-            AgentDescriptor(role=role, name=role.replace("_", " ").title())
+            AgentDescriptor(
+                role=role,
+                name=role.replace("_", " ").title(),
+                persona_prompt=_PERSONA_PROMPTS.get(role, f"Jesteś agentem w roli: {role}."),
+                model_preference=_MODEL_PREFERENCES.get(role, "medium"),
+            )
             for role in advice.recommended_roles
         ]
         lead = members[0].role if members else ""

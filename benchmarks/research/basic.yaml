@@ -1,0 +1,36 @@
+# Benchmark: Research — basic scenarios
+scenarios:
+  - scenario_id: research_comparison
+    prompt: "Porównaj frameworki FastAPI i Flask. Wymień zalety i wady każdego."
+    expected_keywords:
+      - FastAPI
+      - Flask
+      - zalety
+
+  - scenario_id: research_architecture
+    prompt: "Opisz architekturę heksagonalną (ports and adapters). Jakie są jej główne korzyści?"
+    expected_keywords:
+      - hexagonal
+      - port
+      - adapter
+
+  - scenario_id: research_testing
+    prompt: "Jakie są różnice między testami jednostkowymi, integracyjnymi i E2E?"
+    expected_keywords:
+      - test
+      - jednostkowy
+      - integracyjny
+
+  - scenario_id: research_ai_agents
+    prompt: "Opisz koncepcję agentów AI z perspektywy systemów wieloagentowych."
+    expected_keywords:
+      - agent
+      - system
+      - komunikacja
+
+  - scenario_id: research_security
+    prompt: "Jakie są najważniejsze praktyki bezpieczeństwa w aplikacjach webowych?"
+    expected_keywords:
+      - bezpieczeństwo
+      - OWASP
+      - autoryzacja

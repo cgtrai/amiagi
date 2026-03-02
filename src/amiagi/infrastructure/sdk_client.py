@@ -114,6 +114,32 @@ class AmiagiClient:
         resp = self.get("/events")
         return resp.get("events", [])[:last_n]
 
+    def events_stream(self) -> Any:
+        """Connect to the SSE events stream and yield parsed events.
+
+        Usage::
+
+            for event in client.events_stream():
+                print(event)
+        """
+        url = f"{self._base_url}/events/stream"
+        headers: dict[str, str] = {"Accept": "text/event-stream"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            resp = urllib.request.urlopen(req, timeout=self._timeout)
+            for raw_line in resp:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if line.startswith("data: "):
+                    payload = line[6:]
+                    try:
+                        yield json.loads(payload)
+                    except json.JSONDecodeError:
+                        yield {"raw": payload}
+        except Exception:  # noqa: BLE001
+            return
+
     def get_budget(self) -> dict[str, Any]:
         """Get budget status."""
         return self.get("/budget")

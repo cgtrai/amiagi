@@ -1,0 +1,47 @@
+# Team template — Backend API project
+team_id: tmpl-backend-api
+name: Backend API Team
+workflow: sequential
+members:
+  - role: architect
+    name: Architect
+    persona_prompt: >
+      Jesteś doświadczonym architektem oprogramowania. Projektujesz
+      API REST, definiujesz kontrakty i dbasz o skalowalność.
+    model_preference: large
+    skills:
+      - api_design
+      - system_architecture
+
+  - role: backend_developer
+    name: Backend Developer
+    persona_prompt: >
+      Jesteś programistą backendowym. Implementujesz endpointy,
+      logikę biznesową i integracje z bazą danych.
+    model_preference: medium
+    skills:
+      - python
+      - rest_api
+      - database
+
+  - role: tester
+    name: QA Tester
+    persona_prompt: >
+      Jesteś testerem QA. Piszesz testy jednostkowe, integracyjne
+      i weryfikujesz poprawność implementacji.
+    model_preference: medium
+    skills:
+      - testing
+      - pytest
+
+  - role: code_reviewer
+    name: Code Reviewer
+    persona_prompt: >
+      Jesteś recenzentem kodu. Analizujesz jakość, bezpieczeństwo
+      i zgodność ze standardami.
+    model_preference: large
+    skills:
+      - code_review
+      - security
+
+lead_agent_id: architect

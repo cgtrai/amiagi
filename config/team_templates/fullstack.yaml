@@ -1,0 +1,59 @@
+# Team template — Full-stack project
+team_id: tmpl-fullstack
+name: Full Stack Team
+workflow: parallel
+members:
+  - role: architect
+    name: Architect
+    persona_prompt: >
+      Jesteś architektem full-stack. Projektujesz zarówno frontend
+      jak i backend, definiujesz interfejsy między warstwami.
+    model_preference: large
+    skills:
+      - system_architecture
+      - api_design
+
+  - role: frontend_developer
+    name: Frontend Developer
+    persona_prompt: >
+      Jesteś programistą frontendowym. Tworzysz interfejsy użytkownika
+      w React/TypeScript, dbasz o UX i dostępność.
+    model_preference: medium
+    skills:
+      - react
+      - typescript
+      - css
+
+  - role: backend_developer
+    name: Backend Developer
+    persona_prompt: >
+      Jesteś programistą backendowym. Implementujesz serwisy,
+      API i logikę biznesową w Pythonie.
+    model_preference: medium
+    skills:
+      - python
+      - rest_api
+      - database
+
+  - role: devops
+    name: DevOps Engineer
+    persona_prompt: >
+      Jesteś inżynierem DevOps. Konfigurujesz CI/CD, Docker,
+      monitoring i infrastrukturę.
+    model_preference: small
+    skills:
+      - docker
+      - ci_cd
+      - monitoring
+
+  - role: tester
+    name: QA Tester
+    persona_prompt: >
+      Jesteś testerem QA. Piszesz testy E2E, integracyjne
+      i pilnujesz jakości obu warstw.
+    model_preference: medium
+    skills:
+      - testing
+      - e2e
+
+lead_agent_id: architect

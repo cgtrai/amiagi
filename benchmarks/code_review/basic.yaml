@@ -1,0 +1,36 @@
+# Benchmark: Code Review — basic scenarios
+scenarios:
+  - scenario_id: review_security
+    prompt: "Przejrzyj ten kod pod kątem bezpieczeństwa: `eval(user_input)`. Jakie widzisz problemy?"
+    expected_keywords:
+      - bezpieczeństwo
+      - eval
+      - injection
+
+  - scenario_id: review_performance
+    prompt: "Oceń wydajność pętli: `for i in range(len(lst)): result += lst[i]`. Co poprawić?"
+    expected_keywords:
+      - wydajność
+      - for
+      - optymalizacja
+
+  - scenario_id: review_readability
+    prompt: "Ten kod jest trudny do czytania: `x=lambda a,b:a if a>b else b`. Zaproponuj refaktor."
+    expected_keywords:
+      - czytelność
+      - lambda
+      - funkcja
+
+  - scenario_id: review_error_handling
+    prompt: "Przejrzyj obsługę błędów: `try: do_something() except: pass`. Co jest nie tak?"
+    expected_keywords:
+      - except
+      - błąd
+      - obsługa
+
+  - scenario_id: review_naming
+    prompt: "Oceń nazewnictwo w kodzie: `def f(x, y, z): return x * y + z`. Zaproponuj lepsze nazwy."
+    expected_keywords:
+      - nazwa
+      - czytelność
+      - zmienne

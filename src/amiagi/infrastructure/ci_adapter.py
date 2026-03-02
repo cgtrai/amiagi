@@ -120,21 +120,179 @@ class CIAdapter:
     def review_pr(self, pr_number: int) -> CIRunResult:
         """Generate a review summary for a pull request.
 
-        In a real implementation this would call the GitHub API.
-        This lightweight version gathers local diff context.
+        When ``github_token``, ``repo_owner`` and ``repo_name`` are configured
+        this method fetches real PR data from the GitHub API. Otherwise it
+        falls back to local ``git diff``.
         """
+        cfg = self._config
+        if cfg.github_token and cfg.repo_owner and cfg.repo_name:
+            return self._review_pr_github(pr_number)
+
+        # Fallback: local git diff
         diff = self.diff_stat()
         files = self.changed_files()
         result = CIRunResult(
             command=f"ci review --pr {pr_number}",
             success=True,
-            stdout=f"PR #{pr_number} diff:\n{diff}",
+            stdout=f"PR #{pr_number} diff (local):\n{diff}",
             metadata={
                 "pr_number": pr_number,
                 "changed_files": files,
                 "file_count": len(files),
+                "source": "local",
             },
         )
+        with self._lock:
+            self._history.append(result)
+        return result
+
+    # ---- GitHub API helpers ----
+
+    def _github_api(self, path: str) -> dict[str, Any]:
+        """Make an authenticated GET request to the GitHub API."""
+        import urllib.request
+        import urllib.error
+
+        url = f"https://api.github.com{path}"
+        req = urllib.request.Request(url, method="GET", headers={
+            "Authorization": f"token {self._config.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "amiagi-ci-adapter",
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _github_api_raw(self, path: str, *, accept: str = "application/vnd.github.v3.diff") -> str:
+        """Make a GitHub API request returning raw text (e.g. diff)."""
+        import urllib.request
+
+        url = f"https://api.github.com{path}"
+        req = urllib.request.Request(url, method="GET", headers={
+            "Authorization": f"token {self._config.github_token}",
+            "Accept": accept,
+            "User-Agent": "amiagi-ci-adapter",
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+
+    def _github_post_comment(self, path: str, body: str) -> dict[str, Any]:
+        """POST a comment to a GitHub API endpoint."""
+        import urllib.request
+
+        url = f"https://api.github.com{path}"
+        data = json.dumps({"body": body}).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST", headers={
+            "Authorization": f"token {self._config.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+            "User-Agent": "amiagi-ci-adapter",
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _review_pr_github(self, pr_number: int) -> CIRunResult:
+        """Fetch PR details from GitHub and generate a review summary."""
+        import urllib.error
+        cfg = self._config
+        api_prefix = f"/repos/{cfg.repo_owner}/{cfg.repo_name}/pulls/{pr_number}"
+        try:
+            pr_data = self._github_api(api_prefix)
+            pr_diff = self._github_api_raw(api_prefix)
+            pr_files = self._github_api(f"{api_prefix}/files")
+        except urllib.error.HTTPError as exc:
+            result = CIRunResult(
+                command=f"ci review --pr {pr_number}",
+                exit_code=exc.code,
+                stderr=f"GitHub API error: HTTP {exc.code}",
+                success=False,
+                metadata={"pr_number": pr_number, "source": "github"},
+            )
+            with self._lock:
+                self._history.append(result)
+            return result
+        except Exception as exc:  # noqa: BLE001
+            result = CIRunResult(
+                command=f"ci review --pr {pr_number}",
+                exit_code=1,
+                stderr=str(exc),
+                success=False,
+                metadata={"pr_number": pr_number, "source": "github"},
+            )
+            with self._lock:
+                self._history.append(result)
+            return result
+
+        changed_filenames: list[str] = []
+        if isinstance(pr_files, list):
+            for file_entry in pr_files:
+                if isinstance(file_entry, dict):
+                    changed_filenames.append(file_entry.get("filename", ""))
+        title = pr_data.get("title", "")
+        body_text = pr_data.get("body", "") or ""
+
+        summary_lines = [
+            f"PR #{pr_number}: {title}",
+            f"Author: {pr_data.get('user', {}).get('login', '?')}",
+            f"Base: {pr_data.get('base', {}).get('ref', '?')} ← {pr_data.get('head', {}).get('ref', '?')}",
+            f"Files changed: {len(changed_filenames)}",
+            f"Diff size: {len(pr_diff)} chars",
+        ]
+        if body_text:
+            summary_lines.append(f"Description: {body_text[:300]}")
+
+        result = CIRunResult(
+            command=f"ci review --pr {pr_number}",
+            success=True,
+            stdout="\n".join(summary_lines),
+            metadata={
+                "pr_number": pr_number,
+                "title": title,
+                "changed_files": changed_filenames,
+                "file_count": len(changed_filenames),
+                "diff_chars": len(pr_diff),
+                "source": "github",
+            },
+        )
+        with self._lock:
+            self._history.append(result)
+        return result
+
+    def post_pr_comment(self, pr_number: int, comment: str) -> CIRunResult:
+        """Post a review comment on a GitHub PR."""
+        cfg = self._config
+        if not (cfg.github_token and cfg.repo_owner and cfg.repo_name):
+            return CIRunResult(
+                command=f"ci comment --pr {pr_number}",
+                exit_code=1,
+                stderr="GitHub config not set (token, repo_owner, repo_name required).",
+                success=False,
+            )
+        import urllib.error
+        try:
+            self._github_post_comment(
+                f"/repos/{cfg.repo_owner}/{cfg.repo_name}/issues/{pr_number}/comments",
+                comment,
+            )
+            result = CIRunResult(
+                command=f"ci comment --pr {pr_number}",
+                success=True,
+                stdout=f"Comment posted on PR #{pr_number}.",
+                metadata={"pr_number": pr_number},
+            )
+        except urllib.error.HTTPError as exc:
+            result = CIRunResult(
+                command=f"ci comment --pr {pr_number}",
+                exit_code=exc.code,
+                stderr=f"GitHub API error: HTTP {exc.code}",
+                success=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            result = CIRunResult(
+                command=f"ci comment --pr {pr_number}",
+                exit_code=1,
+                stderr=str(exc),
+                success=False,
+            )
         with self._lock:
             self._history.append(result)
         return result

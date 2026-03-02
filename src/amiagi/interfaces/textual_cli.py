@@ -2512,8 +2512,82 @@ class _AmiagiTextualApp(App[None]):
             self._budget_manager.reset_agent(parts[2])
             return _CommandOutcome(True, [f"Zresetowano budżet agenta {parts[2]}."])
 
+        if action == "dashboard":
+            msgs = ["╔══════════════════════════════════════════════════════╗"]
+            msgs.append("║            COST DASHBOARD                            ║")
+            msgs.append("╠══════════════════════════════════════════════════════╣")
+            # Session budget
+            ss = self._budget_manager.session_summary()
+            sess_pct = ss["utilization_pct"]
+            bar_len = 20
+            filled = int(bar_len * sess_pct / 100)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            msgs.append(f"║ SESSION  ${ss['spent_usd']:>8.4f} / ${ss['limit_usd']:>7.2f}  [{bar}] {sess_pct:5.1f}% ║")
+            msgs.append(f"║          tokens={ss['tokens_used']}  requests={ss['requests_count']}")
+            msgs.append("╠──────────────────────────────────────────────────────╣")
+            # Per-agent budgets
+            summary = self._budget_manager.summary()
+            if summary:
+                msgs.append("║ AGENTS                                               ║")
+                for aid, info in summary.items():
+                    pct = info["utilization_pct"]
+                    af = int(bar_len * pct / 100)
+                    abar = "█" * af + "░" * (bar_len - af)
+                    status = "⚠" if pct >= 80 else ("🛑" if pct >= 100 else "✓")
+                    msgs.append(f"║  {status} {aid:<14} ${info['spent_usd']:>7.4f}/${info['limit_usd']:>6.2f} [{abar}] {pct:5.1f}%")
+            else:
+                msgs.append("║ Brak budżetów agentów.                               ║")
+            # Per-task budgets
+            task_summary = self._budget_manager.task_summary()
+            if task_summary:
+                msgs.append("╠──────────────────────────────────────────────────────╣")
+                msgs.append("║ TASKS                                                ║")
+                for tid, tinfo in task_summary.items():
+                    tpct = tinfo["utilization_pct"]
+                    tf = int(bar_len * tpct / 100)
+                    tbar = "█" * tf + "░" * (bar_len - tf)
+                    msgs.append(f"║  {tid:<16} ${tinfo['spent_usd']:>7.4f}/${tinfo['limit_usd']:>6.2f} [{tbar}] {tpct:5.1f}%")
+            msgs.append("╚══════════════════════════════════════════════════════╝")
+            return _CommandOutcome(True, msgs)
+
+        if action == "session":
+            if len(parts) >= 3:
+                sub = parts[2].lower()
+                if sub == "set" and len(parts) >= 4:
+                    try:
+                        limit = float(parts[3])
+                    except ValueError:
+                        return _CommandOutcome(True, ["Podaj limit jako liczbę, np. /budget session set 50.0"])
+                    self._budget_manager.set_session_budget(limit)
+                    return _CommandOutcome(True, [f"Budżet sesji ustawiony na ${limit:.2f}."])
+            ss = self._budget_manager.session_summary()
+            return _CommandOutcome(True, [
+                f"Sesja: spent=${ss['spent_usd']:.4f} / limit=${ss['limit_usd']:.2f} ({ss['utilization_pct']:.1f}%)",
+                f"  tokens={ss['tokens_used']}, requests={ss['requests_count']}",
+            ])
+
+        if action == "task" and len(parts) >= 3:
+            sub = parts[2].lower() if len(parts) > 2 else "status"
+            if sub == "set" and len(parts) >= 5:
+                task_id = parts[3]
+                try:
+                    limit = float(parts[4])
+                except ValueError:
+                    return _CommandOutcome(True, ["Użycie: /budget task set <task_id> <limit_usd>"])
+                self._budget_manager.set_task_budget(task_id, limit)
+                return _CommandOutcome(True, [f"Budżet zadania {task_id} ustawiony na ${limit:.2f}."])
+            # show specific task
+            task_id = parts[2]
+            tb = self._budget_manager.get_task_budget(task_id)
+            if tb is None:
+                return _CommandOutcome(True, [f"Brak budżetu dla zadania '{task_id}'."])
+            return _CommandOutcome(True, [
+                f"Zadanie {task_id}: spent=${tb.spent_usd:.4f} / limit=${tb.limit_usd:.2f} ({tb.utilization_pct:.1f}%)",
+            ])
+
         return _CommandOutcome(True, [
             "Użycie: /budget status | /budget set <agent> <limit_usd> | /budget reset <agent>",
+            "        /budget dashboard | /budget session [set <limit>] | /budget task set <id> <limit>",
         ])
 
     def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
@@ -2585,9 +2659,17 @@ class _AmiagiTextualApp(App[None]):
                     expected_keywords=["agent", "pomoc"],
                     category="general",
                 )]
-            # Create a simple agent callable using chat_service
-            def _agent_fn(prompt: str) -> str:
-                return f"[eval-stub] Agent {agent_id} response to: {prompt[:100]}"
+            # Create an agent callable — use real ChatService when possible
+            if self._chat_service is not None:
+                _cs = self._chat_service
+                def _agent_fn(prompt: str) -> str:
+                    try:
+                        return _cs.ask(prompt, actor="EvalRunner")
+                    except Exception as exc:  # noqa: BLE001
+                        return f"[error] {exc}"
+            else:
+                def _agent_fn(prompt: str) -> str:
+                    return f"[eval-stub] Agent {agent_id} response to: {prompt[:100]}"
             result = self._eval_runner.run(agent_id, _agent_fn, scenarios)
             msgs = [
                 f"--- EVAL RUN: {agent_id} ---",

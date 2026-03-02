@@ -117,6 +117,73 @@ class DynamicScaler:
 
             return None
 
+    # ---- apply scaling ----
+
+    def apply_scale(
+        self,
+        event: ScaleEvent,
+        *,
+        registry: Any = None,
+        factory: Any = None,
+        client: Any = None,
+    ) -> str | None:
+        """Actually spawn or terminate an agent based on a :class:`ScaleEvent`.
+
+        Parameters
+        ----------
+        event:
+            The scale event (``direction="up"`` or ``"down"``).
+        registry:
+            An :class:`AgentRegistry` instance.
+        factory:
+            An :class:`AgentFactory` instance (used for ``direction="up"``).
+        client:
+            An optional ``ChatCompletionClient`` to wire into new agents.
+
+        Returns
+        -------
+        str | None
+            The ``agent_id`` of the spawned or terminated agent, or ``None``
+            if the operation was not applicable.
+        """
+        if registry is None:
+            return None
+
+        if event.direction == "up" and factory is not None:
+            from amiagi.domain.agent import AgentDescriptor as FullDescriptor, AgentRole
+            agent_id = factory.generate_id()
+            role_str = event.agent_role or "general"
+            descriptor = FullDescriptor(
+                agent_id=agent_id,
+                name=f"scaler-{role_str}-{agent_id[:6]}",
+                role=AgentRole.EXECUTOR,
+                metadata={"scaled": True, "team_id": event.team_id},
+            )
+            factory.create_agent(descriptor, client=client)
+            return agent_id
+
+        if event.direction == "down":
+            from amiagi.domain.agent import AgentState
+            # Find a non-essential agent that is idle and scaled
+            candidates = [
+                a for a in registry.list_all()
+                if a.state == AgentState.IDLE
+                and a.metadata.get("scaled", False)
+            ]
+            if not candidates:
+                # Fallback: any idle agent
+                candidates = [
+                    a for a in registry.list_all()
+                    if a.state == AgentState.IDLE
+                ]
+            if candidates:
+                target = candidates[-1]
+                target.transition_to(AgentState.TERMINATED)
+                registry.unregister(target.agent_id)
+                return target.agent_id
+
+        return None
+
     # ---- history ----
 
     def history(self, limit: int = 20) -> list[ScaleEvent]:

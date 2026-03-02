@@ -1,4 +1,4 @@
-"""BudgetManager — per-agent and per-session cost governance."""
+"""BudgetManager — per-agent, per-task and per-session cost governance."""
 
 from __future__ import annotations
 
@@ -18,6 +18,52 @@ class BudgetRecord:
     tokens_used: int = 0
     requests_count: int = 0
     last_updated: float = field(default_factory=time.time)
+
+    @property
+    def remaining_usd(self) -> float:
+        if self.limit_usd <= 0:
+            return float("inf")
+        return max(0.0, self.limit_usd - self.spent_usd)
+
+    @property
+    def utilization_pct(self) -> float:
+        if self.limit_usd <= 0:
+            return 0.0
+        return min(100.0, (self.spent_usd / self.limit_usd) * 100)
+
+
+@dataclass
+class TaskBudget:
+    """Tracks spending for a single task."""
+
+    task_id: str
+    limit_usd: float = 0.0
+    spent_usd: float = 0.0
+    tokens_used: int = 0
+    requests_count: int = 0
+
+    @property
+    def remaining_usd(self) -> float:
+        if self.limit_usd <= 0:
+            return float("inf")
+        return max(0.0, self.limit_usd - self.spent_usd)
+
+    @property
+    def utilization_pct(self) -> float:
+        if self.limit_usd <= 0:
+            return 0.0
+        return min(100.0, (self.spent_usd / self.limit_usd) * 100)
+
+
+@dataclass
+class SessionBudget:
+    """Tracks aggregate spending for the entire session."""
+
+    limit_usd: float = 0.0
+    spent_usd: float = 0.0
+    tokens_used: int = 0
+    requests_count: int = 0
+    started_at: float = field(default_factory=time.time)
 
     @property
     def remaining_usd(self) -> float:
@@ -58,6 +104,8 @@ class BudgetManager:
     ) -> None:
         self._lock = threading.Lock()
         self._budgets: dict[str, BudgetRecord] = {}
+        self._task_budgets: dict[str, TaskBudget] = {}
+        self._session_budget: SessionBudget = SessionBudget()
         self._on_warning = on_warning
         self._on_exhausted = on_exhausted
         self._warned: set[str] = set()  # agents already warned at 80 %
@@ -166,3 +214,121 @@ class BudgetManager:
                 "requests_count": rec.requests_count,
             }
         return result
+
+    # ================================================================
+    # Per-task budgets
+    # ================================================================
+
+    def set_task_budget(self, task_id: str, limit_usd: float) -> None:
+        """Set or update the spending limit for *task_id*."""
+        with self._lock:
+            tb = self._task_budgets.get(task_id)
+            if tb is None:
+                tb = TaskBudget(task_id=task_id, limit_usd=limit_usd)
+                self._task_budgets[task_id] = tb
+            else:
+                tb.limit_usd = limit_usd
+
+    def get_task_budget(self, task_id: str) -> TaskBudget | None:
+        return self._task_budgets.get(task_id)
+
+    def check_task_budget(self, task_id: str, estimated_cost: float = 0.0) -> bool:
+        """Return ``True`` if the task may proceed (within budget)."""
+        tb = self._task_budgets.get(task_id)
+        if tb is None or tb.limit_usd <= 0:
+            return True
+        return (tb.spent_usd + estimated_cost) <= tb.limit_usd
+
+    def record_task_usage(
+        self,
+        task_id: str,
+        *,
+        cost_usd: float = 0.0,
+        tokens: int = 0,
+    ) -> None:
+        """Record actual usage for a task."""
+        with self._lock:
+            tb = self._task_budgets.get(task_id)
+            if tb is None:
+                tb = TaskBudget(task_id=task_id)
+                self._task_budgets[task_id] = tb
+            tb.spent_usd += cost_usd
+            tb.tokens_used += tokens
+            tb.requests_count += 1
+
+    def task_summary(self) -> dict[str, dict[str, Any]]:
+        """Return per-task budget summary."""
+        result: dict[str, dict[str, Any]] = {}
+        for tid, tb in self._task_budgets.items():
+            result[tid] = {
+                "limit_usd": tb.limit_usd,
+                "spent_usd": tb.spent_usd,
+                "remaining_usd": tb.remaining_usd,
+                "utilization_pct": tb.utilization_pct,
+                "tokens_used": tb.tokens_used,
+                "requests_count": tb.requests_count,
+            }
+        return result
+
+    # ================================================================
+    # Session-level budget
+    # ================================================================
+
+    def set_session_budget(self, limit_usd: float) -> None:
+        """Set the session-wide spending limit."""
+        with self._lock:
+            self._session_budget.limit_usd = limit_usd
+
+    @property
+    def session_budget(self) -> SessionBudget:
+        return self._session_budget
+
+    def check_session_budget(self, estimated_cost: float = 0.0) -> bool:
+        """Return ``True`` if the session may proceed."""
+        sb = self._session_budget
+        if sb.limit_usd <= 0:
+            return True
+        return (sb.spent_usd + estimated_cost) <= sb.limit_usd
+
+    def record_session_usage(
+        self,
+        *,
+        cost_usd: float = 0.0,
+        tokens: int = 0,
+    ) -> None:
+        """Record session-level usage (call alongside agent-level recording)."""
+        with self._lock:
+            self._session_budget.spent_usd += cost_usd
+            self._session_budget.tokens_used += tokens
+            self._session_budget.requests_count += 1
+
+    def session_summary(self) -> dict[str, Any]:
+        """Return session budget summary."""
+        sb = self._session_budget
+        return {
+            "limit_usd": sb.limit_usd,
+            "spent_usd": sb.spent_usd,
+            "remaining_usd": sb.remaining_usd,
+            "utilization_pct": sb.utilization_pct,
+            "tokens_used": sb.tokens_used,
+            "requests_count": sb.requests_count,
+            "started_at": sb.started_at,
+        }
+
+    # ================================================================
+    # Combined record helper
+    # ================================================================
+
+    def record_usage_full(
+        self,
+        agent_id: str,
+        *,
+        task_id: str = "",
+        cost_usd: float = 0.0,
+        tokens: int = 0,
+    ) -> None:
+        """Record usage across agent, task and session in one call."""
+        self.record_usage(agent_id, cost_usd=cost_usd, tokens=tokens)
+        if task_id:
+            self.record_task_usage(task_id, cost_usd=cost_usd, tokens=tokens)
+        self.record_session_usage(cost_usd=cost_usd, tokens=tokens)
