@@ -1520,7 +1520,7 @@ class _AmiagiTextualApp(App[None]):
                 if index < 1 or index > len(combined):
                     return _CommandOutcome(
                         True,
-                        [f"Nieprawidłowy numer. Zakres: 1..{len(combined)}."],
+                        [_("models.invalid_range", max=len(combined))],
                     )
                 name, source = combined[index - 1]
                 if source == "ollama":
@@ -1528,7 +1528,7 @@ class _AmiagiTextualApp(App[None]):
                     if not ok:
                         return _CommandOutcome(True, [payload])
                     self._persist_model_config()
-                    return _CommandOutcome(True, [f"Aktywny model wykonawczy: {payload}"])
+                    return _CommandOutcome(True, [_("models.active_executor", model=payload)])
                 else:
                     # Switch Polluks to API model
                     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -1555,7 +1555,7 @@ class _AmiagiTextualApp(App[None]):
                     self._chat_service.ollama_client = openai_client
                     self._show_api_usage_bar()
                     self._persist_model_config()
-                    return _CommandOutcome(True, [f"Aktywny model wykonawczy: ☁ {name} [{source.upper()}]"])
+                    return _CommandOutcome(True, [_("models.active_executor_api", name=name, source=source.upper())])
 
             return _CommandOutcome(True, [_("models.usage")])
 
@@ -1810,7 +1810,7 @@ class _AmiagiTextualApp(App[None]):
                 current = str(getattr(supervisor.ollama_client, "model", ""))
                 is_api = getattr(supervisor.ollama_client, "_is_api_client", False)
                 label = f"☁ {current}" if is_api else current
-                return _CommandOutcome(True, [f"Aktywny model Kastora: {label}"])
+                return _CommandOutcome(True, [_("kastor.active_model", label=label)])
 
             if action in {"chose", "choose"}:
                 if len(parts) < 3:
@@ -1824,7 +1824,7 @@ class _AmiagiTextualApp(App[None]):
                 if idx < 1 or idx > len(combined):
                     return _CommandOutcome(
                         True,
-                        [f"Nieprawidłowy numer. Zakres: 1..{len(combined)}."],
+                        [_("models.invalid_range", max=len(combined))],
                     )
                 name, source = combined[idx - 1]
                 if source == "ollama":
@@ -1833,9 +1833,9 @@ class _AmiagiTextualApp(App[None]):
                             cast(Any, supervisor.ollama_client), model=name
                         )
                     except Exception:
-                        return _CommandOutcome(True, [f"Nie udało się zmienić modelu Kastora na {name}."])
+                        return _CommandOutcome(True, [_("kastor.switch_failed", name=name)])
                     self._persist_model_config()
-                    return _CommandOutcome(True, [f"Kastor: model zmieniony na {name}"])
+                    return _CommandOutcome(True, [_("kastor.switched", name=name)])
                 else:
                     api_key = os.environ.get("OPENAI_API_KEY", "")
                     settings = self._settings
@@ -1861,7 +1861,7 @@ class _AmiagiTextualApp(App[None]):
                     supervisor.ollama_client = cast(Any, kastor_openai)
                     self._show_api_usage_bar()
                     self._persist_model_config()
-                    return _CommandOutcome(True, [f"Kastor: ☁ {name} [{source.upper()}]"])
+                    return _CommandOutcome(True, [_("kastor.switched_api", name=name, source=source.upper())])
 
             # Show available models list
             combined = self._build_wizard_model_list()
@@ -1888,8 +1888,8 @@ class _AmiagiTextualApp(App[None]):
             except Exception:
                 reachable = False
             if reachable:
-                return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✓ (aktywny)"])
-            return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✗ (nie udało się połączyć)"])
+                return _CommandOutcome(True, [_("api_key.ok", masked=masked)])
+            return _CommandOutcome(True, [_("api_key.fail", masked=masked)])
 
         # ==================================================================
         # v0.2.0 — /skills commands
@@ -3047,15 +3047,15 @@ class _AmiagiTextualApp(App[None]):
         api_models = [(n, s) for n, s in models if s != "ollama"]
         idx = 1
         if ollama_models:
-            lines.append("  Modele lokalne (Ollama):")
+            lines.append(_("wizard.model_list_local"))
             for name, _size in ollama_models:
-                marker = "  [domyślny]" if name == default_name else ""
+                marker = _("wizard.default_marker") if name == default_name else ""
                 lines.append(f"    {idx}. {name}{marker}")
                 idx += 1
         if api_models:
-            lines.append("  Modele zewnętrzne (API):")
+            lines.append(_("wizard.model_list_api"))
             for name, source in api_models:
-                marker = "  [domyślny]" if name == default_name else ""
+                marker = _("wizard.default_marker") if name == default_name else ""
                 lines.append(f"    {idx}. ☁ {name}  [{source.upper()}]{marker}")
                 idx += 1
         return "\n".join(lines)
@@ -3083,8 +3083,7 @@ class _AmiagiTextualApp(App[None]):
                 self._wizard_finalize(saved.kastor_model if kastor_ok else "", saved.kastor_source if kastor_ok else "ollama")
                 self._append_log(
                     "user_model_log",
-                    "  ↻ Przywrócono konfigurację modeli z poprzedniej sesji.\n"
-                    "  Użyj /models chose <nr> aby zmienić.",
+                    _("wizard.restored"),
                 )
                 return
 
@@ -3092,9 +3091,7 @@ class _AmiagiTextualApp(App[None]):
         if not self._wizard_models:
             self._append_log(
                 "user_model_log",
-                "⚠ Brak dostępnych modeli LLM.\n"
-                "  Upewnij się, że Ollama działa (ollama serve) lub ustaw OPENAI_API_KEY.\n"
-                "  Po naprawieniu wpisz /models show aby odświeżyć listę.",
+                _("wizard.no_models"),
             )
             self._model_configured = True  # Unblock input
             return
@@ -3104,36 +3101,45 @@ class _AmiagiTextualApp(App[None]):
 
     def _wizard_show_polluks_prompt(self) -> None:
         """Display (or re-display) the Polluks model selection prompt."""
-        header = "╭─ Konfiguracja modeli LLM ─────────────────────────────────╮"
+        header = _("wizard.polluks_header")
         footer = "╰───────────────────────────────────────────────────────────╯"
         body = self._format_wizard_model_list(self._wizard_models)
+        b1 = _("wizard.polluks_body1")
+        b2 = _("wizard.polluks_body2")
+        b3 = _("wizard.polluks_body3")
+        b4 = _("wizard.polluks_body4")
+        hint = _("wizard.polluks_hint")
         self._append_log(
             "user_model_log",
             f"\n{header}\n"
-            f"  Do poprawnej pracy systemu wybierz model wykonawczy\n"
-            f"  (agent Polluks).\n\n"
-            f"  Oto lista dostępnych modeli:\n\n"
+            f"{b1}\n"
+            f"{b2}\n\n"
+            f"{b3}\n\n"
             f"{body}\n\n"
-            f"  Wpisz numer modelu (np. 1):\n"
-            f"  💡 Komendy /help, /cls dostępne w każdym momencie.\n"
+            f"{b4}\n"
+            f"{hint}\n"
             f"{footer}",
         )
 
     def _wizard_show_kastor_prompt(self, default_name: str = "") -> None:
         """Display (or re-display) the Kastor model selection prompt."""
-        header = "╭─ Model nadzorcy (Kastor) ─────────────────────────────────╮"
+        header = _("wizard.kastor_header")
         footer = "╰───────────────────────────────────────────────────────────╯"
         body = self._format_wizard_model_list(
             self._wizard_kastor_models, default_name=default_name
         )
+        kb1 = _("wizard.kastor_body1")
+        kb2 = _("wizard.kastor_body2")
+        kb3 = _("wizard.kastor_body3")
+        hint = _("wizard.polluks_hint")
         self._append_log(
             "user_model_log",
             f"\n{header}\n"
-            f"  Wybierz model nadzorcy (agent Kastor).\n\n"
-            f"  Oto lista dostępnych modeli:\n\n"
+            f"{kb1}\n\n"
+            f"{kb2}\n\n"
             f"{body}\n\n"
-            f"  Enter = domyślny, lub wpisz numer:\n"
-            f"  💡 Komendy /help, /cls dostępne w każdym momencie.\n"
+            f"{kb3}\n"
+            f"{hint}\n"
             f"{footer}",
         )
 
@@ -3174,15 +3180,14 @@ class _AmiagiTextualApp(App[None]):
             total = len(self._wizard_models)
             self._append_log(
                 "user_model_log",
-                f"Oczekiwany numer modelu z listy (1..{total}).\n"
-                "Wpisz numer lub /help aby zobaczyć dostępne komendy.",
+                _("wizard.polluks_expect_number", total=total),
             )
             return True
 
         if idx < 1 or idx > len(self._wizard_models):
             self._append_log(
                 "user_model_log",
-                f"Nieprawidłowy numer. Dostępny zakres: 1..{len(self._wizard_models)}.",
+                _("wizard.invalid_range", max=len(self._wizard_models)),
             )
             return True
 
@@ -3219,14 +3224,13 @@ class _AmiagiTextualApp(App[None]):
                 total = len(self._wizard_kastor_models)
                 self._append_log(
                     "user_model_log",
-                    f"Oczekiwany numer modelu z listy (1..{total}) lub Enter dla domyślnego.\n"
-                    "Wpisz numer lub /help aby zobaczyć dostępne komendy.",
+                    _("wizard.kastor_expect_number", total=total),
                 )
                 return True
             if idx < 1 or idx > len(self._wizard_kastor_models):
                 self._append_log(
                     "user_model_log",
-                    f"Nieprawidłowy numer. Dostępny zakres: 1..{len(self._wizard_kastor_models)}.",
+                    _("wizard.invalid_range", max=len(self._wizard_kastor_models)),
                 )
                 return True
             kastor_name, kastor_source = self._wizard_kastor_models[idx - 1]
@@ -3244,7 +3248,7 @@ class _AmiagiTextualApp(App[None]):
         if polluks_source == "ollama":
             ok, _prev = _set_executor_model(self._chat_service, polluks_name)
             if not ok:
-                errors.append(f"Nie udało się ustawić modelu Polluksa: {polluks_name}")
+                errors.append(_("wizard.finalize_polluks_fail", name=polluks_name))
         else:
             # OpenAI model for Polluks
             api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -3254,8 +3258,7 @@ class _AmiagiTextualApp(App[None]):
                     api_key = settings.openai_api_key
             if not api_key:
                 errors.append(
-                    "⚠ Brak klucza API. Ustaw zmienną OPENAI_API_KEY i uruchom ponownie.\n"
-                    "  Wycofuję do pierwszego modelu lokalnego."
+                    _("wizard.finalize_no_api_key")
                 )
                 # Fallback to first local model
                 local = [n for n, s in self._wizard_models if s == "ollama"]
@@ -3291,12 +3294,11 @@ class _AmiagiTextualApp(App[None]):
                     self._chat_service.ollama_client = openai_client
                     self._append_log(
                         "user_model_log",
-                        f"  ☁ Klucz API: {mask_api_key(api_key)} — weryfikacja ✓",
+                        _("wizard.finalize_api_verified", masked=mask_api_key(api_key)),
                     )
                 else:
                     errors.append(
-                        f"⚠ Nie udało się połączyć z OpenAI ({mask_api_key(api_key)}). "
-                        "Sprawdź klucz i połączenie sieciowe."
+                        _("wizard.finalize_api_fail", masked=mask_api_key(api_key))
                     )
                     local = [n for n, s in self._wizard_models if s == "ollama"]
                     if local:
@@ -3316,7 +3318,7 @@ class _AmiagiTextualApp(App[None]):
                     try:
                         supervisor.ollama_client.model = kastor_name  # type: ignore[attr-defined]
                     except Exception:
-                        errors.append(f"Nie udało się ustawić modelu Kastora: {kastor_name}")
+                        errors.append(_("wizard.finalize_kastor_fail", name=kastor_name))
             else:
                 # OpenAI for Kastor
                 api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -3343,8 +3345,7 @@ class _AmiagiTextualApp(App[None]):
                     supervisor.ollama_client = cast(Any, kastor_openai)
                 else:
                     errors.append(
-                        "⚠ Brak klucza API dla modelu Kastora. "
-                        "Kastor zachowa domyślny model lokalny."
+                        _("wizard.finalize_kastor_no_key")
                     )
 
         # --- Show errors ---
@@ -3355,16 +3356,18 @@ class _AmiagiTextualApp(App[None]):
         polluks_label = polluks_name
         if polluks_source != "ollama":
             polluks_label = f"☁ {polluks_name} [{polluks_source.upper()}]"
-        kastor_label = kastor_name or "(wyłączony)"
+        kastor_label = kastor_name or _("wizard.finalize_kastor_disabled")
         if kastor_source != "ollama" and kastor_name:
             kastor_label = f"☁ {kastor_name} [{kastor_source.upper()}]"
 
+        summary_hdr = _("wizard.finalize_summary_header")
+        ready_msg = _("wizard.finalize_ready")
         summary = (
-            "\n╭─ Konfiguracja sesji ──────────────────────────────────────╮\n"
+            f"\n{summary_hdr}\n"
             f"  Polluks: {polluks_label}\n"
             f"  Kastor:  {kastor_label}\n"
             "╰──────────────────────────────────────────────────────────╯\n"
-            "\nGotowe. Wpisz polecenie lub /help."
+            f"\n{ready_msg}"
         )
         self._append_log("user_model_log", summary)
 
