@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import threading
 import time
+import webbrowser
 from datetime import datetime, timezone
 from urllib.parse import quote_plus, unquote, urlparse
 from urllib.request import Request, urlopen
@@ -2215,7 +2216,17 @@ class _AmiagiTextualApp(App[None]):
     # ------------------------------------------------------------------
 
     def _handle_dashboard_command(self, raw_text: str) -> _CommandOutcome:
-        """Dispatch ``/dashboard`` subcommands."""
+        """Dispatch ``/dashboard`` subcommands.
+
+        ``/dashboard start [port]`` performs a full bootstrap:
+        1. Starts the REST API backend (if not already running).
+        2. Verifies that routes are registered.
+        3. Starts the dashboard frontend HTTP server.
+        4. Opens the default web browser.
+
+        Legacy sub-commands ``/dashboard stop`` and ``/dashboard status``
+        remain available for diagnostics.
+        """
         parts = raw_text.strip().split()
         action = parts[1].lower() if len(parts) > 1 else "status"
 
@@ -2224,6 +2235,21 @@ class _AmiagiTextualApp(App[None]):
                 port = self._dashboard_server.port
                 return _CommandOutcome(True, [f"Dashboard już działa na porcie {port}."])
 
+            msgs: list[str] = []
+
+            # --- Step 1: ensure REST API backend is running ---
+            if self._rest_server is not None:
+                if not self._rest_server.is_running:
+                    self._rest_server.start()
+                    msgs.append(f"REST API uruchomione na {self._rest_server.address}")
+                else:
+                    msgs.append(f"REST API: już aktywne ({self._rest_server.address})")
+                route_count = len(self._rest_server.list_routes())
+                msgs.append(f"  routes: {route_count}")
+            else:
+                msgs.append("REST API: brak instancji (pominięto)")
+
+            # --- Step 2: start dashboard frontend ---
             port = 8080
             if len(parts) > 2:
                 try:
@@ -2244,13 +2270,22 @@ class _AmiagiTextualApp(App[None]):
             )
             try:
                 self._dashboard_server.start(port=port)
-                return _CommandOutcome(True, [
-                    f"Dashboard uruchomiony: http://localhost:{port}",
-                    "Zatrzymanie: /dashboard stop",
-                ])
+                dashboard_url = f"http://localhost:{port}"
+                msgs.append(f"Dashboard uruchomiony: {dashboard_url}")
             except Exception as exc:
                 self._dashboard_server = None
-                return _CommandOutcome(True, [f"Nie udało się uruchomić dashboardu: {exc}"])
+                msgs.append(f"Nie udało się uruchomić dashboardu: {exc}")
+                return _CommandOutcome(True, msgs)
+
+            # --- Step 3: open default browser ---
+            try:
+                webbrowser.open(dashboard_url)
+                msgs.append("Przeglądarka otwarta.")
+            except Exception:
+                msgs.append(f"Nie udało się otworzyć przeglądarki — otwórz ręcznie: {dashboard_url}")
+
+            msgs.append("Zatrzymanie: /dashboard stop")
+            return _CommandOutcome(True, msgs)
 
         if action == "stop":
             if self._dashboard_server is None or not self._dashboard_server.running:
