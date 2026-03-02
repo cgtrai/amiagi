@@ -54,7 +54,7 @@ class TestEvalRunner:
         assert result.aggregate_score == 100.0
 
     def test_failing_agent(self) -> None:
-        def broken(_: str) -> str:
+        def broken(prompt: str) -> str:
             raise RuntimeError("broken")
 
         runner = EvalRunner(rubric=_make_rubric())

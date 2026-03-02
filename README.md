@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 
-A local, CLI-first framework for evaluating LLM autonomy in controlled environments.
+A local, CLI-first framework for orchestrating autonomous LLM agent teams in controlled environments.
 
-`amiagi` focuses on reproducible autonomy experiments: tool-calling, permission gating, model I/O audit logs, session continuity, and supervisor-style runtime checks. Supports both local Ollama models and external API backends (OpenAI, OpenRouter, Azure, vLLM) with per-role model assignment.
+`amiagi` is a full-featured agent orchestration platform: dynamic agent registry, task queuing, workflow engine, budget governance, evaluation framework, REST API, web dashboard, and team composition — all with per-agent security isolation, JSONL audit logs, and multi-backend support (Ollama, OpenAI, OpenRouter, Azure, vLLM).
+
+Current version: **v1.0.0** — all 11 roadmap phases complete, **815 tests**.
 
 ## Safety Disclaimer (Read First)
 
@@ -61,6 +63,81 @@ See [LICENSE](LICENSE) for full terms.
 - Deep tool-call resolution flow with iteration cap protection (`resolve_tool_calls`, max 15 steps)
 - Tool name alias resolution (`file_read→read_file`, `dir_list→list_dir`) with per-tool correction tracking
 - Adaptive supervisor watchdog with attempt caps/cooldown and plan-aware reactivation checks
+
+### Agent management (Phase 1–2)
+
+- **Dynamic agent registry** — register, unregister, lifecycle state tracking (IDLE/WORKING/PAUSED/ERROR/TERMINATED)
+- **Agent factory** — programmatic agent creation from descriptors
+- **Agent wizard** — natural language description → full agent blueprint (persona, skills, tools, test scenarios)
+- **Lifecycle logging** — every state change logged to `logs/agent_lifecycle.jsonl`
+
+### Task queue & work distribution (Phase 3)
+
+- **Priority task queue** — CRITICAL/HIGH/NORMAL/LOW with dependency resolution
+- **Task decomposer** — LLM-powered split of complex tasks into subtasks with DAG dependencies
+- **Work assigner** — skill-based matching of tasks to idle agents with backpressure
+- **Task scheduler** — periodic ready-task dispatch with deadline escalation
+
+### Observability & dashboard (Phase 4)
+
+- **Metrics collector** — in-memory ringbuffer for token usage, task duration, success/error rates
+- **Alert manager** — configurable rules with severity-based alerting
+- **Session replay** — event-based session reconstruction from JSONL logs
+- **Web dashboard** — real-time browser UI with agents, tasks, metrics, events (see [WEB_INTERFACE.md](WEB_INTERFACE.md))
+
+### Shared context & memory (Phase 5)
+
+- **Shared workspace** — per-project workspace with file authorship tracking
+- **Knowledge base** — searchable document store with TF-IDF matching
+- **Context compressor** — LLM-powered conversation summarization for context window management
+- **Cross-agent memory** — automatic key-findings sharing between agents
+
+### Workflow engine (Phase 6)
+
+- **DAG workflow definitions** — JSON-defined directed acyclic graphs with conditional branching
+- **Workflow checkpoints** — serialized workflow state for crash recovery
+- Predefined templates: `code_review.json`, `research.json`, `feature.json`
+
+### Security & isolation (Phase 7)
+
+- **Per-agent permission policies** — allowed tools, paths, network/shell access per agent
+- **Permission enforcer** — middleware that checks policy before every tool call
+- **Sandbox manager** — isolated working directory per agent
+- **Secret vault** — per-agent credential store with cross-agent isolation
+- **Audit chain** — full responsibility chain: who ordered, approved, and executed each action
+
+### Resource & cost governance (Phase 8)
+
+- **Budget manager** — per-agent cost tracking with 80%/100% threshold callbacks
+- **Quota policy** — per-role configurable daily token/cost/request limits (JSON)
+- **Rate limiter** — token-bucket rate limiting per backend with exponential backoff
+- **VRAM scheduler** — priority-based GPU slot scheduling with idle-agent eviction
+
+### Evaluation & quality (Phase 9)
+
+- **Eval rubric** — weighted criteria scoring (normalized 0–100)
+- **Eval runner** — pluggable scorer (keyword + LLM-as-judge) with full eval history
+- **Benchmark suite** — category-based benchmark loading from `benchmarks/` directory
+- **A/B test runner** — side-by-side comparison of two agent configurations
+- **Regression detector** — JSON baseline comparison with configurable threshold
+- **Human feedback collector** — thumbs up/down + comment persistence (JSONL)
+
+### External integration & API (Phase 10)
+
+- **REST API server** — HTTP API with bearer-token auth and pluggable routes (see [WEB_INTERFACE.md](WEB_INTERFACE.md))
+- **Webhook dispatcher** — event-filtered webhooks with retry/backoff and delivery history
+- **Plugin loader** — dynamic plugin discovery via `entry_points` and directory scanning
+- **CI adapter** — GitHub Actions helpers (PR review, benchmark, test orchestration)
+- **SDK client** — Python SDK for programmatic control over REST API
+
+### Team composition (Phase 11)
+
+- **Team definition** — structured team model with member descriptors and JSON persistence
+- **Team composer** — heuristic + template-based team recommendation and assembly
+- **Skill catalog** — searchable skill registry with tool/model matching
+- **Dynamic scaler** — load-monitoring scaler with cooldown-based scale-up/down decisions
+- **Team dashboard** — org chart, per-team metrics, and summary views
+- Predefined templates: `team_backend.json`, `team_research.json`, `team_fullstack.json`
 
 ### User experience
 
@@ -135,70 +212,81 @@ Dashboard commands (v0.6+):
 - `/dashboard stop` — stop the dashboard server
 - `/dashboard status` — check whether the dashboard is running
 
-## Web Dashboard
+Shared context & memory commands (v0.9+):
 
-amiagi includes a built-in web-based monitoring dashboard accessible from any browser.
+- `/knowledge search <query>` — search the knowledge base
+- `/knowledge store <text>` — store a document in the knowledge base
+- `/workspace list` — list files in the shared workspace
+- `/workspace read <path>` — read a file from the shared workspace
 
-### What it shows
+Security & audit commands (v0.9+):
 
-The dashboard is a single-page application (vanilla JS, zero external dependencies) with four panels:
+- `/audit show [limit]` — show recent audit chain entries
+- `/sandbox status` — show sandbox isolation status per agent
 
-| Panel | Content |
-|-------|---------|
-| **🤖 Agents** | Name, role, model, current state (idle/working/paused/error/terminated) — with color-coded status badges |
-| **📋 Tasks** | Title, priority, status, assigned agent — Kanban-style overview of the task queue |
-| **📊 Metrics** | Aggregated metrics (count, avg, min, max) for recorded data points — token usage, task duration, etc. |
-| **📝 Event Log** | Last 50 events from JSONL session logs — timestamp, source, event type |
+Workflow commands (v0.9+):
 
-A status bar at the bottom shows agent count, task breakdown, and last refresh time.
+- `/workflow run <name>` — execute a workflow (e.g. `code_review`, `research`, `feature`)
+- `/workflow status` — show active workflow state
+- `/workflow list` — list available workflow templates
+- `/workflow pause` — pause the active workflow
 
-### How to start
+Budget & quota commands (v1.0+):
 
-1. **Start amiagi** in Textual mode:
-   ```bash
-   source .venv/bin/activate
-   python -m amiagi.main --ui textual
-   ```
-2. **Launch the dashboard** from the Sponsor input panel:
-   ```
-   /dashboard start
-   ```
-   This starts an HTTP server on port 8080 (configurable: `/dashboard start 9090` or via `AMIAGI_DASHBOARD_PORT` env var).
+- `/budget status` — show per-agent cost tracking summary
+- `/budget set <agent> <limit>` — set cost limit for an agent
+- `/budget reset <agent>` — reset budget counters for an agent
+- `/quota` — show per-role quota policy
 
-3. **Open in browser**:
-   ```
-   http://localhost:8080
-   ```
+Evaluation & feedback commands (v1.0+):
 
-The dashboard auto-refreshes every 5 seconds and also supports **Server-Sent Events (SSE)** — when the server pushes events, the UI updates in real time.
+- `/eval history` — show evaluation run history
+- `/eval baselines` — list baseline scores
+- `/feedback summary` — show human feedback statistics
+- `/feedback up <comment>` — record positive feedback
+- `/feedback down <comment>` — record negative feedback
 
-### API endpoints
+REST API commands (v1.0+):
 
-The dashboard server exposes a JSON API (CORS enabled):
+- `/api status` — show REST API server status
+- `/api start` — start the REST API server
+- `/api stop` — stop the REST API server
 
-| Endpoint | Method | Response |
-|----------|--------|----------|
-| `/api/agents` | GET | List of all registered agents with state, role, model |
-| `/api/tasks` | GET | All tasks with priority, status, assignment |
-| `/api/metrics` | GET | Aggregated metrics summary |
-| `/api/alerts` | GET | Recent alerts from AlertManager |
-| `/api/replay` | GET | Last 200 session events from JSONL logs |
-| `/api/events` | GET | SSE stream — live event push |
-| `/api/status` | GET | Server status, agent count, task stats |
+Plugin commands (v1.0+):
 
-### How to stop
+- `/plugins list` — list loaded plugins
+- `/plugins load <name>` — load a plugin by name
+
+Team commands (v1.0+):
+
+- `/team list` — list active teams
+- `/team templates` — list available team templates
+- `/team create <template>` — create a team from a template
+- `/team status <id>` — show team details and member status
+
+## Web Interfaces
+
+amiagi provides two HTTP-based interfaces. For full details see [WEB_INTERFACE.md](WEB_INTERFACE.md).
+
+### Monitoring Dashboard (Phase 4)
+
+A single-page browser application (vanilla JS, zero dependencies) with four panels: Agents, Tasks, Metrics, and Event Log. Auto-refreshes every 5 seconds with SSE live-push support.
 
 ```
+/dashboard start [port]   # default 8080, then open http://localhost:8080
 /dashboard stop
 ```
 
-### Configuration
+### REST API (Phase 10)
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `AMIAGI_DASHBOARD_PORT` | `8080` | Default port for the dashboard server |
+Programmatic HTTP API with bearer-token auth for external integrations, CI/CD, SDK clients.
 
-The dashboard HTML is served from `src/amiagi/interfaces/dashboard_static/index.html`. No build step, no npm — plain HTML/CSS/JS.
+```
+/api start                # starts on port 8090 (AMIAGI_REST_API_PORT)
+/api stop
+```
+
+See [WEB_INTERFACE.md](WEB_INTERFACE.md) for endpoints, configuration, and SDK usage.
 
 ## Current Runtime Behavior (Polluks/Kastor/Router)
 
@@ -217,24 +305,61 @@ The dashboard HTML is served from `src/amiagi/interfaces/dashboard_static/index.
 
 ```text
 src/amiagi/
-  application/      # use-cases, orchestration, protocols
-    model_client_protocol.py  # ChatCompletionClient Protocol
-    skills_loader.py          # SkillsLoader + Skill dataclass
-    communication_protocol.py # addressed-block routing, sanitization
-  domain/           # domain models
-  infrastructure/   # IO, storage, runtime integrations
+  domain/             # domain models, enums, dataclasses
+    agent_descriptor.py       # AgentDescriptor, AgentState, AgentRole
+    task.py                   # Task, TaskStatus, TaskPriority
+    quota_policy.py           # QuotaPolicy, RoleQuota
+    eval_rubric.py            # EvalRubric, Criterion, EvalResult
+    team_definition.py        # TeamDefinition, AgentDescriptor
+    blueprint.py              # AgentBlueprint, TestScenario
+    workflow_definition.py    # WorkflowDefinition, WorkflowNode
+    permission_policy.py      # AgentPermissionPolicy
+  application/        # use-cases, orchestration, protocols
+    chat_service.py           # ChatService (main LLM conversation loop)
+    tool_calling.py           # tool dispatch + alias resolution
+    tool_registry.py          # ToolRegistry (dynamic tool registration)
+    model_queue_policy.py     # VRAM-aware model queue policy
+    budget_manager.py         # BudgetManager (per-agent cost tracking)
+    eval_runner.py            # EvalRunner (rubric-based evaluation)
+    ab_test_runner.py         # ABTestRunner (A/B agent comparison)
+    regression_detector.py    # RegressionDetector (baseline comparison)
+    plugin_loader.py          # PluginLoader (entry_points + dir scan)
+    team_composer.py          # TeamComposer (heuristic recommendation)
+    skill_catalog.py          # SkillCatalog (searchable skill registry)
+    dynamic_scaler.py         # DynamicScaler (load-based scaling)
+    agent_registry.py         # AgentRegistry (thread-safe CRUD)
+    agent_factory.py          # AgentFactory (create agents from descriptors)
+    task_queue.py             # TaskQueue (priority + dependency)
+    work_assigner.py          # WorkAssigner (skill-based matching)
+    workflow_engine.py        # WorkflowEngine (DAG interpreter)
+    permission_enforcer.py    # PermissionEnforcer (middleware)
+    audit_chain.py            # AuditChain (responsibility chain)
+  infrastructure/     # IO, storage, runtime integrations
+    ollama_client.py          # OllamaClient (local Ollama API)
     openai_client.py          # OpenAIClient (OpenAI-compatible API)
     usage_tracker.py          # UsageTracker + UsageSnapshot
-    input_history.py          # readline-style input history
-    session_model_config.py   # session model persistence
-  interfaces/       # CLI and user interaction layer
-tests/              # pytest suite (328 tests)
-config/             # shell allowlist policy
-skills/             # per-role Markdown skill files
-  polluks/          # executor skills
-  kastor/           # supervisor skills
-data/               # local persistent DB, history, model config
-logs/               # JSONL runtime and model logs
+    rate_limiter.py           # RateLimiter (token bucket)
+    vram_scheduler.py         # VRAMScheduler (priority GPU scheduling)
+    benchmark_suite.py        # BenchmarkSuite (category benchmarks)
+    rest_server.py            # RESTServer (HTTP API, bearer auth)
+    webhook_dispatcher.py     # WebhookDispatcher (event webhooks)
+    ci_adapter.py             # CIAdapter (GitHub Actions integration)
+    sdk_client.py             # AmiagiClient (Python SDK)
+    dashboard_server.py       # DashboardServer (web monitoring)
+    sandbox_manager.py        # SandboxManager (per-agent isolation)
+    secret_vault.py           # SecretVault (per-agent credentials)
+  interfaces/         # CLI and user interaction layer
+    textual_cli.py            # Textual TUI (main user interface)
+    human_feedback.py         # HumanFeedbackCollector (JSONL)
+    team_dashboard.py         # TeamDashboard (org chart + metrics)
+    dashboard_static/         # HTML/CSS/JS for web dashboard
+tests/                # pytest suite (815 tests)
+config/               # shell allowlist policy
+skills/               # per-role Markdown skill files
+data/                 # local persistent DB, history, model config
+  teams/              # team template JSON files
+  benchmarks/         # benchmark scenario files
+logs/                 # JSONL runtime and model logs
 ```
 
 ## Requirements
@@ -404,7 +529,8 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Latest release notes: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md).
+Latest release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
+Roadmap: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).
 
 ## Polish Documentation
 

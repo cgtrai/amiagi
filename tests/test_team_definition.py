@@ -35,8 +35,9 @@ class TestTeamDefinition:
     def test_get_member(self) -> None:
         t = TeamDefinition(team_id="t1")
         t.add_member(AgentDescriptor(role="dev", name="Anna"))
-        assert t.get_member("dev") is not None
-        assert t.get_member("dev").name == "Anna"
+        member = t.get_member("dev")
+        assert member is not None
+        assert member.name == "Anna"
         assert t.get_member("x") is None
 
     def test_roundtrip(self) -> None:

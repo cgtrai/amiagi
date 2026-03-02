@@ -15,10 +15,10 @@ def _make_rubric() -> EvalRubric:
 
 class TestABTestRunner:
     def test_a_always_wins(self) -> None:
-        def good_agent(_: str) -> str:
+        def good_agent(prompt: str) -> str:
             return "python fastapi sqlalchemy"
 
-        def bad_agent(_: str) -> str:
+        def bad_agent(prompt: str) -> str:
             return "irrelevant response"
 
         runner = ABTestRunner(rubric=_make_rubric())
@@ -34,7 +34,7 @@ class TestABTestRunner:
         assert result.score_delta > 0
 
     def test_tie(self) -> None:
-        def same(_: str) -> str:
+        def same(prompt: str) -> str:
             return "identical response"
 
         runner = ABTestRunner(rubric=_make_rubric())
@@ -46,10 +46,10 @@ class TestABTestRunner:
         assert result.score_delta == 0
 
     def test_b_wins(self) -> None:
-        def weak(_: str) -> str:
+        def weak(prompt: str) -> str:
             return "nothing relevant"
 
-        def strong(_: str) -> str:
+        def strong(prompt: str) -> str:
             return "python is great"
 
         runner = ABTestRunner(rubric=_make_rubric())
@@ -61,7 +61,7 @@ class TestABTestRunner:
         assert result.score_delta < 0
 
     def test_history(self) -> None:
-        def agent(_: str) -> str:
+        def agent(prompt: str) -> str:
             return "ok"
 
         runner = ABTestRunner(rubric=_make_rubric())
@@ -70,7 +70,7 @@ class TestABTestRunner:
         assert len(runner.history()) == 1
 
     def test_per_scenario_detail(self) -> None:
-        def agent(_: str) -> str:
+        def agent(prompt: str) -> str:
             return "response"
 
         runner = ABTestRunner(rubric=_make_rubric())
@@ -83,7 +83,7 @@ class TestABTestRunner:
         assert result.scenarios_count == 2
 
     def test_to_dict(self) -> None:
-        def agent(_: str) -> str:
+        def agent(prompt: str) -> str:
             return "response"
 
         runner = ABTestRunner(rubric=_make_rubric())

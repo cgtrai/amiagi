@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 
-Lokalny framework CLI do oceny autonomii modeli LLM w kontrolowanym środowisku.
+Lokalny framework CLI do orkiestracji autonomicznych zespołów agentów LLM w kontrolowanym środowisku.
 
-`amiagi` służy do prowadzenia powtarzalnych eksperymentów autonomii: wywołania narzędzi, polityki zgód, pełny audyt I/O modeli, ciągłość sesji i nadzór wykonania. Obsługuje zarówno lokalne modele Ollama, jak i zewnętrzne API (OpenAI, OpenRouter, Azure, vLLM) z przypisaniem modeli per rola.
+`amiagi` to pełnoprawna platforma orkiestracji agentów: dynamiczny rejestr agentów, kolejka zadań, silnik workflow, budżetowanie, framework ewaluacyjny, REST API, web dashboard i kompozycja zespołów — wszystko z izolacją bezpieczeństwa per agent, pełnym audytem JSONL i obsługą wielu backendów (Ollama, OpenAI, OpenRouter, Azure, vLLM).
+
+Aktualna wersja: **v1.0.0** — wszystkie 11 faz roadmapy zrealizowanych, **815 testów**.
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 
@@ -61,6 +63,81 @@ Pełne warunki: [LICENSE](LICENSE).
 - Głębsza pętla rozwiązywania `tool_call` z ochroną limitem iteracji (`resolve_tool_calls`, max 15 kroków)
 - Rozpoznawanie aliasów nazw narzędzi (`file_read→read_file`, `dir_list→list_dir`) z limitem korekcji per narzędzie
 - Adaptacyjny watchdog Kastora z limitem prób/cooldownem i kontrolą kontekstu planu
+
+### Zarządzanie agentami (Faza 1–2)
+
+- **Dynamiczny rejestr agentów** — rejestracja, wyrejestrowanie, śledzenie stanu lifecycle (IDLE/WORKING/PAUSED/ERROR/TERMINATED)
+- **Fabryka agentów** — programowe tworzenie agentów z deskryptorów
+- **Kreator agentów** — opis w języku naturalnym → pełny blueprint agenta (persona, skills, narzędzia, scenariusze testowe)
+- **Logowanie lifecycle** — każda zmiana stanu zapisywana do `logs/agent_lifecycle.jsonl`
+
+### Kolejka zadań i dystrybucja (Faza 3)
+
+- **Priorytetowa kolejka zadań** — CRITICAL/HIGH/NORMAL/LOW z rozwiązywaniem zależności
+- **Dekompozycja zadań** — LLM rozbija złożone zadania na podzadania z zależnościami DAG
+- **Przydzielanie pracy** — dopasowanie agentów do zadań po wymaganych skills z backpressure
+- **Scheduler zadań** — cykliczny dispatch gotowych zadań z eskalacją na deadline
+
+### Obserwowalność i dashboard (Faza 4)
+
+- **Kolektor metryk** — ringbuffer na zużycie tokenów, czas zadań, success/error rate
+- **Menedżer alertów** — konfigurowalne reguły z priorytetami
+- **Odtwarzanie sesji** — rekonstrukcja zdarzeń z logów JSONL
+- **Web dashboard** — przeglądarkowy panel z agentami, taskami, metrykami, zdarzeniami (zob. [WEB_INTERFACE.md](WEB_INTERFACE.md))
+
+### Wspólny kontekst i pamięć (Faza 5)
+
+- **Współdzielone workspace** — per-projekt z śledzeniem autorstwa plików
+- **Baza wiedzy** — przeszukiwalna z TF-IDF
+- **Kompresor kontekstu** — streszczanie konwersacji przez LLM do zarządzania oknem kontekstu
+- **Pamięć cross-agent** — automatyczne dzielenie się ustaleniami między agentami
+
+### Silnik workflow (Faza 6)
+
+- **Definicje workflow DAG** — JSON z warunkowym rozgałęzianiem
+- **Checkpointy workflow** — serializowany stan do odtworzenia po awarii
+- Predefiniowane szablony: `code_review.json`, `research.json`, `feature.json`
+
+### Bezpieczeństwo i izolacja (Faza 7)
+
+- **Polityka uprawnień per agent** — dozwolone narzędzia, ścieżki, dostęp do sieci/shell
+- **Enforcer uprawnień** — middleware sprawdzający politykę przed każdym wywołaniem narzędzia
+- **Sandbox manager** — izolowany katalog roboczy per agent
+- **Sejf sekretów** — per-agentowy store na credentiale z izolacją cross-agent
+- **Łańcuch audytu** — pełna ścieżka odpowiedzialności: kto zlecił, zatwierdził i wykonał
+
+### Budżetowanie i koszty (Faza 8)
+
+- **Menedżer budżetu** — śledzenie kosztów per agent z callbackami na 80%/100%
+- **Polityka quotowa** — konfigurowalne limity dzienne tokenów/kosztu/requestów per rola (JSON)
+- **Rate limiter** — token-bucket per backend z exponential backoff
+- **VRAM scheduler** — priorytetowy scheduling GPU z evicją idle agentów
+
+### Ewaluacja i jakość (Faza 9)
+
+- **Rubric ewaluacyjna** — ważone kryteria oceny (znormalizowane 0–100)
+- **Runner ewaluacji** — pluggable scorer (keyword + LLM-as-judge) z historią
+- **Zestaw benchmarków** — ładowanie per kategoria z katalogu `benchmarks/`
+- **Runner A/B testów** — porównanie dwóch konfiguracji agenta
+- **Detektor regresji** — porównanie z baseline z konfigurowalnym progiem
+- **Kolektor feedbacku** — thumbs up/down + komentarz, persystencja JSONL
+
+### Integracje zewnętrzne i API (Faza 10)
+
+- **Serwer REST API** — HTTP API z auth bearer token i plugowalnymi route'ami (zob. [WEB_INTERFACE.md](WEB_INTERFACE.md))
+- **Dispatcher webhooków** — webhooks per zdarzenie z retry/backoff i historią dostarczeń
+- **Loader pluginów** — dynamiczne odkrywanie przez `entry_points` i skan katalogu
+- **Adapter CI** — helpery do GitHub Actions (review PR, benchmark, testy)
+- **Klient SDK** — programowe sterowanie przez REST API z Pythona
+
+### Kompozycja zespołów (Faza 11)
+
+- **Definicja zespołu** — strukturalny model z deskryptorami członków i persystencją JSON
+- **Kompozer zespołów** — heurystyczna + szablonowa rekomendacja składu
+- **Katalog umiejętności** — przeszukiwalny rejestr z dopasowaniem do narzędzi/modeli
+- **Dynamiczny scaler** — monitorowanie obciążenia z decyzjami scale-up/down
+- **Dashboard zespołu** — org chart, metryki per team, podsumowania
+- Predefiniowane szablony: `team_backend.json`, `team_research.json`, `team_fullstack.json`
 
 ### Wygoda użytkowania
 
@@ -124,6 +201,105 @@ Uwagi:
 - Protokół komunikacji aktorów wymusza bloki adresowane (`[Nadawca -> Odbiorca]`), z automatycznymi przypomnieniami i konfigurowalnymi rundami konsultacji.
 - Wiadomości `[Kastor -> Sponsor]` są routowane na główny panel użytkownika z sanityzowaną treścią (bez surowego JSON `tool_call`).
 - Nieznane nazwy narzędzi są rozpoznawane przez mapę aliasów; po wyczerpaniu limitów korekcji runtime wymusza plan tworzenia narzędzia.
+
+Komendy zarządzania agentami (v0.6+):
+
+- `/agents list` — tabela wszystkich agentów (id, nazwa, rola, stan, model)
+- `/agents info <id|nazwa>` — szczegóły agenta
+- `/agents pause <id>` / `/agents resume <id>` / `/agents terminate <id>` — sterowanie lifecycle
+- `/agent-wizard create <opis>` — generowanie agenta z opisu w języku naturalnym
+- `/agent-wizard blueprints` — lista zapisanych blueprintów
+- `/agent-wizard load <nazwa>` — wczytanie blueprintu
+
+Komendy zarządzania zadaniami (v0.6+):
+
+- `/tasks list` — wszystkie zadania z priorytetem, statusem i przypisaniem
+- `/tasks add <tytuł>` — nowe zadanie
+- `/tasks info <id>` — szczegóły zadania (dopasowanie częściowe id)
+- `/tasks cancel <id>` — anulowanie zadania
+- `/tasks stats` — statystyki: pending / in-progress / done / failed
+
+Komendy dashboardu (v0.6+):
+
+- `/dashboard start [port]` — uruchomienie web dashboardu monitoringu (domyślny port: 8080)
+- `/dashboard stop` — zatrzymanie serwera dashboardu
+- `/dashboard status` — sprawdzenie czy dashboard działa
+
+Komendy kontekstu i pamięci (v0.9+):
+
+- `/knowledge search <zapytanie>` — przeszukiwanie bazy wiedzy
+- `/knowledge store <tekst>` — zapis dokumentu w bazie wiedzy
+- `/workspace list` — lista plików w współdzielonym workspace
+- `/workspace read <ścieżka>` — odczyt pliku z workspace
+
+Komendy bezpieczeństwa i audytu (v0.9+):
+
+- `/audit show [limit]` — ostatnie wpisy łańcucha audytu
+- `/sandbox status` — status izolacji sandbox per agent
+
+Komendy workflow (v0.9+):
+
+- `/workflow run <nazwa>` — uruchomienie workflow (np. `code_review`, `research`, `feature`)
+- `/workflow status` — stan aktywnego workflow
+- `/workflow list` — lista dostępnych szablonów
+- `/workflow pause` — pauza aktywnego workflow
+
+Komendy budżetu i quota (v1.0+):
+
+- `/budget status` — podsumowanie śledzenia kosztów per agent
+- `/budget set <agent> <limit>` — ustawienie limitu kosztowego
+- `/budget reset <agent>` — reset liczników budżetu
+- `/quota` — wyświetlenie polityki quotowej per rola
+
+Komendy ewaluacji i feedbacku (v1.0+):
+
+- `/eval history` — historia ewaluacji
+- `/eval baselines` — wylistowanie baseline scores
+- `/feedback summary` — statystyki feedbacku
+- `/feedback up <komentarz>` — rejestracja pozytywnego feedbacku
+- `/feedback down <komentarz>` — rejestracja negatywnego feedbacku
+
+Komendy REST API (v1.0+):
+
+- `/api status` — status serwera REST API
+- `/api start` — uruchomienie serwera REST API
+- `/api stop` — zatrzymanie serwera REST API
+
+Komendy pluginów (v1.0+):
+
+- `/plugins list` — lista załadowanych pluginów
+- `/plugins load <nazwa>` — załadowanie pluginu
+
+Komendy zespołów (v1.0+):
+
+- `/team list` — lista aktywnych zespołów
+- `/team templates` — lista dostępnych szablonów zespołów
+- `/team create <szablon>` — utworzenie zespołu z szablonu
+- `/team status <id>` — szczegóły zespołu i status członków
+
+## Interfejsy webowe
+
+amiagi udostępnia dwa interfejsy HTTP. Pełna dokumentacja: [WEB_INTERFACE.md](WEB_INTERFACE.md).
+
+### Dashboard monitoringowy (Faza 4)
+
+Jednopanelowa aplikacja przeglądarkowa (vanilla JS, zero zależności) z czterema widokami: Agenci, Zadania, Metryki i Log zdarzeń. Auto-odświeżanie co 5 sekund z live-push SSE.
+
+```
+/dashboard start [port]   # domyślnie 8080, potem otwórz http://localhost:8080
+/dashboard stop
+```
+
+### REST API (Faza 10)
+
+Programmatyczny interfejs HTTP z auth bearer token do integracji zewnętrznych, CI/CD i klientów SDK.
+
+```
+/api start                # startuje na porcie 8090 (AMIAGI_REST_API_PORT)
+/api stop
+```
+
+Szczegóły endpointów, konfiguracji i użycia SDK: [WEB_INTERFACE.md](WEB_INTERFACE.md).
 
 ## Wymagania
 
@@ -292,4 +468,5 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Najnowsze release notes: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md).
+Najnowsze release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
+Roadmapa: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).

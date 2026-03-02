@@ -73,7 +73,9 @@ class TestSkillCatalog:
         cat2 = SkillCatalog()
         count = cat2.load_json(path)
         assert count == 1
-        assert cat2.get("a").description == "desc"
+        entry = cat2.get("a")
+        assert entry is not None
+        assert entry.description == "desc"
 
     def test_to_dict(self) -> None:
         cat = SkillCatalog()
