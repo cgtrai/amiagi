@@ -141,20 +141,26 @@ class TestTaskQueue:
         q = TaskQueue()
         q.enqueue(_make_task("t1"))
         q.mark_done("t1", "result")
-        assert q.get("t1").status == TaskStatus.DONE
-        assert q.get("t1").result == "result"
+        task = q.get("t1")
+        assert task is not None
+        assert task.status == TaskStatus.DONE
+        assert task.result == "result"
 
     def test_mark_failed(self) -> None:
         q = TaskQueue()
         q.enqueue(_make_task("t1"))
         q.mark_failed("t1", "oops")
-        assert q.get("t1").status == TaskStatus.FAILED
+        task = q.get("t1")
+        assert task is not None
+        assert task.status == TaskStatus.FAILED
 
     def test_cancel(self) -> None:
         q = TaskQueue()
         q.enqueue(_make_task("t1"))
         q.cancel("t1")
-        assert q.get("t1").status == TaskStatus.CANCELLED
+        task = q.get("t1")
+        assert task is not None
+        assert task.status == TaskStatus.CANCELLED
 
     def test_pending_count(self) -> None:
         q = TaskQueue()

@@ -1,7 +1,8 @@
 # amiagi — Roadmap do v1.0
 
 Plan wdrożenia pełnoprawnego środowiska orkiestracji agentów.
-Stan wyjściowy: **v0.2.0** (2 aktorów, multi-backend, skills, session persistence, 328 testów).
+Stan aktualny: **v0.9.0** (Fazy 1–7 zrealizowane, 612 testów).
+Stan wyjściowy: v0.2.0 (2 aktorów, multi-backend, skills, session persistence, 328 testów).
 
 Cel: system, w którym Sponsor **opisuje potrzebę**, a framework **powołuje, konfiguruje, testuje i nadzoruje** zespół agentów realizujących złożone zadania.
 
@@ -9,47 +10,71 @@ Cel: system, w którym Sponsor **opisuje potrzebę**, a framework **powołuje, k
 
 ## Strategia priorytetyzacji
 
-Kolejność faz nie jest przypadkowa — wynika z 3 strategicznych priorytetów budujących na istniejących fundamentach v0.2.0:
+### ✅ Zrealizowane (v0.9.0)
 
-### Priorytet 1: Agent Registry + AgentWizard (Fazy 1–2)
+Fazy 1–4 dostarczone w release v0.6.0 (136 nowych testów, 21 modułów, 1 static asset):
+- **Faza 1**: Agent Registry & Lifecycle — AgentDescriptor, AgentRegistry, AgentFactory, AgentRuntime, LifecycleLogger
+- **Faza 2**: AgentWizard — AgentBlueprint, AgentWizardService, PersonaGenerator, SkillRecommender, ToolRecommender, AgentTestRunner
+- **Faza 3**: Task Queue & Work Distribution — Task, TaskQueue, TaskDecomposer, WorkAssigner, TaskScheduler
+- **Faza 4**: Observability & Dashboard — MetricsCollector, AlertManager, SessionReplay, DashboardServer, DashboardUI
 
-**Dlaczego teraz**: amiagi ma już `ChatCompletionClient` protocol, `SkillsLoader`, `SessionModelConfig` — wszystko gotowe do uogólnienia na N agentów. Brakuje tylko rejestru i factory. AgentWizard natychmiast zamienia to w killer feature: Sponsor opisuje potrzebę → agent powstaje — żaden konkurent tego nie ma.
+Fazy 5–7 dostarczone w release v0.9.0 (148 nowych testów, 13 modułów, 3 szablony workflow):
+- **Faza 5**: Shared Context & Memory — SharedWorkspace, KnowledgeBase, ContextCompressor, CrossAgentMemory, ContextWindowManager
+- **Faza 7**: Security & Isolation — AgentPermissionPolicy, PermissionEnforcer, SandboxManager, SecretVault, AuditChain
+- **Faza 6**: Workflow Engine — WorkflowDefinition, WorkflowEngine, WorkflowCheckpoint + 3 szablony
 
-### Priorytet 2: Task Queue z DAG zależności (Faza 3)
+### Priorytety na kolejne fazy (od v0.10.0)
 
-**Dlaczego teraz**: amiagi ma router, watchdog, plan-aware supervision, resolve_tool_calls z iteration cap — infrastruktura kolejkowania i orkiestracji jest w DNA systemu. Rozszerzenie na wielozadaniowy DAG to naturalny krok zanim będą workflow'y.
+Kolejność wynika z analizy zależności i wartości operacyjnej na obecnym stanie v0.9.0:
 
-### Priorytet 3: Observability & Dashboard (Faza 4)
+### ✅ [ZREALIZOWANE] Priorytet 1 — Shared Context & Memory (Faza 5) → v0.9.0
+### ✅ [ZREALIZOWANE] Priorytet 2 — Security & Isolation (Faza 7) → v0.9.0
+### ✅ [ZREALIZOWANE] Priorytet 3 — Workflow Engine (Faza 6) → v0.9.0
 
-**Dlaczego teraz**: amiagi loguje **wszystko** do JSONL — model I/O, activity events, supervision dialogue, lifecycle. Te dane już istnieją, ale są ukryte w plikach. Web dashboard z trace viewerem to **nisko-kosztowa** zmiana dająca **ogromną wartość operacyjną** — bez niej zarządzanie N agentami będzie ślepe. Dlatego dashboard idzie zaraz po Task Queue, a nie na końcu.
+### Priorytet 4 — ŚREDNI: Cost Governance (Faza 8)
 
-### Reszta: governance → bezpieczeństwo → workflow'y → integracja
+**Dlaczego teraz**: z wieloma agentami i API backendem (OpenAI) koszty mogą wymknąć się spod kontroli. BudgetManager + RateLimiter + VRAMScheduler są konieczne do produkcyjnego użycia. Zależy od Dashboard (Faza 4) — alerty kosztowe rozszerzające AlertManager.
 
-Shared Context (Faza 5) daje agentom wspólną pamięć. Workflow Engine (Faza 6) pozwala deklaratywnie opisywać przepływy. Security (Faza 7) i Cost Governance (Faza 8) zabezpieczają system przed skalowaniem. Evaluation (Faza 9) mierzy jakość. External API (Faza 10) otwiera system na świat. Team Composition (Faza 11) to wieńczący kamień v1.0.
+### Priorytet 5 — ŚREDNI: Evaluation & Quality (Faza 9) ★ NASTĘPNA
+
+**Dlaczego teraz**: po ustabilizowaniu infrastruktury (Fazy 1–8), trzeba zmierzyć jakość. Rubric scoring, benchmarki, A/B testing i regression detection pozwalają iterować na konfiguracji agentów. AgentTestRunner z Fazy 2 jest zaczątkiem — Faza 9 to pełny framework ewaluacyjny.
+
+### Priorytet 6 — NIŻSZY: External Integration & API (Faza 10)
+
+**Dlaczego teraz**: REST API, webhooks, SDK i CI adapter otwierają system na integracje zewnętrzne. Sens ma dopiero gdy core jest kompletny i przetestowany (Fazy 1–9). Wcześniejsze udostępnienie API narażałoby na breaking changes.
+
+### Priorytet 7 — CAPSTONE: Team Composition (Faza 11 → v1.0.0)
+
+Wieńczący kamień milowy. TeamComposer + DynamicScaler + TeamDashboard. Wymaga wszystkich wcześniejszych faz. Przejście od "zbioru agentów" do "zarządzanego zespołu".
 
 ---
 
 ## Fazy wdrożenia
 
 ```text
-v0.2.0 (obecny)
+v0.9.0 (aktualny — Fazy 1–7 zrealizowane)
   │
-  ├─ Faza 1: Agent Registry & Lifecycle        → v0.3.0   ★ PRIORYTET 1
-  ├─ Faza 2: AgentWizard                       → v0.4.0   ★ PRIORYTET 1
-  ├─ Faza 3: Task Queue & Work Distribution     → v0.5.0   ★ PRIORYTET 2
-  ├─ Faza 4: Observability & Dashboard          → v0.6.0   ★ PRIORYTET 3
-  ├─ Faza 5: Shared Context & Memory           → v0.7.0
-  ├─ Faza 6: Workflow Engine (DAG)              → v0.8.0
-  ├─ Faza 7: Security & Isolation (per-agent)   → v0.9.0
-  ├─ Faza 8: Resource & Cost Governance         → v0.10.0
-  ├─ Faza 9: Evaluation & Quality Framework     → v0.11.0
-  ├─ Faza 10: External Integration & API        → v0.12.0
-  └─ Faza 11: Persona & Team Composition        → v1.0.0
+  ├─ Faza 1: Agent Registry & Lifecycle        → v0.6.0   ✅ DONE
+  ├─ Faza 2: AgentWizard                       → v0.6.0   ✅ DONE
+  ├─ Faza 3: Task Queue & Work Distribution     → v0.6.0   ✅ DONE
+  ├─ Faza 4: Observability & Dashboard          → v0.6.0   ✅ DONE
+  ├─ Faza 5: Shared Context & Memory           → v0.9.0   ✅ DONE
+  ├─ Faza 7: Security & Isolation (per-agent)   → v0.9.0   ✅ DONE
+  ├─ Faza 6: Workflow Engine (DAG)              → v0.9.0   ✅ DONE
+  │
+  ├─ Faza 8: Resource & Cost Governance         → v0.10.0  ★ PRIORYTET 1 — ŚREDNI
+  ├─ Faza 9: Evaluation & Quality Framework     → v0.11.0  ★ PRIORYTET 2 — ŚREDNI
+  ├─ Faza 10: External Integration & API        → v0.12.0  ○ PRIORYTET 3 — NIŻSZY
+  └─ Faza 11: Persona & Team Composition        → v1.0.0   ◆ CAPSTONE
 ```
+
+> **Uwaga**: Faza 7 (Security) awansowała przed Fazę 6 (Workflow Engine) — bezpieczeństwo
+> musi być na miejscu zanim workflow'y pozwolą agentom wykonywać złożone,
+> wielokrokowe operacje bez nadzoru ludzkiego.
 
 ---
 
-## Faza 1 — Agent Registry & Lifecycle (v0.3.0)
+## Faza 1 — Agent Registry & Lifecycle (v0.6.0) ✅ DONE
 
 **Cel**: przekształcenie hardcoded Polluks/Kastor w dynamiczny rejestr N agentów.
 
@@ -81,7 +106,7 @@ v0.2.0 (obecny)
 
 ---
 
-## Faza 2 — AgentWizard (v0.4.0)
+## Faza 2 — AgentWizard (v0.6.0) ✅ DONE
 
 **Cel**: interaktywny lub programowy proces tworzenia nowego agenta przez Sponsora, prowadzony przez wybrany model LLM.
 
@@ -141,15 +166,19 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ### Kryteria akceptacji
 
-- [ ] Sponsor opisuje potrzebę w języku naturalnym → agent jest tworzony automatycznie.
-- [ ] Blueprint jest pełny: persona, skills, tools, permissions, scenariusze testowe.
-- [ ] Sponsor może przeglądać i edytować blueprint przed zatwierdzeniem.
-- [ ] AgentTestRunner uruchamia scenariusze i raportuje wyniki.
-- [ ] Blueprint zapisany na dysku, reużywalny.
+- [x] Sponsor opisuje potrzebę w języku naturalnym → agent jest tworzony automatycznie.
+- [x] Blueprint jest pełny: persona, skills, tools, permissions, scenariusze testowe.
+- [ ] Sponsor może przeglądać i edytować blueprint przed zatwierdzeniem. *(częściowo — brak interaktywnej edycji w TUI)*
+- [x] AgentTestRunner uruchamia scenariusze i raportuje wyniki.
+- [x] Blueprint zapisany na dysku, reużywalny.
+
+> **Uwaga**: Faza 2 zrealizowana w trybie heurystycznym + LLM fallback. Interaktywna
+> wieloturowa konwersacja Sponsor ↔ planner (`WizardConversation`, 2.7) nie została
+> zaimplementowana — do rozważenia jako enhancement w przyszłym release'ie.
 
 ---
 
-## Faza 3 — Task Queue & Work Distribution (v0.5.0)
+## Faza 3 — Task Queue & Work Distribution (v0.6.0) ✅ DONE
 
 **Cel**: wielozadaniowość z priorytetami, deadlinami i automatycznym przydzielaniem do agentów.
 
@@ -173,7 +202,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 4 — Observability & Monitoring Dashboard (v0.6.0) ★
+## Faza 4 — Observability & Monitoring Dashboard (v0.6.0) ✅ DONE
 
 **Cel**: web-based dashboard z real-time widokiem na cały system agentów.
 
@@ -200,7 +229,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 5 — Shared Context & Memory (v0.7.0)
+## Faza 5 — Shared Context & Memory (v0.9.0) ✅ DONE
 
 **Cel**: agenci współdzielą wiedzę bez powtarzania kontekstu.
 
@@ -222,7 +251,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 6 — Workflow Engine / DAG (v0.8.0)
+## Faza 6 — Workflow Engine / DAG (v0.9.0) ✅ DONE
 
 **Cel**: deklaratywne przepływy pracy z warunkowym branchingiem i równoległością.
 
@@ -244,7 +273,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 7 — Security & Isolation per-agent (v0.9.0)
+## Faza 7 — Security & Isolation per-agent (v0.9.0) ✅ DONE
 
 **Cel**: każdy agent ma własne uprawnienia i izolowane środowisko wykonania.
 
@@ -268,7 +297,6 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 ---
 
 ## Faza 8 — Resource & Cost Governance (v0.10.0)
-
 **Cel**: budżetowanie, rate limiting, zarządzanie GPU/VRAM dla wielu agentów.
 
 ### Deliverables
@@ -370,19 +398,19 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ## Podsumowanie faz
 
-| Faza | Wersja | Kluczowy deliverable | Zależności |
-|------|--------|---------------------|------------|
-| 1. Agent Registry & Lifecycle | v0.3.0 | Dynamiczny rejestr N agentów | — |
-| 2. AgentWizard | v0.4.0 | Sponsor opisuje → agent powstaje | Faza 1 |
-| 3. Task Queue & Work Distribution | v0.5.0 | Multi-task z priorytetami i DAG | Faza 1 |
-| **4. Observability & Dashboard** | **v0.6.0** | **Web dashboard + trace viewer** | **Fazy 1, 3** ★ |
-| 5. Shared Context & Memory | v0.7.0 | Baza wiedzy + cross-agent memory | Fazy 1, 3 |
-| 6. Workflow Engine (DAG) | v0.8.0 | Deklaratywne przepływy pracy | Fazy 1, 3 |
-| 7. Security & Isolation | v0.9.0 | Per-agent permissions + sandbox | Fazy 1, 2 |
-| 8. Resource & Cost Governance | v0.10.0 | Budżety, rate limiting, VRAM scheduler | Fazy 1, 4 |
-| 9. Evaluation & Quality | v0.11.0 | Benchmarki, A/B testing, regression | Fazy 1, 2 |
-| 10. External Integration & API | v0.12.0 | REST API, webhooks, SDK, CI | Wszystkie |
-| 11. Persona & Team Composition | v1.0.0 | Zarządzane zespoły + dynamic scaling | Wszystkie |
+| Faza | Wersja | Klucz. deliverable | Status | Priorytet |
+|------|--------|---------------------|--------|----------|
+| 1. Agent Registry & Lifecycle | v0.6.0 | Dynamiczny rejestr N agentów | ✅ DONE | — |
+| 2. AgentWizard | v0.6.0 | Sponsor opisuje → agent powstaje | ✅ DONE | — |
+| 3. Task Queue & Work Distribution | v0.6.0 | Multi-task z priorytetami i DAG | ✅ DONE | — |
+| 4. Observability & Dashboard | v0.6.0 | Web dashboard + trace viewer | ✅ DONE | — |
+| 5. Shared Context & Memory | v0.9.0 | Baza wiedzy + cross-agent memory | ✅ DONE | — |
+| 7. Security & Isolation | v0.9.0 | Per-agent permissions + sandbox | ✅ DONE | — |
+| 6. Workflow Engine (DAG) | v0.9.0 | Deklaratywne przepływy pracy | ✅ DONE | — |
+| **8. Resource & Cost Governance** | **v0.10.0** | **Budżety, rate limiting, VRAM scheduler** | następna | **★ 1 Średni** |
+| **9. Evaluation & Quality** | **v0.11.0** | **Benchmarki, A/B testing, regression** | planowana | **★ 2 Średni** |
+| 10. External Integration & API | v0.12.0 | REST API, webhooks, SDK, CI | planowana | ○ 3 Niższy |
+| 11. Persona & Team Composition | v1.0.0 | Zarządzane zespoły + dynamic scaling | planowana | ◆ Capstone |
 
 ---
 
@@ -390,13 +418,12 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 Przy założeniu pracy iteracyjnej (implementacja + testy + dokumentacja per faza):
 
-- Fazy 1–2: fundament agentowy (~2 release'y)
-- Fazy 3–4: wielozadaniowość + observability (~2 release'y) ★ top-3 priorytety
-- Fazy 5–6: pamięć współdzielona + workflow (~2 release'y)
-- Fazy 7–8: bezpieczeństwo + governance (~2 release'y)
-- Fazy 9–11: jakość, integracja, finalizacja (~3 release'y)
+- Fazy 1–4: ✅ **ZREALIZOWANE** w v0.6.0 (464 testy, 21 modułów)
+- Fazy 5+7+6: ✅ **ZREALIZOWANE** w v0.9.0 (612 testów, 34 modułów łącznie)
+- Fazy 8–9: governance + ewaluacja (~2 release'y)
+- Fazy 10–11: integracja + finalizacja (~2 release'y)
 
-Łącznie: **11 wersji minor** od v0.3.0 do v1.0.0.
+Pozostało: **4 wersje minor** od v0.10.0 do v1.0.0.
 
 ---
 

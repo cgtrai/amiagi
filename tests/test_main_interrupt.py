@@ -90,6 +90,15 @@ def test_main_reads_startup_dialogue_from_work_dir_when_default_relative_path_mi
         blueprints_dir=tmp_path / "blueprints",
         metrics_db_path=tmp_path / "metrics.db",
         dashboard_port=8080,
+        shared_workspace_dir=tmp_path / "shared_workspace",
+        knowledge_base_path=tmp_path / "knowledge.db",
+        cross_memory_path=tmp_path / "cross_memory.jsonl",
+        context_window_max_tokens=8000,
+        sandbox_dir=tmp_path / "sandboxes",
+        vault_path=tmp_path / "vault.json",
+        audit_log_path=tmp_path / "audit.jsonl",
+        workflows_dir=tmp_path / "workflows",
+        workflow_checkpoint_dir=tmp_path / "checkpoints",
     )
 
     repositories: list[CapturingMemoryRepository] = []
@@ -149,6 +158,15 @@ def test_main_handles_keyboard_interrupt_without_traceback(tmp_path: Path, monke
         blueprints_dir=tmp_path / "blueprints",
         metrics_db_path=tmp_path / "metrics.db",
         dashboard_port=8080,
+        shared_workspace_dir=tmp_path / "shared_workspace",
+        knowledge_base_path=tmp_path / "knowledge.db",
+        cross_memory_path=tmp_path / "cross_memory.jsonl",
+        context_window_max_tokens=8000,
+        sandbox_dir=tmp_path / "sandboxes",
+        vault_path=tmp_path / "vault.json",
+        audit_log_path=tmp_path / "audit.jsonl",
+        workflows_dir=tmp_path / "workflows",
+        workflow_checkpoint_dir=tmp_path / "checkpoints",
     )
 
     fake_activity = FakeActivityLogger(settings.activity_log_path)
@@ -207,6 +225,15 @@ def test_main_auto_flag_forces_autonomous_mode(tmp_path: Path, monkeypatch) -> N
         blueprints_dir=tmp_path / "blueprints",
         metrics_db_path=tmp_path / "metrics.db",
         dashboard_port=8080,
+        shared_workspace_dir=tmp_path / "shared_workspace",
+        knowledge_base_path=tmp_path / "knowledge.db",
+        cross_memory_path=tmp_path / "cross_memory.jsonl",
+        context_window_max_tokens=8000,
+        sandbox_dir=tmp_path / "sandboxes",
+        vault_path=tmp_path / "vault.json",
+        audit_log_path=tmp_path / "audit.jsonl",
+        workflows_dir=tmp_path / "workflows",
+        workflow_checkpoint_dir=tmp_path / "checkpoints",
     )
 
     run_cli_kwargs: dict = {}

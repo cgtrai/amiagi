@@ -48,7 +48,7 @@ class ToolRecommender:
         *,
         team_function: str,
         capabilities: str = "",
-    ) -> dict[str, list]:
+    ) -> dict[str, list[str] | str]:
         """Return ``{"recommended_tools": [...], "reasoning": "..."}``."""
         if self._client is not None:
             return self._recommend_with_llm(
@@ -67,7 +67,7 @@ class ToolRecommender:
         *,
         team_function: str,
         capabilities: str,
-    ) -> dict[str, list]:
+    ) -> dict[str, list | str]:
         """Heuristic tool matching."""
         query = (team_function + " " + capabilities).lower()
         recommended: list[str] = []
@@ -101,7 +101,7 @@ class ToolRecommender:
         *,
         team_function: str,
         capabilities: str,
-    ) -> dict[str, list]:
+    ) -> dict[str, list[str] | str]:
         assert self._client is not None
         import json as _json
 

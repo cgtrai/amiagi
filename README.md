@@ -112,6 +112,94 @@ Notes:
 - User-facing model output is sanitized: raw `tool_call`/JSON payloads are filtered from the Sponsor panel and preserved in technical logs.
 - Input history (up/down arrows) persists across sessions.
 
+Agent management commands (v0.6+):
+
+- `/agents list` — table of all agents (id, name, role, state, model)
+- `/agents info <id|name>` — detailed info for a single agent
+- `/agents pause <id>` / `/agents resume <id>` / `/agents terminate <id>` — lifecycle control
+- `/agent-wizard create <description>` — generate a new agent from natural language description
+- `/agent-wizard blueprints` — list saved agent blueprints
+- `/agent-wizard load <name>` — load a previously saved blueprint
+
+Task management commands (v0.6+):
+
+- `/tasks list` — all tasks with priority, status, agent assignment
+- `/tasks add <title>` — create a new task
+- `/tasks info <id>` — task details (partial id match)
+- `/tasks cancel <id>` — cancel a pending/assigned task
+- `/tasks stats` — pending / in-progress / done / failed counts
+
+Dashboard commands (v0.6+):
+
+- `/dashboard start [port]` — start the web monitoring dashboard (default port: 8080)
+- `/dashboard stop` — stop the dashboard server
+- `/dashboard status` — check whether the dashboard is running
+
+## Web Dashboard
+
+amiagi includes a built-in web-based monitoring dashboard accessible from any browser.
+
+### What it shows
+
+The dashboard is a single-page application (vanilla JS, zero external dependencies) with four panels:
+
+| Panel | Content |
+|-------|---------|
+| **🤖 Agents** | Name, role, model, current state (idle/working/paused/error/terminated) — with color-coded status badges |
+| **📋 Tasks** | Title, priority, status, assigned agent — Kanban-style overview of the task queue |
+| **📊 Metrics** | Aggregated metrics (count, avg, min, max) for recorded data points — token usage, task duration, etc. |
+| **📝 Event Log** | Last 50 events from JSONL session logs — timestamp, source, event type |
+
+A status bar at the bottom shows agent count, task breakdown, and last refresh time.
+
+### How to start
+
+1. **Start amiagi** in Textual mode:
+   ```bash
+   source .venv/bin/activate
+   python -m amiagi.main --ui textual
+   ```
+2. **Launch the dashboard** from the Sponsor input panel:
+   ```
+   /dashboard start
+   ```
+   This starts an HTTP server on port 8080 (configurable: `/dashboard start 9090` or via `AMIAGI_DASHBOARD_PORT` env var).
+
+3. **Open in browser**:
+   ```
+   http://localhost:8080
+   ```
+
+The dashboard auto-refreshes every 5 seconds and also supports **Server-Sent Events (SSE)** — when the server pushes events, the UI updates in real time.
+
+### API endpoints
+
+The dashboard server exposes a JSON API (CORS enabled):
+
+| Endpoint | Method | Response |
+|----------|--------|----------|
+| `/api/agents` | GET | List of all registered agents with state, role, model |
+| `/api/tasks` | GET | All tasks with priority, status, assignment |
+| `/api/metrics` | GET | Aggregated metrics summary |
+| `/api/alerts` | GET | Recent alerts from AlertManager |
+| `/api/replay` | GET | Last 200 session events from JSONL logs |
+| `/api/events` | GET | SSE stream — live event push |
+| `/api/status` | GET | Server status, agent count, task stats |
+
+### How to stop
+
+```
+/dashboard stop
+```
+
+### Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `AMIAGI_DASHBOARD_PORT` | `8080` | Default port for the dashboard server |
+
+The dashboard HTML is served from `src/amiagi/interfaces/dashboard_static/index.html`. No build step, no npm — plain HTML/CSS/JS.
+
 ## Current Runtime Behavior (Polluks/Kastor/Router)
 
 - **Per-role backends**: Polluks and Kastor can use different models from different providers (Ollama, OpenAI, OpenRouter, etc.).

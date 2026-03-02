@@ -35,6 +35,11 @@ from amiagi.application.agent_wizard import AgentWizardService
 from amiagi.application.task_queue import TaskQueue
 from amiagi.application.work_assigner import WorkAssigner
 from amiagi.application.alert_manager import AlertManager
+from amiagi.application.audit_chain import AuditChain
+from amiagi.application.context_window_manager import ContextWindowManager
+from amiagi.application.cross_agent_memory import CrossAgentMemory
+from amiagi.application.permission_enforcer import PermissionEnforcer
+from amiagi.application.workflow_engine import WorkflowEngine
 from amiagi.config import Settings
 from amiagi.domain.agent import AgentRole, AgentState
 from amiagi.domain.task import Task, TaskPriority, TaskStatus
@@ -52,6 +57,11 @@ from amiagi.infrastructure.metrics_collector import MetricsCollector
 from amiagi.infrastructure.script_executor import ScriptExecutor
 from amiagi.infrastructure.session_model_config import SessionModelConfig
 from amiagi.infrastructure.session_replay import SessionReplay
+from amiagi.infrastructure.shared_workspace import SharedWorkspace
+from amiagi.infrastructure.knowledge_base import KnowledgeBase
+from amiagi.infrastructure.sandbox_manager import SandboxManager
+from amiagi.infrastructure.secret_vault import SecretVault
+from amiagi.infrastructure.workflow_checkpoint import WorkflowCheckpoint
 from amiagi.infrastructure.usage_tracker import UsageTracker
 from amiagi.interfaces.cli import (
     _AMIAGI_LOGO,
@@ -425,6 +435,19 @@ class _AmiagiTextualApp(App[None]):
         metrics_collector: MetricsCollector | None = None,
         alert_manager: AlertManager | None = None,
         session_replay: SessionReplay | None = None,
+        # Phase 5
+        shared_workspace: SharedWorkspace | None = None,
+        knowledge_base: KnowledgeBase | None = None,
+        cross_memory: CrossAgentMemory | None = None,
+        context_window_manager: ContextWindowManager | None = None,
+        # Phase 7
+        permission_enforcer: PermissionEnforcer | None = None,
+        sandbox_manager: SandboxManager | None = None,
+        secret_vault: SecretVault | None = None,
+        audit_chain: AuditChain | None = None,
+        # Phase 6
+        workflow_engine: WorkflowEngine | None = None,
+        workflow_checkpoint: WorkflowCheckpoint | None = None,
     ) -> None:
         super().__init__()
         self._chat_service = chat_service
@@ -444,6 +467,19 @@ class _AmiagiTextualApp(App[None]):
         self._alert_manager = alert_manager
         self._session_replay = session_replay
         self._dashboard_server: DashboardServer | None = None
+        # ---- Phase 5 services ----
+        self._shared_workspace = shared_workspace
+        self._knowledge_base = knowledge_base
+        self._cross_memory = cross_memory
+        self._context_window_manager = context_window_manager
+        # ---- Phase 7 services ----
+        self._permission_enforcer = permission_enforcer
+        self._sandbox_manager = sandbox_manager
+        self._secret_vault = secret_vault
+        self._audit_chain = audit_chain
+        # ---- Phase 6 services ----
+        self._workflow_engine = workflow_engine
+        self._workflow_checkpoint = workflow_checkpoint
         self._wizard_service: AgentWizardService | None = None
         self._usage_tracker = UsageTracker()
         self._model_configured = False
@@ -1702,6 +1738,28 @@ class _AmiagiTextualApp(App[None]):
         if lower.startswith("/dashboard"):
             return self._handle_dashboard_command(text)
 
+        # ==================================================================
+        # Phase 5 — /knowledge, /workspace commands
+        # ==================================================================
+        if lower.startswith("/knowledge"):
+            return self._handle_knowledge_command(text)
+        if lower.startswith("/workspace"):
+            return self._handle_workspace_command(text)
+
+        # ==================================================================
+        # Phase 7 — /audit, /permissions, /sandbox commands (security)
+        # ==================================================================
+        if lower.startswith("/audit"):
+            return self._handle_audit_command(text)
+        if lower.startswith("/sandbox"):
+            return self._handle_sandbox_command(text)
+
+        # ==================================================================
+        # Phase 6 — /workflow commands
+        # ==================================================================
+        if lower.startswith("/workflow"):
+            return self._handle_workflow_command(text)
+
         return _CommandOutcome(False, [])
 
     # ------------------------------------------------------------------
@@ -2015,6 +2073,243 @@ class _AmiagiTextualApp(App[None]):
 
         return _CommandOutcome(True, [
             "Użycie: /dashboard start [port] | /dashboard stop | /dashboard status"
+        ])
+
+    # ------------------------------------------------------------------
+    # Knowledge & Workspace Commands (Phase 5)
+    # ------------------------------------------------------------------
+
+    def _handle_knowledge_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/knowledge`` subcommands."""
+        parts = raw_text.strip().split(maxsplit=2)
+        action = parts[1].lower() if len(parts) > 1 else "status"
+
+        if self._knowledge_base is None:
+            return _CommandOutcome(True, ["Baza wiedzy nie jest aktywna w tej sesji."])
+
+        if action == "status":
+            count = self._knowledge_base.count()
+            return _CommandOutcome(True, [f"Baza wiedzy: {count} wpisów."])
+
+        if action == "search" and len(parts) > 2:
+            query_text = parts[2]
+            results = self._knowledge_base.query(query_text, top_k=5)
+            if not results:
+                return _CommandOutcome(True, ["Brak wyników."])
+            msgs = [f"--- Wyniki wyszukiwania ({len(results)}) ---"]
+            for r in results:
+                snippet = r.text[:120].replace("\n", " ")
+                msgs.append(f"  [{r.entry_id}] (score={r.score:.3f}) {snippet}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "add" and len(parts) > 2:
+            text_to_add = parts[2]
+            entry_id = self._knowledge_base.store(text_to_add)
+            return _CommandOutcome(True, [f"Dodano wpis #{entry_id}."])
+
+        return _CommandOutcome(True, [
+            "Użycie: /knowledge status | /knowledge search <zapytanie> | /knowledge add <tekst>"
+        ])
+
+    def _handle_workspace_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/workspace`` subcommands."""
+        parts = raw_text.strip().split(maxsplit=2)
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._shared_workspace is None:
+            return _CommandOutcome(True, ["Wspólny workspace nie jest aktywny."])
+
+        if action == "list":
+            files = self._shared_workspace.list_files()
+            if not files:
+                return _CommandOutcome(True, ["Workspace jest pusty."])
+            msgs = [f"--- Pliki w workspace ({len(files)}) ---"]
+            for f in files:
+                author = self._shared_workspace.last_author(f) or "?"
+                msgs.append(f"  {f}  (autor: {author})")
+            return _CommandOutcome(True, msgs)
+
+        if action == "read" and len(parts) > 2:
+            content = self._shared_workspace.read_file(parts[2])
+            if content is None:
+                return _CommandOutcome(True, [f"Plik nie istnieje: {parts[2]}"])
+            return _CommandOutcome(True, [f"--- {parts[2]} ---", content[:2000]])
+
+        if action == "log":
+            changes = self._shared_workspace.changes()
+            if not changes:
+                return _CommandOutcome(True, ["Brak zmian w historii workspace."])
+            msgs = [f"--- Historia zmian ({len(changes)}) ---"]
+            for c in changes[-20:]:
+                msgs.append(f"  {c.action:6s}  {c.path}  agent={c.agent_id}")
+            return _CommandOutcome(True, msgs)
+
+        return _CommandOutcome(True, [
+            "Użycie: /workspace list | /workspace read <ścieżka> | /workspace log"
+        ])
+
+    # ------------------------------------------------------------------
+    # Security & Audit Commands (Phase 7)
+    # ------------------------------------------------------------------
+
+    def _handle_audit_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/audit`` subcommands."""
+        parts = raw_text.strip().split(maxsplit=2)
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._audit_chain is None:
+            return _CommandOutcome(True, ["Łańcuch audytu nie jest aktywny."])
+
+        if action == "list":
+            entries = self._audit_chain.query(limit=20)
+            if not entries:
+                return _CommandOutcome(True, ["Brak wpisów audytu."])
+            msgs = [f"--- Audyt ({self._audit_chain.count()} łącznie, ostatnie 20) ---"]
+            for e in entries:
+                msgs.append(
+                    f"  [{e.outcome}] {e.agent_id}: {e.action} → {e.target}"
+                )
+            return _CommandOutcome(True, msgs)
+
+        if action == "agent" and len(parts) > 2:
+            agent_id = parts[2]
+            entries = self._audit_chain.query(agent_id=agent_id, limit=20)
+            if not entries:
+                return _CommandOutcome(True, [f"Brak wpisów audytu dla {agent_id}."])
+            msgs = [f"--- Audyt agenta {agent_id} ---"]
+            for e in entries:
+                msgs.append(f"  [{e.outcome}] {e.action} → {e.target}")
+            return _CommandOutcome(True, msgs)
+
+        return _CommandOutcome(True, [
+            "Użycie: /audit list | /audit agent <agent_id>"
+        ])
+
+    def _handle_sandbox_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/sandbox`` subcommands."""
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._sandbox_manager is None:
+            return _CommandOutcome(True, ["Menadżer sandbox nie jest aktywny."])
+
+        if action == "list":
+            sandboxes = self._sandbox_manager.list_sandboxes()
+            if not sandboxes:
+                return _CommandOutcome(True, ["Brak aktywnych sandboxów."])
+            msgs = ["--- Sandboxy ---"]
+            for agent_id, path in sandboxes.items():
+                size = self._sandbox_manager.sandbox_size(agent_id)
+                msgs.append(f"  {agent_id}: {path}  ({size} B)")
+            return _CommandOutcome(True, msgs)
+
+        if action == "create" and len(parts) > 2:
+            agent_id = parts[2]
+            path = self._sandbox_manager.create(agent_id)
+            return _CommandOutcome(True, [f"Sandbox utworzony: {path}"])
+
+        if action == "destroy" and len(parts) > 2:
+            agent_id = parts[2]
+            ok = self._sandbox_manager.destroy(agent_id)
+            if ok:
+                return _CommandOutcome(True, [f"Sandbox usunięty dla {agent_id}."])
+            return _CommandOutcome(True, [f"Brak sandbox dla {agent_id}."])
+
+        return _CommandOutcome(True, [
+            "Użycie: /sandbox list | /sandbox create <agent_id> | /sandbox destroy <agent_id>"
+        ])
+
+    # ------------------------------------------------------------------
+    # Workflow Commands (Phase 6)
+    # ------------------------------------------------------------------
+
+    def _handle_workflow_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/workflow`` subcommands."""
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._workflow_engine is None:
+            return _CommandOutcome(True, ["Silnik workflow nie jest aktywny."])
+
+        if action == "list":
+            runs = self._workflow_engine.list_runs()
+            if not runs:
+                return _CommandOutcome(True, ["Brak uruchomionych workflow."])
+            msgs = ["--- Workflow ---"]
+            for r in runs:
+                total = len(r.workflow.nodes)
+                done = sum(1 for n in r.workflow.nodes if n.status.value in ("completed", "skipped"))
+                msgs.append(f"  {r.run_id}: {r.workflow.name} [{r.status}] ({done}/{total} węzłów)")
+            return _CommandOutcome(True, msgs)
+
+        if action == "run" and len(parts) > 2:
+            from amiagi.domain.workflow import WorkflowDefinition
+            template_name = parts[2]
+            workflows_dir = Path("./data/workflows")
+            if self._settings is not None:
+                workflows_dir = self._settings.workflows_dir
+            template_path = workflows_dir / f"{template_name}.json"
+            if not template_path.exists():
+                available = [p.stem for p in workflows_dir.glob("*.json")]
+                return _CommandOutcome(True, [
+                    f"Szablon '{template_name}' nie istnieje.",
+                    f"Dostępne: {', '.join(available) or 'brak'}",
+                ])
+            try:
+                wf = WorkflowDefinition.load_json(template_path)
+                run = self._workflow_engine.start(wf)
+                return _CommandOutcome(True, [
+                    f"Workflow '{wf.name}' uruchomiony jako {run.run_id}.",
+                ])
+            except Exception as exc:
+                return _CommandOutcome(True, [f"Błąd uruchamiania workflow: {exc}"])
+
+        if action == "status" and len(parts) > 2:
+            run_id = parts[2]
+            run = self._workflow_engine.get_run(run_id)
+            if run is None:
+                return _CommandOutcome(True, [f"Brak workflow o id {run_id}."])
+            msgs = [f"--- Workflow {run.run_id}: {run.workflow.name} [{run.status}] ---"]
+            for n in run.workflow.nodes:
+                msgs.append(f"  {n.node_id:20s} [{n.node_type.value:12s}] → {n.status.value}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "approve" and len(parts) > 3:
+            run_id = parts[2]
+            node_id = parts[3]
+            ok = self._workflow_engine.approve_gate(run_id, node_id)
+            if ok:
+                return _CommandOutcome(True, [f"Zatwierdzono bramkę {node_id} w {run_id}."])
+            return _CommandOutcome(True, [f"Nie udało się zatwierdzić bramki {node_id}."])
+
+        if action == "pause" and len(parts) > 2:
+            ok = self._workflow_engine.pause(parts[2])
+            return _CommandOutcome(True, [
+                f"Workflow {parts[2]} wstrzymany." if ok else f"Nie udało się wstrzymać {parts[2]}."
+            ])
+
+        if action == "resume" and len(parts) > 2:
+            ok = self._workflow_engine.resume(parts[2])
+            return _CommandOutcome(True, [
+                f"Workflow {parts[2]} wznowiony." if ok else f"Nie udało się wznowić {parts[2]}."
+            ])
+
+        if action == "templates":
+            workflows_dir = Path("./data/workflows")
+            if self._settings is not None:
+                workflows_dir = self._settings.workflows_dir
+            templates = [p.stem for p in workflows_dir.glob("*.json")]
+            if not templates:
+                return _CommandOutcome(True, ["Brak szablonów workflow."])
+            msgs = ["--- Szablony workflow ---"]
+            for t in templates:
+                msgs.append(f"  {t}")
+            return _CommandOutcome(True, msgs)
+
+        return _CommandOutcome(True, [
+            "Użycie: /workflow list | /workflow run <szablon> | /workflow status <run_id>",
+            "        /workflow approve <run_id> <node_id> | /workflow pause/resume <run_id>",
+            "        /workflow templates",
         ])
 
     # ------------------------------------------------------------------
@@ -4020,6 +4315,19 @@ def run_textual_cli(
     metrics_collector: MetricsCollector | None = None,
     alert_manager: AlertManager | None = None,
     session_replay: SessionReplay | None = None,
+    # Phase 5
+    shared_workspace: SharedWorkspace | None = None,
+    knowledge_base: KnowledgeBase | None = None,
+    cross_memory: CrossAgentMemory | None = None,
+    context_window_manager: ContextWindowManager | None = None,
+    # Phase 7
+    permission_enforcer: PermissionEnforcer | None = None,
+    sandbox_manager: SandboxManager | None = None,
+    secret_vault: SecretVault | None = None,
+    audit_chain: AuditChain | None = None,
+    # Phase 6
+    workflow_engine: WorkflowEngine | None = None,
+    workflow_checkpoint: WorkflowCheckpoint | None = None,
 ) -> None:
     _AmiagiTextualApp(
         chat_service=chat_service,
@@ -4036,4 +4344,14 @@ def run_textual_cli(
         metrics_collector=metrics_collector,
         alert_manager=alert_manager,
         session_replay=session_replay,
+        shared_workspace=shared_workspace,
+        knowledge_base=knowledge_base,
+        cross_memory=cross_memory,
+        context_window_manager=context_window_manager,
+        permission_enforcer=permission_enforcer,
+        sandbox_manager=sandbox_manager,
+        secret_vault=secret_vault,
+        audit_chain=audit_chain,
+        workflow_engine=workflow_engine,
+        workflow_checkpoint=workflow_checkpoint,
     ).run()

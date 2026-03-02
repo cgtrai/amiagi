@@ -50,7 +50,9 @@ class TestAgentFactory:
         runtime = factory.create_agent(desc, client=client)
         assert runtime.agent_id == "new-1"
         assert "new-1" in registry
-        assert registry.get("new-1").state == AgentState.IDLE
+        agent = registry.get("new-1")
+        assert agent is not None
+        assert agent.state == AgentState.IDLE
 
     def test_create_from_existing(self, tmp_path: Path) -> None:
         factory, registry = self._make_factory(tmp_path)
@@ -63,7 +65,9 @@ class TestAgentFactory:
         )
         assert runtime.agent_id == "polluks"
         assert "polluks" in registry
-        assert registry.get("polluks").name == "Polluks"
+        agent = registry.get("polluks")
+        assert agent is not None
+        assert agent.name == "Polluks"
 
     def test_create_agent_duplicate_raises(self, tmp_path: Path) -> None:
         factory, registry = self._make_factory(tmp_path)

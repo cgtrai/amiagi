@@ -62,6 +62,18 @@ class Settings:
     # v0.6+ — observability & dashboard
     metrics_db_path: Path = Path("./data/metrics.db")
     dashboard_port: int = 8080
+    # v0.7+ — shared context & knowledge (Phase 5)
+    shared_workspace_dir: Path = Path("./data/shared_workspace")
+    knowledge_base_path: Path = Path("./data/knowledge.db")
+    cross_memory_path: Path = Path("./data/cross_agent_memory.jsonl")
+    context_window_max_tokens: int = 8000
+    # v0.8+ — security & sandboxing (Phase 7)
+    sandbox_dir: Path = Path("./data/sandboxes")
+    vault_path: Path = Path("./data/vault.json")
+    audit_log_path: Path = Path("./logs/audit.jsonl")
+    # v0.9+ — workflow engine (Phase 6)
+    workflows_dir: Path = Path("./data/workflows")
+    workflow_checkpoint_dir: Path = Path("./data/workflow_checkpoints")
 
     @staticmethod
     def from_env() -> "Settings":
@@ -194,5 +206,36 @@ class Settings:
             dashboard_port=_as_int(
                 os.getenv("AMIAGI_DASHBOARD_PORT", "8080"),
                 default=8080,
+            ),
+            # Phase 5
+            shared_workspace_dir=Path(
+                os.getenv("AMIAGI_SHARED_WORKSPACE_DIR", "./data/shared_workspace")
+            ),
+            knowledge_base_path=Path(
+                os.getenv("AMIAGI_KNOWLEDGE_BASE_PATH", "./data/knowledge.db")
+            ),
+            cross_memory_path=Path(
+                os.getenv("AMIAGI_CROSS_MEMORY_PATH", "./data/cross_agent_memory.jsonl")
+            ),
+            context_window_max_tokens=_as_int(
+                os.getenv("AMIAGI_CONTEXT_WINDOW_MAX_TOKENS", "8000"),
+                default=8000,
+            ),
+            # Phase 7
+            sandbox_dir=Path(
+                os.getenv("AMIAGI_SANDBOX_DIR", "./data/sandboxes")
+            ),
+            vault_path=Path(
+                os.getenv("AMIAGI_VAULT_PATH", "./data/vault.json")
+            ),
+            audit_log_path=Path(
+                os.getenv("AMIAGI_AUDIT_LOG_PATH", "./logs/audit.jsonl")
+            ),
+            # Phase 6
+            workflows_dir=Path(
+                os.getenv("AMIAGI_WORKFLOWS_DIR", "./data/workflows")
+            ),
+            workflow_checkpoint_dir=Path(
+                os.getenv("AMIAGI_WORKFLOW_CHECKPOINT_DIR", "./data/workflow_checkpoints")
             ),
         )

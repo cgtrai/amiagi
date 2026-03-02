@@ -138,7 +138,9 @@ class TestAgentRuntimeHooks:
 
     def test_failing_hook_does_not_break_runtime(self) -> None:
         rt = _make_runtime()
-        rt.on_pause.append(lambda r: 1 / 0)  # will raise ZeroDivisionError
+        def _bad_hook(r: "AgentRuntime") -> None:
+            _ = 1 / 0  # will raise ZeroDivisionError
+        rt.on_pause.append(_bad_hook)
         # Should not raise
         rt.pause()
         assert rt.state == AgentState.PAUSED

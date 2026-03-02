@@ -88,7 +88,9 @@ class TestAgentRegistryStateTransitions:
         registry = AgentRegistry()
         registry.register(_make_descriptor("a1"))
         registry.update_state("a1", AgentState.WORKING)
-        assert registry.get("a1").state == AgentState.WORKING
+        agent = registry.get("a1")
+        assert agent is not None
+        assert agent.state == AgentState.WORKING
 
     def test_update_state_invalid_raises(self) -> None:
         registry = AgentRegistry()

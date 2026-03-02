@@ -7,24 +7,35 @@ from pathlib import Path
 from amiagi.application.agent_factory import AgentFactory
 from amiagi.application.agent_registry import AgentRegistry
 from amiagi.application.alert_manager import AlertManager
+from amiagi.application.audit_chain import AuditChain
 from amiagi.application.chat_service import ChatService
+from amiagi.application.context_compressor import ContextCompressor
+from amiagi.application.context_window_manager import ContextWindowManager
+from amiagi.application.cross_agent_memory import CrossAgentMemory
 from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.model_queue_policy import ModelQueuePolicy
+from amiagi.application.permission_enforcer import PermissionEnforcer
 from amiagi.application.skills_loader import SkillsLoader
 from amiagi.application.supervisor_service import SupervisorService
 from amiagi.application.task_queue import TaskQueue
 from amiagi.application.work_assigner import WorkAssigner
+from amiagi.application.workflow_engine import WorkflowEngine
 from amiagi.config import Settings
 from amiagi.domain.agent import AgentRole
 from amiagi.infrastructure.activity_logger import ActivityLogger
+from amiagi.infrastructure.knowledge_base import KnowledgeBase
 from amiagi.infrastructure.lifecycle_logger import LifecycleLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
 from amiagi.infrastructure.metrics_collector import MetricsCollector
 from amiagi.infrastructure.model_io_logger import ModelIOLogger
 from amiagi.infrastructure.ollama_client import OllamaClient
+from amiagi.infrastructure.sandbox_manager import SandboxManager
+from amiagi.infrastructure.secret_vault import SecretVault
 from amiagi.infrastructure.session_replay import SessionReplay
+from amiagi.infrastructure.shared_workspace import SharedWorkspace
 from amiagi.infrastructure.vram_advisor import VramAdvisor
 from amiagi.infrastructure.session_model_config import SessionModelConfig
+from amiagi.infrastructure.workflow_checkpoint import WorkflowCheckpoint
 from amiagi.interfaces.cli import run_cli
 from amiagi.interfaces.textual_cli import run_textual_cli
 
@@ -318,6 +329,35 @@ def main(argv: list[str] | None = None) -> None:
     alert_manager = AlertManager()
     session_replay = SessionReplay(log_dir=settings.activity_log_path.parent)
 
+    # ------------------------------------------------------------------
+    # Shared Context & Knowledge (Phase 5)
+    # ------------------------------------------------------------------
+    shared_workspace = SharedWorkspace(root=settings.shared_workspace_dir)
+    knowledge_base = KnowledgeBase(db_path=settings.knowledge_base_path)
+    cross_memory = CrossAgentMemory(persist_path=settings.cross_memory_path)
+    context_compressor = ContextCompressor()
+    context_window_mgr = ContextWindowManager(
+        max_tokens=settings.context_window_max_tokens,
+        compressor=context_compressor,
+        cross_memory=cross_memory,
+    )
+
+    # ------------------------------------------------------------------
+    # Security & Sandboxing (Phase 7)
+    # ------------------------------------------------------------------
+    permission_enforcer = PermissionEnforcer()
+    sandbox_manager = SandboxManager(root=settings.sandbox_dir)
+    secret_vault = SecretVault(vault_path=settings.vault_path)
+    audit_chain = AuditChain(log_path=settings.audit_log_path)
+
+    # ------------------------------------------------------------------
+    # Workflow Engine (Phase 6)
+    # ------------------------------------------------------------------
+    workflow_engine = WorkflowEngine()
+    workflow_checkpoint = WorkflowCheckpoint(
+        checkpoint_dir=settings.workflow_checkpoint_dir,
+    )
+
     max_idle_autoreactivations = getattr(settings, "max_idle_autoreactivations", 2)
     router_mailbox_log_path = getattr(settings, "router_mailbox_log_path", Path("./logs/router_mailbox.jsonl"))
 
@@ -371,6 +411,16 @@ def main(argv: list[str] | None = None) -> None:
                 metrics_collector=metrics_collector,
                 alert_manager=alert_manager,
                 session_replay=session_replay,
+                shared_workspace=shared_workspace,
+                knowledge_base=knowledge_base,
+                cross_memory=cross_memory,
+                context_window_manager=context_window_mgr,
+                permission_enforcer=permission_enforcer,
+                sandbox_manager=sandbox_manager,
+                secret_vault=secret_vault,
+                audit_chain=audit_chain,
+                workflow_engine=workflow_engine,
+                workflow_checkpoint=workflow_checkpoint,
             )
         else:
             run_cli(
