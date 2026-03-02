@@ -4,16 +4,25 @@ import argparse
 from dataclasses import is_dataclass, replace
 from pathlib import Path
 
+from amiagi.application.agent_factory import AgentFactory
+from amiagi.application.agent_registry import AgentRegistry
+from amiagi.application.alert_manager import AlertManager
 from amiagi.application.chat_service import ChatService
 from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.model_queue_policy import ModelQueuePolicy
 from amiagi.application.skills_loader import SkillsLoader
 from amiagi.application.supervisor_service import SupervisorService
+from amiagi.application.task_queue import TaskQueue
+from amiagi.application.work_assigner import WorkAssigner
 from amiagi.config import Settings
+from amiagi.domain.agent import AgentRole
 from amiagi.infrastructure.activity_logger import ActivityLogger
+from amiagi.infrastructure.lifecycle_logger import LifecycleLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
+from amiagi.infrastructure.metrics_collector import MetricsCollector
 from amiagi.infrastructure.model_io_logger import ModelIOLogger
 from amiagi.infrastructure.ollama_client import OllamaClient
+from amiagi.infrastructure.session_replay import SessionReplay
 from amiagi.infrastructure.vram_advisor import VramAdvisor
 from amiagi.infrastructure.session_model_config import SessionModelConfig
 from amiagi.interfaces.cli import run_cli
@@ -235,6 +244,8 @@ def main(argv: list[str] | None = None) -> None:
                 details={"model": settings.supervisor_model},
             )
 
+    skills_loader = SkillsLoader(skills_dir=settings.skills_dir)
+
     chat_service = ChatService(
         memory_repository=repository,
         ollama_client=ollama,
@@ -243,7 +254,7 @@ def main(argv: list[str] | None = None) -> None:
         vram_advisor=vram_advisor,
         work_dir=settings.work_dir,
         supervisor_service=supervisor_service,
-        skills_loader=SkillsLoader(skills_dir=settings.skills_dir),
+        skills_loader=skills_loader,
     )
 
     # --- Populate supervisor's sponsor_task from startup dialogue ---
@@ -256,6 +267,56 @@ def main(argv: list[str] | None = None) -> None:
                 intent="Załadowano zadanie Sponsora do kontekstu nadzorcy.",
                 details={"chars": len(sponsor_task)},
             )
+
+    # ------------------------------------------------------------------
+    # Agent Registry, Factory & Lifecycle (Phase 1)
+    # ------------------------------------------------------------------
+    lifecycle_logger = LifecycleLogger(settings.agent_lifecycle_log_path)
+    agent_registry = AgentRegistry(lifecycle_logger=lifecycle_logger)
+    agent_factory = AgentFactory(
+        registry=agent_registry,
+        memory_repository=repository,
+        activity_logger=activity_logger,
+        lifecycle_logger=lifecycle_logger,
+        skills_loader=skills_loader,
+        work_dir=settings.work_dir,
+    )
+
+    # Wrap existing Polluks (executor) and Kastor (supervisor) as registered agents
+    polluks_runtime = agent_factory.create_from_existing(
+        agent_id="polluks",
+        name="Polluks",
+        role=AgentRole.EXECUTOR,
+        chat_service=chat_service,
+        supervisor_service=supervisor_service,
+        model_backend="ollama",
+        model_name=getattr(ollama, "model", ""),
+        metadata={"origin": "bootstrap", "persona": "executor"},
+    )
+    if supervisor_service is not None:
+        agent_factory.create_from_existing(
+            agent_id="kastor",
+            name="Kastor",
+            role=AgentRole.SUPERVISOR,
+            chat_service=None,
+            supervisor_service=supervisor_service,
+            model_backend="ollama",
+            model_name=settings.supervisor_model,
+            metadata={"origin": "bootstrap", "persona": "supervisor"},
+        )
+
+    # ------------------------------------------------------------------
+    # Task Queue & Work Distribution (Phase 3)
+    # ------------------------------------------------------------------
+    task_queue = TaskQueue()
+    work_assigner = WorkAssigner(registry=agent_registry, task_queue=task_queue)
+
+    # ------------------------------------------------------------------
+    # Observability & Dashboard (Phase 4)
+    # ------------------------------------------------------------------
+    metrics_collector = MetricsCollector(db_path=settings.metrics_db_path)
+    alert_manager = AlertManager()
+    session_replay = SessionReplay(log_dir=settings.activity_log_path.parent)
 
     max_idle_autoreactivations = getattr(settings, "max_idle_autoreactivations", 2)
     router_mailbox_log_path = getattr(settings, "router_mailbox_log_path", Path("./logs/router_mailbox.jsonl"))
@@ -303,6 +364,13 @@ def main(argv: list[str] | None = None) -> None:
                 router_mailbox_log_path=router_mailbox_log_path,
                 activity_logger=activity_logger,
                 settings=settings,
+                agent_registry=agent_registry,
+                agent_factory=agent_factory,
+                task_queue=task_queue,
+                work_assigner=work_assigner,
+                metrics_collector=metrics_collector,
+                alert_manager=alert_manager,
+                session_replay=session_replay,
             )
         else:
             run_cli(

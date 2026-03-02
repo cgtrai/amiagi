@@ -56,6 +56,12 @@ class Settings:
     skills_dir: Path = Path("./skills")
     input_history_path: Path = Path("./data/input_history.txt")
     model_config_path: Path = Path("./data/model_config.json")
+    # v0.3+ — agent registry & lifecycle
+    agent_lifecycle_log_path: Path = Path("./logs/agent_lifecycle.jsonl")
+    blueprints_dir: Path = Path("./data/agents/blueprints")
+    # v0.6+ — observability & dashboard
+    metrics_db_path: Path = Path("./data/metrics.db")
+    dashboard_port: int = 8080
 
     @staticmethod
     def from_env() -> "Settings":
@@ -175,5 +181,18 @@ class Settings:
             ),
             model_config_path=Path(
                 os.getenv("AMIAGI_MODEL_CONFIG_PATH", "./data/model_config.json")
+            ),
+            agent_lifecycle_log_path=Path(
+                os.getenv("AMIAGI_AGENT_LIFECYCLE_LOG_PATH", "./logs/agent_lifecycle.jsonl")
+            ),
+            blueprints_dir=Path(
+                os.getenv("AMIAGI_BLUEPRINTS_DIR", "./data/agents/blueprints")
+            ),
+            metrics_db_path=Path(
+                os.getenv("AMIAGI_METRICS_DB_PATH", "./data/metrics.db")
+            ),
+            dashboard_port=_as_int(
+                os.getenv("AMIAGI_DASHBOARD_PORT", "8080"),
+                default=8080,
             ),
         )

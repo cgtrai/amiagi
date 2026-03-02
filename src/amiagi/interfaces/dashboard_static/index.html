@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>amiagi — Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #4ea1ff;
+  --green: #47c26b; --orange: #f5a623; --red: #f85149; --purple: #9a6bff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+h1 { font-size: 1.4rem; padding: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); }
+h1 span { font-size: 0.8rem; color: var(--text-dim); margin-left: 1rem; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+.panel-title { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.75rem; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { text-align: left; color: var(--text-dim); border-bottom: 1px solid var(--border); padding: 0.4rem; }
+td { padding: 0.4rem; border-bottom: 1px solid var(--border); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+.badge-idle { background: var(--green); color: #000; }
+.badge-working { background: var(--orange); color: #000; }
+.badge-paused { background: var(--purple); color: #fff; }
+.badge-error, .badge-failed { background: var(--red); color: #fff; }
+.badge-terminated { background: var(--text-dim); color: #000; }
+.badge-pending { background: var(--border); color: var(--text); }
+.badge-assigned, .badge-in_progress { background: var(--accent); color: #000; }
+.badge-done { background: var(--green); color: #000; }
+.badge-critical { background: var(--red); color: #fff; }
+.badge-high { background: var(--orange); color: #000; }
+.badge-normal { background: var(--accent); color: #000; }
+.badge-low { background: var(--text-dim); color: #000; }
+.metric-card { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 1rem; margin: 0.25rem; }
+.metric-card .value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.metric-card .label { font-size: 0.75rem; color: var(--text-dim); }
+#event-log { max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; }
+#event-log .event { padding: 2px 0; border-bottom: 1px solid var(--border); }
+#event-log .ts { color: var(--text-dim); margin-right: 0.5rem; }
+#event-log .src { color: var(--purple); margin-right: 0.5rem; }
+.status-bar { padding: 0.5rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
+  font-size: 0.8rem; color: var(--text-dim); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<h1>🔭 amiagi Dashboard <span id="status-text">connecting…</span></h1>
+<div class="grid">
+  <!-- Agents Panel -->
+  <div class="panel">
+    <div class="panel-title">🤖 Agents</div>
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Model</th><th>State</th></tr></thead>
+      <tbody id="agents-body"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <!-- Tasks Panel -->
+  <div class="panel">
+    <div class="panel-title">📋 Tasks</div>
+    <table>
+      <thead><tr><th>Title</th><th>Priority</th><th>Status</th><th>Agent</th></tr></thead>
+      <tbody id="tasks-body"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <!-- Metrics Panel -->
+  <div class="panel">
+    <div class="panel-title">📊 Metrics</div>
+    <div id="metrics-cards"><span class="metric-card"><span class="value">—</span><br><span class="label">loading</span></span></div>
+  </div>
+  <!-- Event Log Panel -->
+  <div class="panel">
+    <div class="panel-title">📝 Event Log (last 50)</div>
+    <div id="event-log"></div>
+  </div>
+</div>
+<div class="status-bar">
+  <span id="agent-count">Agents: —</span>
+  <span id="task-count">Tasks: —</span>
+  <span id="last-update">Last update: —</span>
+</div>
+<script>
+const API = window.location.origin;
+const $ = (sel) => document.querySelector(sel);
+
+function badge(cls, text) {
+  return `<span class="badge badge-${cls}">${text}</span>`;
+}
+
+async function fetchJSON(url) {
+  try {
+    const r = await fetch(url);
+    return await r.json();
+  } catch { return null; }
+}
+
+async function refreshAgents() {
+  const data = await fetchJSON(`${API}/api/agents`);
+  if (!data) return;
+  const tbody = $('#agents-body');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="4">No agents</td></tr>'; return; }
+  tbody.innerHTML = data.map(a =>
+    `<tr><td>${a.name}</td><td>${a.role}</td><td>${a.model_name || '—'}</td><td>${badge(a.state, a.state)}</td></tr>`
+  ).join('');
+  $('#agent-count').textContent = `Agents: ${data.length}`;
+}
+
+async function refreshTasks() {
+  const data = await fetchJSON(`${API}/api/tasks`);
+  if (!data) return;
+  const tbody = $('#tasks-body');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="4">No tasks</td></tr>'; return; }
+  tbody.innerHTML = data.map(t =>
+    `<tr><td>${t.title}</td><td>${badge(t.priority, t.priority)}</td><td>${badge(t.status, t.status)}</td><td>${t.assigned_agent_id || '—'}</td></tr>`
+  ).join('');
+  const stats = {};
+  data.forEach(t => { stats[t.status] = (stats[t.status]||0) + 1; });
+  $('#task-count').textContent = `Tasks: ${data.length} (${Object.entries(stats).map(([k,v])=>`${k}: ${v}`).join(', ')})`;
+}
+
+async function refreshMetrics() {
+  const data = await fetchJSON(`${API}/api/metrics`);
+  if (!data || !data.metrics) return;
+  const cards = Object.entries(data.metrics).map(([name, s]) =>
+    `<span class="metric-card"><span class="value">${s.avg.toFixed(2)}</span><br><span class="label">${name} (n=${s.count})</span></span>`
+  ).join('');
+  $('#metrics-cards').innerHTML = cards || '<span class="metric-card"><span class="value">—</span><br><span class="label">no data</span></span>';
+}
+
+async function refreshEvents() {
+  const data = await fetchJSON(`${API}/api/replay`);
+  if (!data) return;
+  const log = $('#event-log');
+  log.innerHTML = data.slice(-50).reverse().map(e =>
+    `<div class="event"><span class="ts">${e.timestamp ? e.timestamp.substring(11,19) : '—'}</span><span class="src">${e.source}</span>${e.event_type}</div>`
+  ).join('');
+}
+
+async function refresh() {
+  await Promise.all([refreshAgents(), refreshTasks(), refreshMetrics(), refreshEvents()]);
+  $('#last-update').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+  $('#status-text').textContent = 'connected';
+}
+
+// SSE for live updates
+function connectSSE() {
+  const es = new EventSource(`${API}/api/events`);
+  es.onmessage = () => refresh();
+  es.onerror = () => { $('#status-text').textContent = 'reconnecting…'; };
+  es.onopen = () => { $('#status-text').textContent = 'live'; };
+}
+
+// Initial load + periodic refresh
+refresh();
+setInterval(refresh, 5000);
+connectSSE();
+</script>
+</body>
+</html>

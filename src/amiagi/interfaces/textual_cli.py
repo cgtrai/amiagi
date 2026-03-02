@@ -29,7 +29,15 @@ from amiagi.application.discussion_sync import extract_dialogue_without_code
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
 from amiagi.application.tool_registry import list_registered_tools, resolve_registered_tool_script
 from amiagi.application.shell_policy import default_shell_policy, load_shell_policy, parse_and_validate_shell_command
+from amiagi.application.agent_registry import AgentRegistry
+from amiagi.application.agent_factory import AgentFactory
+from amiagi.application.agent_wizard import AgentWizardService
+from amiagi.application.task_queue import TaskQueue
+from amiagi.application.work_assigner import WorkAssigner
+from amiagi.application.alert_manager import AlertManager
 from amiagi.config import Settings
+from amiagi.domain.agent import AgentRole, AgentState
+from amiagi.domain.task import Task, TaskPriority, TaskStatus
 from amiagi.infrastructure.ollama_client import OllamaClientError
 from amiagi.infrastructure.openai_client import (
     OpenAIClient,
@@ -38,9 +46,12 @@ from amiagi.infrastructure.openai_client import (
     mask_api_key,
 )
 from amiagi.infrastructure.activity_logger import ActivityLogger
+from amiagi.infrastructure.dashboard_server import DashboardServer
 from amiagi.infrastructure.input_history import InputHistory
+from amiagi.infrastructure.metrics_collector import MetricsCollector
 from amiagi.infrastructure.script_executor import ScriptExecutor
 from amiagi.infrastructure.session_model_config import SessionModelConfig
+from amiagi.infrastructure.session_replay import SessionReplay
 from amiagi.infrastructure.usage_tracker import UsageTracker
 from amiagi.interfaces.cli import (
     _AMIAGI_LOGO,
@@ -407,6 +418,13 @@ class _AmiagiTextualApp(App[None]):
         router_mailbox_log_path: Path | None = None,
         activity_logger: ActivityLogger | None = None,
         settings: Settings | None = None,
+        agent_registry: AgentRegistry | None = None,
+        agent_factory: AgentFactory | None = None,
+        task_queue: TaskQueue | None = None,
+        work_assigner: WorkAssigner | None = None,
+        metrics_collector: MetricsCollector | None = None,
+        alert_manager: AlertManager | None = None,
+        session_replay: SessionReplay | None = None,
     ) -> None:
         super().__init__()
         self._chat_service = chat_service
@@ -417,6 +435,16 @@ class _AmiagiTextualApp(App[None]):
         self._router_mailbox_log_path = router_mailbox_log_path or Path("./logs/router_mailbox.jsonl")
         self._activity_logger = activity_logger
         self._settings = settings
+        # ---- Phase 1-4 services ----
+        self._agent_registry = agent_registry
+        self._agent_factory = agent_factory
+        self._task_queue = task_queue
+        self._work_assigner = work_assigner
+        self._metrics_collector = metrics_collector
+        self._alert_manager = alert_manager
+        self._session_replay = session_replay
+        self._dashboard_server: DashboardServer | None = None
+        self._wizard_service: AgentWizardService | None = None
         self._usage_tracker = UsageTracker()
         self._model_configured = False
         self._wizard_phase = 0  # 0=inactive, 1=polluks, 2=kastor, 3=api_key_check
@@ -1650,7 +1678,344 @@ class _AmiagiTextualApp(App[None]):
                 return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✓ (aktywny)"])
             return _CommandOutcome(True, [f"Klucz API {masked} — weryfikacja ✗ (nie udało się połączyć)"])
 
+        # ==================================================================
+        # Phase 1 — /agents commands
+        # ==================================================================
+        if lower.startswith("/agents"):
+            return self._handle_agents_command(text)
+
+        # ==================================================================
+        # Phase 2 — /agent-wizard commands
+        # ==================================================================
+        if lower.startswith("/agent-wizard"):
+            return self._handle_agent_wizard_command(text)
+
+        # ==================================================================
+        # Phase 3 — /tasks commands
+        # ==================================================================
+        if lower.startswith("/tasks"):
+            return self._handle_tasks_command(text)
+
+        # ==================================================================
+        # Phase 4 — /dashboard commands
+        # ==================================================================
+        if lower.startswith("/dashboard"):
+            return self._handle_dashboard_command(text)
+
         return _CommandOutcome(False, [])
+
+    # ------------------------------------------------------------------
+    # Agent Management Commands (Phase 1)
+    # ------------------------------------------------------------------
+
+    def _handle_agents_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/agents`` subcommands."""
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._agent_registry is None:
+            return _CommandOutcome(True, ["Rejestr agentów nie jest aktywny w tej sesji."])
+
+        if action == "list":
+            agents = self._agent_registry.list_all()
+            if not agents:
+                return _CommandOutcome(True, ["Brak zarejestrowanych agentów."])
+            messages = ["--- AGENCI ---"]
+            for a in agents:
+                model_label = a.model_name or "(brak modelu)"
+                messages.append(
+                    f"  {a.agent_id}  {a.name:12s}  rola={a.role.value:10s}  "
+                    f"stan={a.state.value:10s}  model={model_label}"
+                )
+            return _CommandOutcome(True, messages)
+
+        if action == "info":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agents info <id|nazwa>"])
+            query = parts[2]
+            agent = self._agent_registry.get(query)
+            if agent is None:
+                # Try matching by name
+                for a in self._agent_registry.list_all():
+                    if a.name.lower() == query.lower():
+                        agent = a
+                        break
+            if agent is None:
+                return _CommandOutcome(True, [f"Nie znaleziono agenta: {query}"])
+            messages = [
+                "--- AGENT INFO ---",
+                f"  ID:        {agent.agent_id}",
+                f"  Nazwa:     {agent.name}",
+                f"  Rola:      {agent.role.value}",
+                f"  Stan:      {agent.state.value}",
+                f"  Backend:   {agent.model_backend}",
+                f"  Model:     {agent.model_name or '(brak)'}",
+                f"  Umiejętn.: {', '.join(agent.skills) or '(brak)'}",
+                f"  Narzędzia: {', '.join(agent.tools) or '(brak)'}",
+                f"  Utworzony:  {agent.created_at.isoformat(timespec='seconds')}",
+            ]
+            if agent.persona_prompt:
+                messages.append(f"  Persona:   {agent.persona_prompt[:120]}...")
+            if agent.metadata:
+                messages.append(f"  Metadata:  {json.dumps(agent.metadata, ensure_ascii=False)}")
+            return _CommandOutcome(True, messages)
+
+        if action == "pause":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agents pause <id>"])
+            agent_id = parts[2]
+            try:
+                self._agent_registry.update_state(agent_id, AgentState.PAUSED, reason="manual")
+                return _CommandOutcome(True, [f"Agent {agent_id} wstrzymany."])
+            except (KeyError, ValueError) as exc:
+                return _CommandOutcome(True, [f"Błąd: {exc}"])
+
+        if action == "resume":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agents resume <id>"])
+            agent_id = parts[2]
+            try:
+                self._agent_registry.update_state(agent_id, AgentState.IDLE, reason="manual_resume")
+                return _CommandOutcome(True, [f"Agent {agent_id} wznowiony."])
+            except (KeyError, ValueError) as exc:
+                return _CommandOutcome(True, [f"Błąd: {exc}"])
+
+        if action == "terminate":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agents terminate <id>"])
+            agent_id = parts[2]
+            try:
+                self._agent_registry.update_state(agent_id, AgentState.TERMINATED, reason="manual_terminate")
+                return _CommandOutcome(True, [f"Agent {agent_id} zakończony."])
+            except (KeyError, ValueError) as exc:
+                return _CommandOutcome(True, [f"Błąd: {exc}"])
+
+        return _CommandOutcome(True, [
+            "Użycie: /agents list | /agents info <id> | /agents pause <id> "
+            "| /agents resume <id> | /agents terminate <id>"
+        ])
+
+    # ------------------------------------------------------------------
+    # Agent Wizard Commands (Phase 2)
+    # ------------------------------------------------------------------
+
+    def _handle_agent_wizard_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/agent-wizard`` subcommands."""
+        parts = raw_text.strip().split(maxsplit=2)
+        action = parts[1].lower() if len(parts) > 1 else "help"
+
+        if self._agent_factory is None:
+            return _CommandOutcome(True, ["Fabryka agentów nie jest aktywna w tej sesji."])
+
+        # Lazy-init the wizard service
+        if self._wizard_service is None:
+            planner = self._chat_service.ollama_client if hasattr(self._chat_service.ollama_client, "chat") else None
+            self._wizard_service = AgentWizardService(
+                planner_client=planner,
+                factory=self._agent_factory,
+                blueprints_dir=self._settings.blueprints_dir if self._settings else Path("./data/agents/blueprints"),
+            )
+
+        if action == "create":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agent-wizard create <opis potrzeby>"])
+            need = parts[2]
+            try:
+                blueprint = self._wizard_service.generate_blueprint(need)
+                runtime = self._wizard_service.create_agent(blueprint)
+                saved_path = self._wizard_service.save_blueprint(blueprint)
+                return _CommandOutcome(True, [
+                    "--- AGENT WIZARD ---",
+                    f"Utworzono agenta: {blueprint.name} (ID: {runtime.agent_id})",
+                    f"  Rola: {blueprint.role}",
+                    f"  Funkcja: {blueprint.team_function}",
+                    f"  Narzędzia: {', '.join(blueprint.required_tools)}",
+                    f"  Blueprint: {saved_path}",
+                ])
+            except Exception as exc:
+                return _CommandOutcome(True, [f"Błąd tworzenia agenta: {exc}"])
+
+        if action == "blueprints":
+            names = self._wizard_service.list_blueprints()
+            if not names:
+                return _CommandOutcome(True, ["Brak zapisanych blueprintów."])
+            messages = ["--- BLUEPRINTY ---"]
+            for i, name in enumerate(names, 1):
+                messages.append(f"  {i}. {name}")
+            return _CommandOutcome(True, messages)
+
+        if action == "load":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /agent-wizard load <nazwa>"])
+            bp_name = parts[2].strip()
+            blueprint = self._wizard_service.load_blueprint(bp_name)
+            if blueprint is None:
+                return _CommandOutcome(True, [f"Nie znaleziono blueprintu: {bp_name}"])
+            return _CommandOutcome(True, [
+                "--- BLUEPRINT ---",
+                f"  Nazwa: {blueprint.name}",
+                f"  Rola: {blueprint.role}",
+                f"  Funkcja: {blueprint.team_function}",
+                f"  Umiejętn.: {', '.join(blueprint.required_skills)}",
+                f"  Narzędzia: {', '.join(blueprint.required_tools)}",
+                f"  Persona: {blueprint.persona_prompt[:120]}...",
+            ])
+
+        return _CommandOutcome(True, [
+            "Użycie: /agent-wizard create <opis> | /agent-wizard blueprints | /agent-wizard load <nazwa>"
+        ])
+
+    # ------------------------------------------------------------------
+    # Task Management Commands (Phase 3)
+    # ------------------------------------------------------------------
+
+    def _handle_tasks_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/tasks`` subcommands."""
+        parts = raw_text.strip().split(maxsplit=2)
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if self._task_queue is None:
+            return _CommandOutcome(True, ["Kolejka zadań nie jest aktywna w tej sesji."])
+
+        if action == "list":
+            tasks = self._task_queue.list_all()
+            if not tasks:
+                return _CommandOutcome(True, ["Brak zadań w kolejce."])
+            messages = ["--- ZADANIA ---"]
+            for t in tasks:
+                agent_info = f" → {t.assigned_agent_id}" if t.assigned_agent_id else ""
+                messages.append(
+                    f"  {t.task_id[:8]}  [{t.priority.name:8s}]  {t.status.value:11s}  "
+                    f"{t.title[:40]}{agent_info}"
+                )
+            return _CommandOutcome(True, messages)
+
+        if action == "add":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /tasks add <tytuł zadania>"])
+            title = parts[2].strip()
+            import uuid as _uuid
+            task = Task(
+                task_id=_uuid.uuid4().hex[:12],
+                title=title,
+                description=title,
+                priority=TaskPriority.NORMAL,
+            )
+            self._task_queue.enqueue(task)
+            return _CommandOutcome(True, [f"Dodano zadanie: {task.task_id} — {title}"])
+
+        if action == "info":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /tasks info <id>"])
+            query = parts[2].strip()
+            # Support partial ID match
+            task = self._task_queue.get(query)
+            if task is None:
+                for t in self._task_queue.list_all():
+                    if t.task_id.startswith(query):
+                        task = t
+                        break
+            if task is None:
+                return _CommandOutcome(True, [f"Nie znaleziono zadania: {query}"])
+            messages = [
+                "--- ZADANIE ---",
+                f"  ID:        {task.task_id}",
+                f"  Tytuł:     {task.title}",
+                f"  Opis:      {task.description[:200]}",
+                f"  Priorytet: {task.priority.name}",
+                f"  Status:    {task.status.value}",
+                f"  Agent:     {task.assigned_agent_id or '(nieprzypisany)'}",
+                f"  Utworzono:  {task.created_at.isoformat(timespec='seconds')}",
+            ]
+            if task.dependencies:
+                messages.append(f"  Zależności: {', '.join(task.dependencies)}")
+            if task.result:
+                messages.append(f"  Wynik:     {task.result[:200]}")
+            return _CommandOutcome(True, messages)
+
+        if action == "cancel":
+            if len(parts) < 3:
+                return _CommandOutcome(True, ["Użycie: /tasks cancel <id>"])
+            task_id = parts[2].strip()
+            task = self._task_queue.get(task_id)
+            if task is None:
+                return _CommandOutcome(True, [f"Nie znaleziono zadania: {task_id}"])
+            try:
+                task.cancel()
+                return _CommandOutcome(True, [f"Anulowano zadanie: {task_id}"])
+            except ValueError as exc:
+                return _CommandOutcome(True, [f"Błąd: {exc}"])
+
+        if action == "stats":
+            stats = self._task_queue.stats()
+            messages = ["--- STATYSTYKI ZADAŃ ---"]
+            for status_name, count in sorted(stats.items()):
+                messages.append(f"  {status_name}: {count}")
+            return _CommandOutcome(True, messages)
+
+        return _CommandOutcome(True, [
+            "Użycie: /tasks list | /tasks add <tytuł> | /tasks info <id> "
+            "| /tasks cancel <id> | /tasks stats"
+        ])
+
+    # ------------------------------------------------------------------
+    # Dashboard Commands (Phase 4)
+    # ------------------------------------------------------------------
+
+    def _handle_dashboard_command(self, raw_text: str) -> _CommandOutcome:
+        """Dispatch ``/dashboard`` subcommands."""
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "status"
+
+        if action == "start":
+            if self._dashboard_server is not None and self._dashboard_server.running:
+                port = self._dashboard_server.port
+                return _CommandOutcome(True, [f"Dashboard już działa na porcie {port}."])
+
+            port = 8080
+            if len(parts) > 2:
+                try:
+                    port = int(parts[2])
+                except ValueError:
+                    return _CommandOutcome(True, ["Nieprawidłowy numer portu."])
+            elif self._settings is not None:
+                port = self._settings.dashboard_port
+
+            static_dir = Path(__file__).parent / "dashboard_static"
+            self._dashboard_server = DashboardServer(
+                registry=self._agent_registry,
+                task_queue=self._task_queue,
+                metrics_collector=self._metrics_collector,
+                alert_manager=self._alert_manager,
+                session_replay=self._session_replay,
+                static_dir=static_dir,
+            )
+            try:
+                self._dashboard_server.start(port=port)
+                return _CommandOutcome(True, [
+                    f"Dashboard uruchomiony: http://localhost:{port}",
+                    "Zatrzymanie: /dashboard stop",
+                ])
+            except Exception as exc:
+                self._dashboard_server = None
+                return _CommandOutcome(True, [f"Nie udało się uruchomić dashboardu: {exc}"])
+
+        if action == "stop":
+            if self._dashboard_server is None or not self._dashboard_server.running:
+                return _CommandOutcome(True, ["Dashboard nie jest uruchomiony."])
+            self._dashboard_server.stop()
+            self._dashboard_server = None
+            return _CommandOutcome(True, ["Dashboard zatrzymany."])
+
+        if action == "status":
+            if self._dashboard_server is not None and self._dashboard_server.running:
+                port = self._dashboard_server.port
+                return _CommandOutcome(True, [f"Dashboard: AKTYWNY na porcie {port}"])
+            return _CommandOutcome(True, ["Dashboard: NIEAKTYWNY"])
+
+        return _CommandOutcome(True, [
+            "Użycie: /dashboard start [port] | /dashboard stop | /dashboard status"
+        ])
 
     # ------------------------------------------------------------------
     # Model Selection Wizard
@@ -3648,6 +4013,13 @@ def run_textual_cli(
     router_mailbox_log_path: Path | None = None,
     activity_logger: ActivityLogger | None = None,
     settings: Settings | None = None,
+    agent_registry: AgentRegistry | None = None,
+    agent_factory: AgentFactory | None = None,
+    task_queue: TaskQueue | None = None,
+    work_assigner: WorkAssigner | None = None,
+    metrics_collector: MetricsCollector | None = None,
+    alert_manager: AlertManager | None = None,
+    session_replay: SessionReplay | None = None,
 ) -> None:
     _AmiagiTextualApp(
         chat_service=chat_service,
@@ -3657,4 +4029,11 @@ def run_textual_cli(
         router_mailbox_log_path=router_mailbox_log_path,
         activity_logger=activity_logger,
         settings=settings,
+        agent_registry=agent_registry,
+        agent_factory=agent_factory,
+        task_queue=task_queue,
+        work_assigner=work_assigner,
+        metrics_collector=metrics_collector,
+        alert_manager=alert_manager,
+        session_replay=session_replay,
     ).run()

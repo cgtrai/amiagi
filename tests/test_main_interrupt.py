@@ -86,6 +86,10 @@ def test_main_reads_startup_dialogue_from_work_dir_when_default_relative_path_mi
         openai_base_url="https://api.openai.com/v1",
         openai_request_timeout_seconds=120,
         skills_dir=tmp_path / "skills",
+        agent_lifecycle_log_path=tmp_path / "agent_lifecycle.jsonl",
+        blueprints_dir=tmp_path / "blueprints",
+        metrics_db_path=tmp_path / "metrics.db",
+        dashboard_port=8080,
     )
 
     repositories: list[CapturingMemoryRepository] = []
@@ -141,6 +145,10 @@ def test_main_handles_keyboard_interrupt_without_traceback(tmp_path: Path, monke
         openai_base_url="https://api.openai.com/v1",
         openai_request_timeout_seconds=120,
         skills_dir=tmp_path / "skills",
+        agent_lifecycle_log_path=tmp_path / "agent_lifecycle.jsonl",
+        blueprints_dir=tmp_path / "blueprints",
+        metrics_db_path=tmp_path / "metrics.db",
+        dashboard_port=8080,
     )
 
     fake_activity = FakeActivityLogger(settings.activity_log_path)
@@ -195,6 +203,10 @@ def test_main_auto_flag_forces_autonomous_mode(tmp_path: Path, monkeypatch) -> N
         openai_base_url="https://api.openai.com/v1",
         openai_request_timeout_seconds=120,
         skills_dir=tmp_path / "skills",
+        agent_lifecycle_log_path=tmp_path / "agent_lifecycle.jsonl",
+        blueprints_dir=tmp_path / "blueprints",
+        metrics_db_path=tmp_path / "metrics.db",
+        dashboard_port=8080,
     )
 
     run_cli_kwargs: dict = {}
