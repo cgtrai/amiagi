@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amiagi"
-version = "1.0.0"
+version = "1.0.1"
 description = "Local framework for evaluating LLM autonomy with controlled tool-use, multi-backend model support, and audit logs."
 readme = "README.md"
 requires-python = ">=3.10"
