@@ -64,3 +64,19 @@ class TestQuotaPolicy:
         p.set_role("x", RoleQuota(daily_token_limit=100))
         p.set_role("x", RoleQuota(daily_token_limit=999))
         assert p.get_role("x").daily_token_limit == 999  # type: ignore[union-attr]
+
+    def test_save_load_yaml(self, tmp_path: Path) -> None:
+        p = QuotaPolicy()
+        p.set_role("executor", RoleQuota(daily_token_limit=100_000, daily_cost_limit_usd=5.0))
+        p.set_role("supervisor", RoleQuota(max_requests_per_hour=60))
+        path = tmp_path / "quotas.yaml"
+        p.save_yaml(path)
+        loaded = QuotaPolicy.load_yaml(path)
+        assert loaded.list_roles() == ["executor", "supervisor"]
+        ex = loaded.get_role("executor")
+        assert ex is not None
+        assert ex.daily_token_limit == 100_000
+        assert ex.daily_cost_limit_usd == 5.0
+        sv = loaded.get_role("supervisor")
+        assert sv is not None
+        assert sv.max_requests_per_hour == 60

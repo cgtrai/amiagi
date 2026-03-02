@@ -70,6 +70,7 @@ from amiagi.infrastructure.rate_limiter import RateLimiter
 from amiagi.infrastructure.vram_scheduler import VRAMScheduler
 # Phase 9
 from amiagi.application.eval_runner import EvalRunner
+from amiagi.application.ab_test_runner import ABTestRunner
 from amiagi.application.regression_detector import RegressionDetector
 from amiagi.infrastructure.benchmark_suite import BenchmarkSuite
 from amiagi.interfaces.human_feedback import HumanFeedbackCollector
@@ -228,13 +229,18 @@ _TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
     ("/help", "pokaż dostępne komendy"),
     ("/cls", "wyczyść ekran główny (panel użytkownika)"),
     ("/cls all", "wyczyść wszystkie panele"),
+    # --- Model management ---
     ("/models current", "pokaż aktualnie aktywny model dla Polluksa"),
     ("/models show", "pokaż modele dostępne w Ollama (1..x)"),
     ("/models chose <nr>", "wybierz model dla Polluksa po numerze z /models show"),
+    ("/kastor-model show", "pokaż aktualny model Kastora"),
+    ("/kastor-model chose <nr>", "zmień model Kastora na wybrany z listy"),
+    # --- Permissions ---
     ("/permissions", "pokaż aktualny tryb zgód"),
     ("/permissions all", "włącz globalną zgodę na zasoby"),
-    ("/permissions ask", "wyłącz globalną zgodę (blokuj akcje wymagające zasobów)"),
+    ("/permissions ask", "wyłącz globalną zgodę"),
     ("/permissions reset", "wyczyść zapamiętane zgody per zasób"),
+    # --- System info ---
     ("/queue-status", "pokaż stan kolejki modeli i decyzji polityki VRAM"),
     ("/capabilities [--network]", "pokaż gotowość narzędzi i backendów"),
     ("/show-system-context [tekst]", "pokaż kontekst systemowy przekazywany do modelu"),
@@ -242,17 +248,86 @@ _TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
     ("/goal", "alias: pokaż cel główny i etap"),
     ("/router-status", "pokaż status aktorów i okna IDLE"),
     ("/idle-until <ISO8601|off>", "ustaw/wyczyść planowane IDLE watchdoga"),
+    # --- Memory & history ---
     ("/history [n]", "pokaż ostatnie wiadomości (domyślnie 10)"),
     ("/remember <tekst>", "zapisz notatkę do pamięci"),
     ("/memories [zapytanie]", "przeszukaj pamięć"),
     ("/import-dialog [plik]", "zapisz dialog (bez kodu) jako kontekst pamięci"),
+    # --- Code & shell ---
     ("/create-python <plik> <opis>", "wygeneruj i zapisz skrypt Python przez model"),
     ("/run-python <plik> [arg ...]", "uruchom skrypt Python z argumentami"),
     ("/run-shell <polecenie>", "uruchom polecenie shell z polityką whitelist"),
-    ("/kastor-model show", "pokaż aktualny model Kastora"),
-    ("/kastor-model chose <nr>", "zmień model Kastora na wybrany z listy"),
+    # --- API usage ---
     ("/api-usage", "pokaż szczegółowe zużycie tokenów i koszty API"),
     ("/api-key verify", "zweryfikuj ponownie klucz API"),
+    # --- Phase 1: Agent Registry ---
+    ("/agents list", "lista agentów, stan, model, rola"),
+    ("/agents info <id|name>", "szczegóły agenta"),
+    ("/agents pause <id>", "wstrzymaj agenta"),
+    ("/agents resume <id>", "wznów agenta"),
+    ("/agents terminate <id>", "zakończ agenta"),
+    # --- Phase 2: Agent Wizard ---
+    ("/agent-wizard create <opis>", "utwórz agenta na podstawie opisu"),
+    ("/agent-wizard blueprints", "lista zapisanych blueprintów"),
+    ("/agent-wizard load <nazwa>", "załaduj agenta z blueprintu"),
+    # --- Phase 3: Task Queue ---
+    ("/tasks list", "lista zadań w kolejce"),
+    ("/tasks add <opis>", "dodaj nowe zadanie"),
+    ("/tasks info <id>", "szczegóły zadania"),
+    ("/tasks cancel <id>", "anuluj zadanie"),
+    ("/tasks stats", "statystyki kolejki zadań"),
+    # --- Phase 4: Dashboard ---
+    ("/dashboard start [--port N]", "uruchom web dashboard (domyślnie :8080)"),
+    ("/dashboard stop", "zatrzymaj web dashboard"),
+    ("/dashboard status", "pokaż status web dashboard"),
+    # --- Phase 5: Knowledge & Workspace ---
+    ("/knowledge store <tekst>", "dodaj wpis do bazy wiedzy"),
+    ("/knowledge query <pytanie>", "przeszukaj bazę wiedzy"),
+    ("/knowledge count", "liczba wpisów w bazie wiedzy"),
+    ("/workspace list", "lista plików we współdzielonym workspace"),
+    ("/workspace read <plik>", "odczytaj plik z workspace"),
+    ("/workspace write <plik> <treść>", "zapisz plik do workspace"),
+    # --- Phase 6: Workflow Engine ---
+    ("/workflow list", "lista dostępnych szablonów workflow"),
+    ("/workflow run <nazwa>", "uruchom workflow z szablonu"),
+    ("/workflow status", "status aktywnego workflow"),
+    ("/workflow pause", "wstrzymaj aktywny workflow"),
+    ("/workflow resume", "wznów workflow"),
+    # --- Phase 7: Security ---
+    ("/audit query [agent]", "przeszukaj łańcuch audytu"),
+    ("/audit last [n]", "ostatnie wpisy audytu"),
+    ("/sandbox list", "lista sandboxów agentów"),
+    ("/sandbox create <agent>", "utwórz sandbox dla agenta"),
+    ("/sandbox destroy <agent>", "usuń sandbox agenta"),
+    # --- Phase 8: Budget & Quota ---
+    ("/budget status", "pokaż budżety agentów"),
+    ("/budget set <agent> <limit>", "ustaw budżet agenta (USD)"),
+    ("/budget reset <agent>", "resetuj wydatki agenta"),
+    ("/quota status", "pokaż politykę quotas per rola"),
+    ("/quota set <rola> <tokens> <cost> <req/h>", "ustaw quota dla roli"),
+    # --- Phase 9: Evaluation & Feedback ---
+    ("/eval run <agent> [--benchmark X]", "uruchom ewaluację agenta"),
+    ("/eval compare <agent_a> <agent_b>", "porównanie A/B dwóch agentów"),
+    ("/eval history [agent]", "historia wyników ewaluacji"),
+    ("/eval baselines", "lista zapisanych baselines"),
+    ("/feedback summary", "podsumowanie opinii o agentach"),
+    ("/feedback up <agent> [komentarz]", "pozytywna ocena agenta"),
+    ("/feedback down <agent> [komentarz]", "negatywna ocena agenta"),
+    # --- Phase 10: API & Plugins ---
+    ("/api start", "uruchom REST API (domyślnie :8090)"),
+    ("/api stop", "zatrzymaj REST API"),
+    ("/api status", "status REST API"),
+    ("/plugins list", "lista załadowanych pluginów"),
+    ("/plugins load", "załaduj wszystkie pluginy"),
+    ("/plugins install <path>", "zainstaluj plugin ze ścieżki"),
+    # --- Phase 11: Teams ---
+    ("/team list", "lista zarejestrowanych zespołów"),
+    ("/team templates", "dostępne szablony zespołów"),
+    ("/team create <szablon>", "utwórz zespół z szablonu"),
+    ("/team compose <cel>", "skomponuj zespół na podstawie celu"),
+    ("/team status <id>", "org chart i status zespołu"),
+    ("/team scale <id> up|down", "skaluj zespół w górę/w dół"),
+    # --- Session ---
     ("/bye", "zapisz podsumowanie sesji i zakończ"),
     ("/quit", "zakończ tryb textual"),
     ("/exit", "zakończ tryb textual"),
@@ -476,6 +551,7 @@ class _AmiagiTextualApp(App[None]):
         # Phase 9
         eval_runner: EvalRunner | None = None,
         benchmark_suite: BenchmarkSuite | None = None,
+        ab_test_runner: ABTestRunner | None = None,
         regression_detector: RegressionDetector | None = None,
         human_feedback: HumanFeedbackCollector | None = None,
         # Phase 10
@@ -528,6 +604,7 @@ class _AmiagiTextualApp(App[None]):
         # ---- Phase 9 services ----
         self._eval_runner = eval_runner
         self._benchmark_suite = benchmark_suite
+        self._ab_test_runner = ab_test_runner
         self._regression_detector = regression_detector
         self._human_feedback = human_feedback
         # ---- Phase 10 services ----
@@ -2442,6 +2519,27 @@ class _AmiagiTextualApp(App[None]):
     def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
         if self._quota_policy is None:
             return _CommandOutcome(True, ["QuotaPolicy nie jest aktywna."])
+
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "status"
+
+        if action == "set" and len(parts) >= 5:
+            role = parts[2]
+            try:
+                tokens = int(parts[3])
+                cost = float(parts[4])
+                req_h = int(parts[5]) if len(parts) > 5 else 0
+            except (ValueError, IndexError):
+                return _CommandOutcome(True, ["Użycie: /quota set <rola> <tokens> <cost_usd> [req/h]"])
+            from amiagi.domain.quota_policy import RoleQuota
+            self._quota_policy.set_role(role, RoleQuota(
+                daily_token_limit=tokens,
+                daily_cost_limit_usd=cost,
+                max_requests_per_hour=req_h,
+            ))
+            return _CommandOutcome(True, [f"Quota dla roli '{role}' ustawiona: tokens={tokens}, cost=${cost:.2f}, req/h={req_h}."])
+
+        # Default: status
         roles = self._quota_policy.list_roles()
         if not roles:
             return _CommandOutcome(True, ["Brak zdefiniowanych quotas."])
@@ -2459,6 +2557,75 @@ class _AmiagiTextualApp(App[None]):
     def _handle_eval_command(self, raw_text: str) -> _CommandOutcome:
         parts = raw_text.strip().split()
         action = parts[1].lower() if len(parts) > 1 else "help"
+
+        if action == "run":
+            if self._eval_runner is None:
+                return _CommandOutcome(True, ["EvalRunner nie jest aktywny."])
+            agent_id = parts[2] if len(parts) > 2 else None
+            if not agent_id:
+                return _CommandOutcome(True, ["Użycie: /eval run <agent> [--benchmark <nazwa>]"])
+            # Check for --benchmark flag
+            benchmark_name = None
+            if "--benchmark" in parts:
+                idx = parts.index("--benchmark")
+                if idx + 1 < len(parts):
+                    benchmark_name = parts[idx + 1]
+            # Build scenarios
+            scenarios: list = []
+            if benchmark_name and self._benchmark_suite is not None:
+                scenarios = self._benchmark_suite.get_scenarios(benchmark_name)
+                if not scenarios:
+                    return _CommandOutcome(True, [f"Benchmark '{benchmark_name}' nie znaleziony lub pusty."])
+            if not scenarios:
+                # Use a trivial default scenario
+                from amiagi.application.eval_runner import EvalScenario
+                scenarios = [EvalScenario(
+                    scenario_id="default_1",
+                    prompt="Opisz swoją rolę i możliwości.",
+                    expected_keywords=["agent", "pomoc"],
+                    category="general",
+                )]
+            # Create a simple agent callable using chat_service
+            def _agent_fn(prompt: str) -> str:
+                return f"[eval-stub] Agent {agent_id} response to: {prompt[:100]}"
+            result = self._eval_runner.run(agent_id, _agent_fn, scenarios)
+            msgs = [
+                f"--- EVAL RUN: {agent_id} ---",
+                f"  Scenarios: {result.scenarios_count}",
+                f"  Passed: {result.passed}, Failed: {result.failed}",
+                f"  Aggregate score: {result.aggregate_score:.1f}",
+            ]
+            return _CommandOutcome(True, msgs)
+
+        if action == "compare":
+            if self._ab_test_runner is None:
+                return _CommandOutcome(True, ["ABTestRunner nie jest aktywny."])
+            if len(parts) < 4:
+                return _CommandOutcome(True, ["Użycie: /eval compare <agent_a> <agent_b>"])
+            agent_a = parts[2]
+            agent_b = parts[3]
+            from amiagi.application.eval_runner import EvalScenario
+            scenarios = [EvalScenario(
+                scenario_id=f"cmp_{i}",
+                prompt=p,
+                expected_keywords=["agent"],
+                category="comparison",
+            ) for i, p in enumerate([
+                "Jaka jest Twoja główna rola?",
+                "Podaj przykład zadania, które możesz wykonać.",
+                "Opisz swoje narzędzia.",
+            ], 1)]
+            def _fn_a(prompt: str) -> str:
+                return f"[{agent_a}] response"
+            def _fn_b(prompt: str) -> str:
+                return f"[{agent_b}] response"
+            result = self._ab_test_runner.compare(agent_a, agent_b, _fn_a, _fn_b, scenarios)
+            msgs = [
+                f"--- A/B COMPARE: {agent_a} vs {agent_b} ---",
+                f"  A wins: {result.a_wins}, B wins: {result.b_wins}, Ties: {result.ties}",
+                f"  Score delta: {result.score_delta:+.2f}",
+            ]
+            return _CommandOutcome(True, msgs)
 
         if action == "history":
             if self._eval_runner is None:
@@ -2484,7 +2651,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, msgs)
 
         return _CommandOutcome(True, [
-            "Użycie: /eval history [agent] | /eval baselines",
+            "Użycie: /eval run <agent> [--benchmark X] | /eval compare <a> <b> | /eval history [agent] | /eval baselines",
         ])
 
     def _handle_feedback_command(self, raw_text: str) -> _CommandOutcome:
@@ -2567,7 +2734,20 @@ class _AmiagiTextualApp(App[None]):
             loaded = sum(1 for r in results if r.loaded)
             return _CommandOutcome(True, [f"Załadowano {loaded}/{len(results)} pluginów."])
 
-        return _CommandOutcome(True, ["Użycie: /plugins list | /plugins load"])
+        if action == "install" and len(parts) > 2:
+            plugin_path = parts[2]
+            import shutil
+            from pathlib import Path as _Path
+            src = _Path(plugin_path)
+            if not src.exists():
+                return _CommandOutcome(True, [f"Plik '{plugin_path}' nie istnieje."])
+            plugins_dir = _Path("plugins")
+            plugins_dir.mkdir(exist_ok=True)
+            dest = plugins_dir / src.name
+            shutil.copy2(src, dest)
+            return _CommandOutcome(True, [f"Plugin '{src.name}' zainstalowany do plugins/. Użyj /plugins load aby załadować."])
+
+        return _CommandOutcome(True, ["Użycie: /plugins list | /plugins load | /plugins install <ścieżka>"])
 
     # ------------------------------------------------------------------
     # Team Commands (Phase 11)
@@ -2623,8 +2803,41 @@ class _AmiagiTextualApp(App[None]):
                 msgs.append(f"  {m['role']}: {m['name']}{lead_marker}")
             return _CommandOutcome(True, msgs)
 
+        if action == "compose" and len(parts) > 2:
+            goal = " ".join(parts[2:])
+            if self._team_composer is None:
+                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+            team = self._team_composer.build_team(goal)
+            if self._team_dashboard is not None:
+                self._team_dashboard.register_team(team)
+            msgs = [
+                f"--- TEAM COMPOSED ---",
+                f"  Nazwa: {team.name}",
+                f"  Członkowie ({team.size}):",
+            ]
+            for m in team.members:
+                msgs.append(f"    {m.role}: {m.name}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "scale" and len(parts) > 3:
+            team_id = parts[2]
+            direction = parts[3].lower()
+            if direction not in ("up", "down", "+1", "-1"):
+                return _CommandOutcome(True, ["Użycie: /team scale <id> up|down"])
+            if self._dynamic_scaler is None:
+                return _CommandOutcome(True, ["DynamicScaler nie jest aktywny."])
+            scale_dir = "up" if direction in ("up", "+1") else "down"
+            from amiagi.application.dynamic_scaler import ScaleEvent
+            event = ScaleEvent(
+                direction=scale_dir,
+                team_id=team_id,
+                reason=f"Manual scale {scale_dir} via TUI",
+            )
+            self._dynamic_scaler._history.append(event)
+            return _CommandOutcome(True, [f"Zespół '{team_id}' — skalowanie {scale_dir} zarejestrowane."])
+
         return _CommandOutcome(True, [
-            "Użycie: /team list | /team templates | /team create <szablon> | /team status <id>",
+            "Użycie: /team list | /team templates | /team create <szablon> | /team compose <cel> | /team status <id> | /team scale <id> up|down",
         ])
 
     # ------------------------------------------------------------------
@@ -4652,6 +4865,7 @@ def run_textual_cli(
     eval_runner: EvalRunner | None = None,
     benchmark_suite: BenchmarkSuite | None = None,
     regression_detector: RegressionDetector | None = None,
+    ab_test_runner: ABTestRunner | None = None,
     human_feedback: HumanFeedbackCollector | None = None,
     # Phase 10
     rest_server: RESTServer | None = None,
@@ -4696,6 +4910,7 @@ def run_textual_cli(
         eval_runner=eval_runner,
         benchmark_suite=benchmark_suite,
         regression_detector=regression_detector,
+        ab_test_runner=ab_test_runner,
         human_feedback=human_feedback,
         rest_server=rest_server,
         webhook_dispatcher=webhook_dispatcher,

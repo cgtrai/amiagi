@@ -79,3 +79,34 @@ class TestCIAdapter:
         d = adapter.to_dict()
         assert "config" in d
         assert "history_count" in d
+
+    def test_run_eval_suite(self) -> None:
+        adapter = CIAdapter()
+        result = adapter.run_eval_suite("code_quality")
+        assert result.success is True
+        assert "eval_suite" in result.command
+        assert result.metadata["suite"] == "code_quality"
+
+    def test_get_report_empty(self) -> None:
+        adapter = CIAdapter()
+        report = adapter.get_report()
+        assert report.success is True
+        assert report.metadata["total"] == 0
+        assert report.metadata["passed"] == 0
+
+    def test_get_report_with_history(self) -> None:
+        adapter = CIAdapter()
+        adapter.review_pr(1)
+        adapter.run_benchmark("suite1")
+        report = adapter.get_report()
+        assert report.metadata["total"] == 2
+        assert report.metadata["passed"] == 2
+        assert "2 runs" in report.stdout
+
+    def test_get_report_with_failures(self) -> None:
+        adapter = CIAdapter()
+        adapter._history.append(CIRunResult(command="fail_cmd", success=False, exit_code=1))
+        adapter._history.append(CIRunResult(command="ok_cmd", success=True, exit_code=0))
+        report = adapter.get_report()
+        assert report.metadata["failed"] == 1
+        assert report.success is False

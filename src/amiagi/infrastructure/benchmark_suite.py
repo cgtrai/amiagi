@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    _HAS_YAML = True
+except ImportError:  # pragma: no cover
+    _HAS_YAML = False
+
 from amiagi.application.eval_runner import EvalScenario
 
 
@@ -64,13 +71,14 @@ class BenchmarkSuite:
         for cat_dir in sorted(self._dir.iterdir()):
             if cat_dir.is_dir():
                 cat = BenchmarkCategory(name=cat_dir.name)
-                for json_file in sorted(cat_dir.glob("*.json")):
-                    scenarios = self._load_file(json_file, cat.name)
-                    cat.scenarios.extend(scenarios)
-                    count += len(scenarios)
+                for data_file in sorted(cat_dir.glob("*")):
+                    if data_file.suffix in (".json", ".yaml", ".yml"):
+                        scenarios = self._load_file(data_file, cat.name)
+                        cat.scenarios.extend(scenarios)
+                        count += len(scenarios)
                 if cat.scenarios:
                     self._categories[cat.name] = cat
-            elif cat_dir.suffix == ".json":
+            elif cat_dir.suffix in (".json", ".yaml", ".yml"):
                 # Top-level benchmark file
                 cat_name = cat_dir.stem
                 scenarios = self._load_file(cat_dir, cat_name)
@@ -111,8 +119,12 @@ class BenchmarkSuite:
 
     def _load_file(self, path: Path, category: str) -> list[EvalScenario]:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            raw_text = path.read_text(encoding="utf-8")
+            if path.suffix in (".yaml", ".yml") and _HAS_YAML:
+                data = yaml.safe_load(raw_text)
+            else:
+                data = json.loads(raw_text)
+        except (json.JSONDecodeError, OSError, Exception):  # noqa: BLE001
             return []
 
         scenarios: list[EvalScenario] = []

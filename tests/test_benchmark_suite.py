@@ -91,3 +91,55 @@ class TestBenchmarkSuite:
         d = cat.to_dict()
         assert d["name"] == "cat1"
         assert len(d["scenarios"]) == 1
+
+    def test_load_yaml_category(self, tmp_path: Path) -> None:
+        bdir = tmp_path / "benchmarks" / "planning"
+        bdir.mkdir(parents=True)
+        yaml_content = (
+            "- scenario_id: p1\n"
+            "  prompt: Create a project plan\n"
+            "  expected_keywords:\n"
+            "    - milestone\n"
+            "    - deadline\n"
+            "- scenario_id: p2\n"
+            "  prompt: Estimate effort\n"
+        )
+        (bdir / "basic.yaml").write_text(yaml_content, encoding="utf-8")
+
+        suite = BenchmarkSuite(tmp_path / "benchmarks")
+        count = suite.load_all()
+        assert count == 2
+        assert "planning" in suite.list_categories()
+        scenarios = suite.get_scenarios("planning")
+        assert scenarios[0].scenario_id == "p1"
+        assert "milestone" in scenarios[0].expected_keywords
+
+    def test_load_yml_extension(self, tmp_path: Path) -> None:
+        bdir = tmp_path / "benchmarks" / "review"
+        bdir.mkdir(parents=True)
+        yml_content = (
+            "scenarios:\n"
+            "  - scenario_id: r1\n"
+            "    prompt: Review this PR\n"
+        )
+        (bdir / "cases.yml").write_text(yml_content, encoding="utf-8")
+
+        suite = BenchmarkSuite(tmp_path / "benchmarks")
+        count = suite.load_all()
+        assert count == 1
+        assert "review" in suite.list_categories()
+
+    def test_load_top_level_yaml(self, tmp_path: Path) -> None:
+        bdir = tmp_path / "benchmarks"
+        bdir.mkdir()
+        yaml_content = (
+            "scenarios:\n"
+            "  - scenario_id: g1\n"
+            "    prompt: General task\n"
+        )
+        (bdir / "general.yaml").write_text(yaml_content, encoding="utf-8")
+
+        suite = BenchmarkSuite(bdir)
+        count = suite.load_all()
+        assert count == 1
+        assert "general" in suite.list_categories()

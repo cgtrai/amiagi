@@ -88,3 +88,29 @@ class TestEvalRubric:
         loaded = EvalRubric.load_json(path)
         assert loaded.name == "persist_test"
         assert len(loaded.criteria) == 1
+
+    def test_save_load_yaml(self, tmp_path: Path) -> None:
+        r = EvalRubric(name="yaml_test", description="YAML rubric")
+        r.add_criterion(Criterion(name="accuracy", weight=2.5, max_score=10.0))
+        r.add_criterion(Criterion(name="clarity", weight=1.0))
+        path = tmp_path / "rubric.yaml"
+        r.save_yaml(path)
+        loaded = EvalRubric.load_yaml(path)
+        assert loaded.name == "yaml_test"
+        assert loaded.description == "YAML rubric"
+        assert len(loaded.criteria) == 2
+        assert loaded.criteria[0].weight == 2.5
+        assert loaded.criteria[0].max_score == 10.0
+
+    def test_default_factory(self) -> None:
+        r = EvalRubric.default()
+        assert r.name == "default"
+        names = r.criterion_names()
+        assert "correctness" in names
+        assert "completeness" in names
+        assert "style" in names
+        assert "tool_efficiency" in names
+        assert len(names) == 4
+        c = r.get_criterion("correctness")
+        assert c is not None
+        assert c.weight == 2.0

@@ -108,3 +108,62 @@ class TestAlertManager:
         time.sleep(0.3)
         mgr.stop()
         assert not mgr.running
+
+    def test_register_cost_alerts_adds_two_rules(self) -> None:
+        from amiagi.application.budget_manager import BudgetManager
+
+        mgr = AlertManager()
+        bm = BudgetManager()
+        mgr.register_cost_alerts(bm)
+        rule_names = [r.name for r in mgr._rules]
+        assert "budget_warning_80pct" in rule_names
+        assert "budget_exhausted_100pct" in rule_names
+
+    def test_cost_alert_warning_fires_at_80pct(self) -> None:
+        from amiagi.application.budget_manager import BudgetManager
+
+        bm = BudgetManager()
+        bm.set_budget("agent1", 10.0)
+        bm.record_usage("agent1", cost_usd=8.5)  # 85%
+
+        mgr = AlertManager()
+        mgr.register_cost_alerts(bm)
+        fired: list[Alert] = []
+        mgr.add_listener(fired.append)
+        mgr.evaluate()
+
+        warning_alerts = [a for a in fired if a.rule_name == "budget_warning_80pct"]
+        assert len(warning_alerts) == 1
+        assert "agent1" in warning_alerts[0].message
+        assert warning_alerts[0].severity == AlertSeverity.WARNING
+
+    def test_cost_alert_exhausted_fires_at_100pct(self) -> None:
+        from amiagi.application.budget_manager import BudgetManager
+
+        bm = BudgetManager()
+        bm.set_budget("agent1", 10.0)
+        bm.record_usage("agent1", cost_usd=10.5)  # 105%
+
+        mgr = AlertManager()
+        mgr.register_cost_alerts(bm)
+        fired: list[Alert] = []
+        mgr.add_listener(fired.append)
+        mgr.evaluate()
+
+        critical_alerts = [a for a in fired if a.rule_name == "budget_exhausted_100pct"]
+        assert len(critical_alerts) == 1
+        assert critical_alerts[0].severity == AlertSeverity.CRITICAL
+
+    def test_cost_alert_no_fire_below_80pct(self) -> None:
+        from amiagi.application.budget_manager import BudgetManager
+
+        bm = BudgetManager()
+        bm.set_budget("agent1", 10.0)
+        bm.record_usage("agent1", cost_usd=5.0)  # 50%
+
+        mgr = AlertManager()
+        mgr.register_cost_alerts(bm)
+        fired: list[Alert] = []
+        mgr.add_listener(fired.append)
+        mgr.evaluate()
+        assert len(fired) == 0

@@ -118,3 +118,40 @@ class TestRESTServer:
     def test_double_start(self, server: RESTServer) -> None:
         server.start()  # should be a no-op
         assert server.is_running is True
+
+    def test_parametric_route(self, server: RESTServer) -> None:
+        server.add_route(
+            "GET",
+            "/items/{id}",
+            lambda body: (200, {"id": body.get("_path_params", {}).get("id", ""), "path": body.get("_path", "")}),
+        )
+        status, body = _get(f"{server.address}/items/abc123")
+        assert status == 200
+        assert body["id"] == "abc123"
+        assert body["path"] == "/items/abc123"
+
+    def test_extract_path_params(self) -> None:
+        srv = RESTServer()
+        params = srv.extract_path_params("/tasks/{id}", "/tasks/xyz")
+        assert params == {"id": "xyz"}
+
+    def test_extract_path_params_multiple(self) -> None:
+        srv = RESTServer()
+        params = srv.extract_path_params("/orgs/{org}/repos/{repo}", "/orgs/acme/repos/main")
+        assert params == {"org": "acme", "repo": "main"}
+
+    def test_push_event_and_get_events(self, server: RESTServer) -> None:
+        server.wire_domain_routes()
+        server.push_event({"type": "test", "data": "hello"})
+        server.push_event({"type": "test", "data": "world"})
+        status, body = _get(f"{server.address}/events")
+        assert status == 200
+        events = body.get("events", [])
+        assert len(events) == 2
+        assert events[0]["data"] == "hello"
+
+    def test_wire_domain_routes_returns_count(self) -> None:
+        srv = RESTServer()
+        # With no domain objects, only the /events route is added
+        count = srv.wire_domain_routes()
+        assert count >= 1  # at least /events

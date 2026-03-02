@@ -167,3 +167,43 @@ class AlertManager:
             except Exception:
                 pass
             self._stop_event.wait(timeout=interval)
+
+    # ---- cost alert integration ----
+
+    def register_cost_alerts(self, budget_manager: Any) -> None:
+        """Register alert rules that fire when agent budgets hit thresholds.
+
+        Checks all tracked agents for 80% (warning) and 100% (critical).
+        """
+        from amiagi.application.budget_manager import BudgetManager
+
+        def _check_budget_warning() -> str | None:
+            """Return alert if any agent is at >= 80% budget."""
+            if not isinstance(budget_manager, BudgetManager):
+                return None
+            for rec in budget_manager.list_budgets():
+                if rec.limit_usd > 0 and rec.utilization_pct >= 80.0 and rec.utilization_pct < 100.0:
+                    return f"Agent '{rec.agent_id}' użył {rec.utilization_pct:.0f}% budżetu (${rec.spent_usd:.4f}/${rec.limit_usd:.2f})"
+            return None
+
+        def _check_budget_exhausted() -> str | None:
+            """Return alert if any agent has exceeded their budget."""
+            if not isinstance(budget_manager, BudgetManager):
+                return None
+            for rec in budget_manager.list_budgets():
+                if rec.limit_usd > 0 and rec.utilization_pct >= 100.0:
+                    return f"Agent '{rec.agent_id}' PRZEKROCZYŁ budżet! ${rec.spent_usd:.4f}/${rec.limit_usd:.2f}"
+            return None
+
+        self.add_rule(AlertRule(
+            name="budget_warning_80pct",
+            check_fn=_check_budget_warning,
+            severity=AlertSeverity.WARNING,
+            cooldown_seconds=300.0,
+        ))
+        self.add_rule(AlertRule(
+            name="budget_exhausted_100pct",
+            check_fn=_check_budget_exhausted,
+            severity=AlertSeverity.CRITICAL,
+            cooldown_seconds=300.0,
+        ))

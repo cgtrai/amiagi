@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    _HAS_YAML = True
+except ImportError:  # pragma: no cover
+    _HAS_YAML = False
+
 
 @dataclass
 class Criterion:
@@ -153,3 +160,35 @@ class EvalRubric:
     def load_json(path: Path) -> "EvalRubric":
         raw = json.loads(path.read_text(encoding="utf-8"))
         return EvalRubric.from_dict(raw)
+
+    # ---- YAML persistence ----
+
+    def save_yaml(self, path: Path) -> None:
+        """Save rubric to a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required for YAML support: pip install pyyaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def load_yaml(path: Path) -> "EvalRubric":
+        """Load rubric from a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required for YAML support: pip install pyyaml")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return EvalRubric.from_dict(raw)
+
+    # ---- factory for default criteria ----
+
+    @staticmethod
+    def default() -> "EvalRubric":
+        """Return a rubric pre-loaded with standard criteria."""
+        rubric = EvalRubric(name="default", description="Standard evaluation rubric")
+        rubric.add_criterion(Criterion("correctness", "Poprawność odpowiedzi", weight=2.0))
+        rubric.add_criterion(Criterion("completeness", "Kompletność odpowiedzi", weight=1.5))
+        rubric.add_criterion(Criterion("style", "Styl i czytelność", weight=1.0))
+        rubric.add_criterion(Criterion("tool_efficiency", "Efektywność użycia narzędzi", weight=1.0))
+        return rubric

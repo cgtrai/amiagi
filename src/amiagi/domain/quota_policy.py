@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    _HAS_YAML = True
+except ImportError:  # pragma: no cover
+    _HAS_YAML = False
+
 
 @dataclass
 class RoleQuota:
@@ -76,4 +83,22 @@ class QuotaPolicy:
     @staticmethod
     def load_json(path: Path) -> "QuotaPolicy":
         raw = json.loads(path.read_text(encoding="utf-8"))
+        return QuotaPolicy.from_dict(raw)
+
+    def save_yaml(self, path: Path) -> None:
+        """Save quotas to a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def load_yaml(path: Path) -> "QuotaPolicy":
+        """Load quotas from a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return QuotaPolicy.from_dict(raw)

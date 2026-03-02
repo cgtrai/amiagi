@@ -11,6 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    _HAS_YAML = True
+except ImportError:  # pragma: no cover
+    _HAS_YAML = False
+
 
 @dataclass
 class AgentDescriptor:
@@ -20,6 +27,8 @@ class AgentDescriptor:
     name: str = ""
     model_backend: str = "ollama"
     model_name: str = ""
+    persona_prompt: str = ""
+    model_preference: str = ""
     skills: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -29,6 +38,8 @@ class AgentDescriptor:
             "name": self.name,
             "model_backend": self.model_backend,
             "model_name": self.model_name,
+            "persona_prompt": self.persona_prompt,
+            "model_preference": self.model_preference,
             "skills": self.skills,
             "metadata": self.metadata,
         }
@@ -40,6 +51,8 @@ class AgentDescriptor:
             name=d.get("name", ""),
             model_backend=d.get("model_backend", "ollama"),
             model_name=d.get("model_name", ""),
+            persona_prompt=d.get("persona_prompt", ""),
+            model_preference=d.get("model_preference", ""),
             skills=d.get("skills", []),
             metadata=d.get("metadata", {}),
         )
@@ -112,4 +125,22 @@ class TeamDefinition:
     @classmethod
     def load_json(cls, path: Path) -> "TeamDefinition":
         raw = json.loads(path.read_text(encoding="utf-8"))
+        return cls.from_dict(raw)
+
+    def save_yaml(self, path: Path) -> None:
+        """Save team definition to a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def load_yaml(cls, path: Path) -> "TeamDefinition":
+        """Load team definition from a YAML file."""
+        if not _HAS_YAML:
+            raise RuntimeError("PyYAML is required: pip install pyyaml")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return cls.from_dict(raw)

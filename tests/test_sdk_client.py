@@ -25,8 +25,15 @@ class _MockAPIHandler(BaseHTTPRequestHandler):
             self._respond(200, {"agents": [{"agent_id": "a"}]})
         elif self.path == "/tasks":
             self._respond(200, {"tasks": []})
+        elif self.path.startswith("/tasks/"):
+            task_id = self.path.split("/")[-1]
+            self._respond(200, {"task": {"id": task_id, "status": "DONE"}})
         elif self.path == "/metrics":
             self._respond(200, {"uptime": 100})
+        elif self.path == "/events":
+            self._respond(200, {"events": [{"type": "test"}, {"type": "deploy"}]})
+        elif self.path == "/budget":
+            self._respond(200, {"budgets": {"agent1": {"spent_usd": 2.5}}})
         else:
             self._respond(404, {"error": "Not found"})
 
@@ -119,3 +126,26 @@ class TestAmiagiClient:
         client = AmiagiClient(mock_api)
         resp = client.delete("/something")
         assert resp["deleted"] is True
+
+    def test_task_status(self, mock_api: str) -> None:
+        client = AmiagiClient(mock_api)
+        resp = client.task_status("task42")
+        assert resp["task"]["id"] == "task42"
+        assert resp["task"]["status"] == "DONE"
+
+    def test_events(self, mock_api: str) -> None:
+        client = AmiagiClient(mock_api)
+        events = client.events()
+        assert len(events) == 2
+        assert events[0]["type"] == "test"
+
+    def test_events_with_limit(self, mock_api: str) -> None:
+        client = AmiagiClient(mock_api)
+        events = client.events(last_n=1)
+        assert len(events) == 1
+
+    def test_get_budget(self, mock_api: str) -> None:
+        client = AmiagiClient(mock_api)
+        budget = client.get_budget()
+        assert "budgets" in budget
+        assert budget["budgets"]["agent1"]["spent_usd"] == 2.5

@@ -61,10 +61,40 @@ class RESTServer:
         self._routes.append(Route(method=method.upper(), path=path, handler=handler))
 
     def _find_route(self, method: str, path: str) -> Route | None:
+        # Exact match first
         for route in self._routes:
             if route.method == method.upper() and route.path == path:
                 return route
+        # Parametric match (e.g. /tasks/{id})
+        for route in self._routes:
+            if route.method != method.upper():
+                continue
+            if "{" not in route.path:
+                continue
+            route_parts = route.path.strip("/").split("/")
+            path_parts = path.strip("/").split("/")
+            if len(route_parts) != len(path_parts):
+                continue
+            match = True
+            for rp, pp in zip(route_parts, path_parts):
+                if rp.startswith("{") and rp.endswith("}"):
+                    continue  # parameter segment — matches anything
+                if rp != pp:
+                    match = False
+                    break
+            if match:
+                return route
         return None
+
+    def extract_path_params(self, route_path: str, actual_path: str) -> dict[str, str]:
+        """Extract named parameters from a parametric route path."""
+        params: dict[str, str] = {}
+        route_parts = route_path.strip("/").split("/")
+        path_parts = actual_path.strip("/").split("/")
+        for rp, pp in zip(route_parts, path_parts):
+            if rp.startswith("{") and rp.endswith("}"):
+                params[rp[1:-1]] = pp
+        return params
 
     # ---- auth ----
 
@@ -106,6 +136,13 @@ class RESTServer:
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             self._respond(400, {"error": "Invalid JSON body"})
                             return
+
+                    # Inject path parameters into body
+                    if "{" in route.path:
+                        body["_path_params"] = server_ref.extract_path_params(
+                            route.path, self.path
+                        )
+                    body["_path"] = self.path
 
                     try:
                         status, payload = route.handler(body)
@@ -159,3 +196,94 @@ class RESTServer:
             "is_running": self.is_running,
             "routes": self.list_routes(),
         }
+
+    # ---- domain route wiring ----
+
+    def wire_domain_routes(
+        self,
+        *,
+        agent_registry: Any = None,
+        task_queue: Any = None,
+        workflow_engine: Any = None,
+        metrics_collector: Any = None,
+        budget_manager: Any = None,
+    ) -> int:
+        """Register standard domain routes. Returns the number of routes added."""
+        count = 0
+
+        if agent_registry is not None:
+            def _list_agents(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                agents = [a.to_dict() for a in agent_registry.list_all()]
+                return 200, {"agents": agents}
+
+            def _create_agent(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                return 201, {"status": "created", "data": body}
+
+            self.add_route("GET", "/agents", _list_agents)
+            self.add_route("POST", "/agents", _create_agent)
+            count += 2
+
+        if task_queue is not None:
+            def _list_tasks(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                stats = task_queue.stats()
+                return 200, {"tasks": stats}
+
+            def _create_task(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                return 201, {"status": "queued", "data": body}
+
+            def _get_task(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                params = body.get("_path_params", {})
+                task_id = params.get("id", "")
+                task = task_queue.get(task_id)
+                if task is None:
+                    return 404, {"error": f"Task {task_id} not found"}
+                return 200, {"task": task.to_dict() if hasattr(task, "to_dict") else {"id": task_id}}
+
+            self.add_route("GET", "/tasks", _list_tasks)
+            self.add_route("POST", "/tasks", _create_task)
+            self.add_route("GET", "/tasks/{id}", _get_task)
+            count += 3
+
+        if workflow_engine is not None:
+            def _run_workflow(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                wf_id = body.get("workflow_id", "")
+                return 200, {"status": "started", "workflow_id": wf_id}
+
+            self.add_route("POST", "/workflows/run", _run_workflow)
+            count += 1
+
+        if metrics_collector is not None:
+            def _get_metrics(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                summary = metrics_collector.summary()
+                return 200, summary
+
+            self.add_route("GET", "/metrics", _get_metrics)
+            count += 1
+
+        if budget_manager is not None:
+            def _get_budget(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                return 200, {"budgets": budget_manager.summary()}
+
+            self.add_route("GET", "/budget", _get_budget)
+            count += 1
+
+        # SSE-like events polling endpoint (JSON, not true SSE)
+        _events_buffer: list[dict[str, Any]] = []
+
+        def _get_events(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+            events = list(_events_buffer[-50:])
+            return 200, {"events": events}
+
+        self.add_route("GET", "/events", _get_events)
+        self._events_buffer = _events_buffer
+        count += 1
+
+        return count
+
+    def push_event(self, event: dict[str, Any]) -> None:
+        """Push an event to the events buffer for polling."""
+        buf = getattr(self, "_events_buffer", None)
+        if buf is not None:
+            buf.append(event)
+            if len(buf) > 200:
+                del buf[:100]

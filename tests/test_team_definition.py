@@ -71,3 +71,35 @@ class TestTeamDefinition:
         t = TeamDefinition(team_id="t1", metadata={"env": "prod"})
         d = t.to_dict()
         assert d["metadata"]["env"] == "prod"
+
+    def test_save_load_yaml(self, tmp_path: Path) -> None:
+        t = TeamDefinition(team_id="yaml_team", name="YAML Team")
+        t.add_member(AgentDescriptor(role="dev", name="Anna", persona_prompt="Be precise.", model_preference="gpt-4"))
+        path = tmp_path / "team.yaml"
+        t.save_yaml(path)
+        t2 = TeamDefinition.load_yaml(path)
+        assert t2.team_id == "yaml_team"
+        assert t2.size == 1
+        m = t2.get_member("dev")
+        assert m is not None
+        assert m.name == "Anna"
+        assert m.persona_prompt == "Be precise."
+        assert m.model_preference == "gpt-4"
+
+    def test_agent_descriptor_new_fields_defaults(self) -> None:
+        d = AgentDescriptor(role="tester")
+        assert d.persona_prompt == ""
+        assert d.model_preference == ""
+
+    def test_agent_descriptor_new_fields_roundtrip(self) -> None:
+        d = AgentDescriptor(
+            role="dev",
+            persona_prompt="You are a senior dev.",
+            model_preference="llama3",
+        )
+        data = d.to_dict()
+        assert data["persona_prompt"] == "You are a senior dev."
+        assert data["model_preference"] == "llama3"
+        restored = AgentDescriptor.from_dict(data)
+        assert restored.persona_prompt == "You are a senior dev."
+        assert restored.model_preference == "llama3"

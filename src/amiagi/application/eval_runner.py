@@ -76,6 +76,66 @@ def keyword_scorer(
     return {c.name: round(c.max_score * hit_ratio, 2) for c in rubric.criteria}
 
 
+def llm_judge_scorer(
+    response: str,
+    scenario: EvalScenario,
+    rubric: EvalRubric,
+    *,
+    judge_fn: Callable[[str], str] | None = None,
+) -> dict[str, float]:
+    """Score using an LLM as judge.
+
+    If *judge_fn* is provided, it is called with a prompt asking it to rate
+    the response on each rubric criterion. Falls back to keyword_scorer
+    if *judge_fn* is ``None`` or raises.
+    """
+    if judge_fn is None:
+        return keyword_scorer(response, scenario, rubric)
+
+    criteria_desc = ", ".join(
+        f"{c.name} (max {c.max_score})" for c in rubric.criteria
+    )
+    judge_prompt = (
+        f"Oceń poniższą odpowiedź agenta na skali 0-{rubric.criteria[0].max_score if rubric.criteria else 5} "
+        f"dla każdego kryterium: {criteria_desc}.\n\n"
+        f"Zadanie: {scenario.prompt}\n\n"
+        f"Odpowiedź agenta: {response[:2000]}\n\n"
+        "Odpowiedz TYLKO w formacie JSON: {{\"criterion_name\": score, ...}}"
+    )
+
+    try:
+        judge_response = judge_fn(judge_prompt)
+        # Parse JSON from judge response
+        import json as _json
+        import re as _re
+
+        # Try to find JSON in the response
+        json_match = _re.search(r"\{[^}]+\}", judge_response)
+        if json_match:
+            scores = _json.loads(json_match.group())
+            result: dict[str, float] = {}
+            for c in rubric.criteria:
+                raw = scores.get(c.name, 0.0)
+                result[c.name] = min(float(raw), c.max_score)
+            return result
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fallback to keyword scorer
+    return keyword_scorer(response, scenario, rubric)
+
+
+def make_llm_judge_scorer(
+    judge_fn: Callable[[str], str],
+) -> Callable[[str, EvalScenario, EvalRubric], dict[str, float]]:
+    """Create a scorer function that uses an LLM as judge."""
+
+    def scorer(response: str, scenario: EvalScenario, rubric: EvalRubric) -> dict[str, float]:
+        return llm_judge_scorer(response, scenario, rubric, judge_fn=judge_fn)
+
+    return scorer
+
+
 class EvalRunner:
     """Evaluates agents against scenarios using a rubric.
 

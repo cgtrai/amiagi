@@ -105,6 +105,19 @@ class AmiagiClient:
     def get_metrics(self) -> dict[str, Any]:
         return self.get("/metrics")
 
+    def task_status(self, task_id: str) -> dict[str, Any]:
+        """Get status of a specific task by ID."""
+        return self.get(f"/tasks/{task_id}")
+
+    def events(self, last_n: int = 50) -> list[dict[str, Any]]:
+        """Poll the events endpoint for recent events."""
+        resp = self.get("/events")
+        return resp.get("events", [])[:last_n]
+
+    def get_budget(self) -> dict[str, Any]:
+        """Get budget status."""
+        return self.get("/budget")
+
     def ping(self) -> bool:
         try:
             self.get("/metrics")
