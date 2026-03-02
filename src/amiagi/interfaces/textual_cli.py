@@ -101,6 +101,7 @@ from amiagi.interfaces.cli import (
     _repair_plan_tracking_file,
 )
 from amiagi.interfaces.permission_manager import PermissionManager
+from amiagi.i18n import _
 
 try:
     from textual.app import App, ComposeResult
@@ -109,7 +110,7 @@ try:
     from textual.widgets import Input, Static, TextArea
 except (ImportError, ModuleNotFoundError) as error:  # pragma: no cover - runtime import guard
     raise RuntimeError(
-        "Tryb textual wymaga biblioteki 'textual'. Zainstaluj zależności runtime."
+        _("error.textual_import")
     ) from error
 
 
@@ -226,121 +227,127 @@ def _adaptive_watchdog_idle_threshold_seconds(
     adaptive = max(default_seconds, p99 * 1.5)
     return float(max(default_seconds, min(180.0, round(adaptive, 1))))
 
-_TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = [
-    ("/help", "pokaż dostępne komendy"),
-    ("/cls", "wyczyść ekran główny (panel użytkownika)"),
-    ("/cls all", "wyczyść wszystkie panele"),
-    # --- Model management ---
-    ("/models current", "pokaż aktualnie aktywny model dla Polluksa"),
-    ("/models show", "pokaż modele dostępne w Ollama (1..x)"),
-    ("/models chose <nr>", "wybierz model dla Polluksa po numerze z /models show"),
-    ("/kastor-model show", "pokaż aktualny model Kastora"),
-    ("/kastor-model chose <nr>", "zmień model Kastora na wybrany z listy"),
-    # --- Permissions ---
-    ("/permissions", "pokaż aktualny tryb zgód"),
-    ("/permissions all", "włącz globalną zgodę na zasoby"),
-    ("/permissions ask", "wyłącz globalną zgodę"),
-    ("/permissions reset", "wyczyść zapamiętane zgody per zasób"),
-    # --- System info ---
-    ("/queue-status", "pokaż stan kolejki modeli i decyzji polityki VRAM"),
-    ("/capabilities [--network]", "pokaż gotowość narzędzi i backendów"),
-    ("/show-system-context [tekst]", "pokaż kontekst systemowy przekazywany do modelu"),
-    ("/goal-status", "pokaż cel główny i etap z notes/main_plan.json"),
-    ("/goal", "alias: pokaż cel główny i etap"),
-    ("/router-status", "pokaż status aktorów i okna IDLE"),
-    ("/idle-until <ISO8601|off>", "ustaw/wyczyść planowane IDLE watchdoga"),
-    # --- Memory & history ---
-    ("/history [n]", "pokaż ostatnie wiadomości (domyślnie 10)"),
-    ("/remember <tekst>", "zapisz notatkę do pamięci"),
-    ("/memories [zapytanie]", "przeszukaj pamięć"),
-    ("/import-dialog [plik]", "zapisz dialog (bez kodu) jako kontekst pamięci"),
-    # --- Code & shell ---
-    ("/create-python <plik> <opis>", "wygeneruj i zapisz skrypt Python przez model"),
-    ("/run-python <plik> [arg ...]", "uruchom skrypt Python z argumentami"),
-    ("/run-shell <polecenie>", "uruchom polecenie shell z polityką whitelist"),
-    # --- API usage ---
-    ("/api-usage", "pokaż szczegółowe zużycie tokenów i koszty API"),
-    ("/api-key verify", "zweryfikuj ponownie klucz API"),
-    # --- Skills ---
-    ("/skills", "lista załadowanych skills per rola"),
-    ("/skills reload", "przeładuj pliki skills z dysku"),
-    # --- Phase 1: Agent Registry ---
-    ("/agents list", "lista agentów, stan, model, rola"),
-    ("/agents info <id|name>", "szczegóły agenta"),
-    ("/agents pause <id>", "wstrzymaj agenta"),
-    ("/agents resume <id>", "wznów agenta"),
-    ("/agents terminate <id>", "zakończ agenta"),
-    # --- Phase 2: Agent Wizard ---
-    ("/agent-wizard create <opis>", "utwórz agenta na podstawie opisu"),
-    ("/agent-wizard blueprints", "lista zapisanych blueprintów"),
-    ("/agent-wizard load <nazwa>", "załaduj agenta z blueprintu"),
-    # --- Phase 3: Task Queue ---
-    ("/tasks list", "lista zadań w kolejce"),
-    ("/tasks add <opis>", "dodaj nowe zadanie"),
-    ("/tasks info <id>", "szczegóły zadania"),
-    ("/tasks cancel <id>", "anuluj zadanie"),
-    ("/tasks stats", "statystyki kolejki zadań"),
-    # --- Phase 4: Dashboard ---
-    ("/dashboard start [--port N]", "uruchom web dashboard (domyślnie :8080)"),
-    ("/dashboard stop", "zatrzymaj web dashboard"),
-    ("/dashboard status", "pokaż status web dashboard"),
-    # --- Phase 5: Knowledge & Workspace ---
-    ("/knowledge store <tekst>", "dodaj wpis do bazy wiedzy"),
-    ("/knowledge query <pytanie>", "przeszukaj bazę wiedzy"),
-    ("/knowledge count", "liczba wpisów w bazie wiedzy"),
-    ("/workspace list", "lista plików we współdzielonym workspace"),
-    ("/workspace read <plik>", "odczytaj plik z workspace"),
-    ("/workspace write <plik> <treść>", "zapisz plik do workspace"),
-    # --- Phase 6: Workflow Engine ---
-    ("/workflow list", "lista dostępnych szablonów workflow"),
-    ("/workflow run <nazwa>", "uruchom workflow z szablonu"),
-    ("/workflow status", "status aktywnego workflow"),
-    ("/workflow pause", "wstrzymaj aktywny workflow"),
-    ("/workflow resume", "wznów workflow"),
-    # --- Phase 7: Security ---
-    ("/audit query [agent]", "przeszukaj łańcuch audytu"),
-    ("/audit last [n]", "ostatnie wpisy audytu"),
-    ("/sandbox list", "lista sandboxów agentów"),
-    ("/sandbox create <agent>", "utwórz sandbox dla agenta"),
-    ("/sandbox destroy <agent>", "usuń sandbox agenta"),
-    # --- Phase 8: Budget & Quota ---
-    ("/budget status", "pokaż budżety agentów"),
-    ("/budget set <agent> <limit>", "ustaw budżet agenta (USD)"),
-    ("/budget reset <agent>", "resetuj wydatki agenta"),
-    ("/quota status", "pokaż politykę quotas per rola"),
-    ("/quota set <rola> <tokens> <cost> <req/h>", "ustaw quota dla roli"),
-    # --- Phase 9: Evaluation & Feedback ---
-    ("/eval run <agent> [--benchmark X]", "uruchom ewaluację agenta"),
-    ("/eval compare <agent_a> <agent_b>", "porównanie A/B dwóch agentów"),
-    ("/eval history [agent]", "historia wyników ewaluacji"),
-    ("/eval baselines", "lista zapisanych baselines"),
-    ("/feedback summary", "podsumowanie opinii o agentach"),
-    ("/feedback up <agent> [komentarz]", "pozytywna ocena agenta"),
-    ("/feedback down <agent> [komentarz]", "negatywna ocena agenta"),
-    # --- Phase 10: API & Plugins ---
-    ("/api start", "uruchom REST API (domyślnie :8090)"),
-    ("/api stop", "zatrzymaj REST API"),
-    ("/api status", "status REST API"),
-    ("/plugins list", "lista załadowanych pluginów"),
-    ("/plugins load", "załaduj wszystkie pluginy"),
-    ("/plugins install <path>", "zainstaluj plugin ze ścieżki"),
-    # --- Phase 11: Teams ---
-    ("/team list", "lista zarejestrowanych zespołów"),
-    ("/team templates", "dostępne szablony zespołów"),
-    ("/team create <szablon>", "utwórz zespół z szablonu"),
-    ("/team compose <cel>", "skomponuj zespół na podstawie celu"),
-    ("/team status <id>", "org chart i status zespołu"),
-    ("/team scale <id> up|down", "skaluj zespół w górę/w dół"),
-    # --- Session ---
-    ("/bye", "zapisz podsumowanie sesji i zakończ"),
-    ("/quit", "zakończ tryb textual"),
-    ("/exit", "zakończ tryb textual"),
-]
+def _build_help_commands() -> list[tuple[str, str]]:
+    return [
+        ("/help", _("help.cmd.help")),
+        ("/cls", _("help.cmd.cls")),
+        ("/cls all", _("help.cmd.cls_all")),
+        # --- Model management ---
+        ("/models current", _("help.cmd.models_current")),
+        ("/models show", _("help.cmd.models_show")),
+        ("/models chose <nr>", _("help.cmd.models_chose")),
+        ("/kastor-model show", _("help.cmd.kastor_model_show")),
+        ("/kastor-model chose <nr>", _("help.cmd.kastor_model_chose")),
+        # --- Permissions ---
+        ("/permissions", _("help.cmd.permissions")),
+        ("/permissions all", _("help.cmd.permissions_all")),
+        ("/permissions ask", _("help.cmd.permissions_ask")),
+        ("/permissions reset", _("help.cmd.permissions_reset")),
+        # --- System info ---
+        ("/queue-status", _("help.cmd.queue_status")),
+        ("/capabilities [--network]", _("help.cmd.capabilities")),
+        ("/show-system-context [tekst]", _("help.cmd.show_system_context")),
+        ("/goal-status", _("help.cmd.goal_status")),
+        ("/goal", _("help.cmd.goal")),
+        ("/router-status", _("help.cmd.router_status")),
+        ("/idle-until <ISO8601|off>", _("help.cmd.idle_until")),
+        # --- Memory & history ---
+        ("/history [n]", _("help.cmd.history")),
+        ("/remember <tekst>", _("help.cmd.remember")),
+        ("/memories [zapytanie]", _("help.cmd.memories")),
+        ("/import-dialog [plik]", _("help.cmd.import_dialog")),
+        # --- Code & shell ---
+        ("/create-python <plik> <opis>", _("help.cmd.create_python")),
+        ("/run-python <plik> [arg ...]", _("help.cmd.run_python")),
+        ("/run-shell <polecenie>", _("help.cmd.run_shell")),
+        # --- API usage ---
+        ("/api-usage", _("help.cmd.api_usage")),
+        ("/api-key verify", _("help.cmd.api_key_verify")),
+        # --- Skills ---
+        ("/skills", _("help.cmd.skills")),
+        ("/skills reload", _("help.cmd.skills_reload")),
+        # --- Phase 1: Agent Registry ---
+        ("/agents list", _("help.cmd.agents_list")),
+        ("/agents info <id|name>", _("help.cmd.agents_info")),
+        ("/agents pause <id>", _("help.cmd.agents_pause")),
+        ("/agents resume <id>", _("help.cmd.agents_resume")),
+        ("/agents terminate <id>", _("help.cmd.agents_terminate")),
+        # --- Phase 2: Agent Wizard ---
+        ("/agent-wizard create <opis>", _("help.cmd.agent_wizard_create")),
+        ("/agent-wizard blueprints", _("help.cmd.agent_wizard_blueprints")),
+        ("/agent-wizard load <nazwa>", _("help.cmd.agent_wizard_load")),
+        # --- Phase 3: Task Queue ---
+        ("/tasks list", _("help.cmd.tasks_list")),
+        ("/tasks add <opis>", _("help.cmd.tasks_add")),
+        ("/tasks info <id>", _("help.cmd.tasks_info")),
+        ("/tasks cancel <id>", _("help.cmd.tasks_cancel")),
+        ("/tasks stats", _("help.cmd.tasks_stats")),
+        # --- Phase 4: Dashboard ---
+        ("/dashboard start [--port N]", _("help.cmd.dashboard_start")),
+        ("/dashboard stop", _("help.cmd.dashboard_stop")),
+        ("/dashboard status", _("help.cmd.dashboard_status")),
+        # --- Phase 5: Knowledge & Workspace ---
+        ("/knowledge store <tekst>", _("help.cmd.knowledge_store")),
+        ("/knowledge query <pytanie>", _("help.cmd.knowledge_query")),
+        ("/knowledge count", _("help.cmd.knowledge_count")),
+        ("/workspace list", _("help.cmd.workspace_list")),
+        ("/workspace read <plik>", _("help.cmd.workspace_read")),
+        ("/workspace write <plik> <treść>", _("help.cmd.workspace_write")),
+        # --- Phase 6: Workflow Engine ---
+        ("/workflow list", _("help.cmd.workflow_list")),
+        ("/workflow run <nazwa>", _("help.cmd.workflow_run")),
+        ("/workflow status", _("help.cmd.workflow_status")),
+        ("/workflow pause", _("help.cmd.workflow_pause")),
+        ("/workflow resume", _("help.cmd.workflow_resume")),
+        # --- Phase 7: Security ---
+        ("/audit query [agent]", _("help.cmd.audit_query")),
+        ("/audit last [n]", _("help.cmd.audit_last")),
+        ("/sandbox list", _("help.cmd.sandbox_list")),
+        ("/sandbox create <agent>", _("help.cmd.sandbox_create")),
+        ("/sandbox destroy", _("help.cmd.sandbox_destroy")),
+        # --- Phase 8: Budget & Quota ---
+        ("/budget status", _("help.cmd.budget_status")),
+        ("/budget set <agent> <limit>", _("help.cmd.budget_set")),
+        ("/budget reset <agent>", _("help.cmd.budget_reset")),
+        ("/quota status", _("help.cmd.quota_status")),
+        ("/quota set <rola> <tokens> <cost> <req/h>", _("help.cmd.quota_set")),
+        # --- Phase 9: Evaluation & Feedback ---
+        ("/eval run <agent> [--benchmark X]", _("help.cmd.eval_run")),
+        ("/eval compare <agent_a> <agent_b>", _("help.cmd.eval_compare")),
+        ("/eval history [agent]", _("help.cmd.eval_history")),
+        ("/eval baselines", _("help.cmd.eval_baselines")),
+        ("/feedback summary", _("help.cmd.feedback_summary")),
+        ("/feedback up <agent> [komentarz]", _("help.cmd.feedback_up")),
+        ("/feedback down <agent> [komentarz]", _("help.cmd.feedback_down")),
+        # --- Phase 10: API & Plugins ---
+        ("/api start", _("help.cmd.api_start")),
+        ("/api stop", _("help.cmd.api_stop")),
+        ("/api status", _("help.cmd.api_status")),
+        ("/plugins list", _("help.cmd.plugins_list")),
+        ("/plugins load", _("help.cmd.plugins_load")),
+        ("/plugins install <path>", _("help.cmd.plugins_install")),
+        # --- Phase 11: Teams ---
+        ("/team list", _("help.cmd.team_list")),
+        ("/team templates", _("help.cmd.team_templates")),
+        ("/team create <szablon>", _("help.cmd.team_create")),
+        ("/team compose <cel>", _("help.cmd.team_compose")),
+        ("/team status <id>", _("help.cmd.team_status")),
+        ("/team scale <id> up|down", _("help.cmd.team_scale")),
+        # --- i18n ---
+        ("/lang <code>", _("help.cmd.lang")),
+        # --- Session ---
+        ("/bye", _("help.cmd.bye")),
+        ("/quit", _("help.cmd.quit")),
+        ("/exit", _("help.cmd.exit")),
+    ]
+
+
+_TEXTUAL_HELP_COMMANDS: list[tuple[str, str]] = _build_help_commands()
 
 
 def _build_textual_help_text() -> str:
-    command_width = max(len(command) for command, _ in _TEXTUAL_HELP_COMMANDS)
-    lines = ["Komendy (textual):"]
+    command_width = max(len(command) for command, _desc in _TEXTUAL_HELP_COMMANDS)
+    lines = [_("help.header.textual")]
     for command, description in _TEXTUAL_HELP_COMMANDS:
         lines.append(f"  {command.ljust(command_width)}  - {description}")
     return "\n".join(lines)
@@ -363,14 +370,14 @@ class PermissionLike(Protocol):
 
 def _copy_to_system_clipboard(text: str) -> tuple[bool, str]:
     if not text:
-        return False, "Brak treści do skopiowania."
+        return False, _("clipboard.empty")
 
     timeout_seconds = 0.35
 
     if os.environ.get("WAYLAND_DISPLAY"):
         wl_copy = shutil.which("wl-copy")
         if wl_copy is None:
-            return False, "Brak narzędzia wl-copy (Wayland)."
+            return False, _("clipboard.no_wlcopy")
         try:
             completed = subprocess.run(
                 [wl_copy],
@@ -381,10 +388,10 @@ def _copy_to_system_clipboard(text: str) -> tuple[bool, str]:
                 timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired:
-            return False, "Przekroczono limit czasu kopiowania przez wl-copy."
+            return False, _("clipboard.timeout_wlcopy")
         if completed.returncode == 0:
-            return True, "Schowek systemowy (Wayland / wl-copy)."
-        return False, "Nie udało się skopiować przez wl-copy."
+            return True, _("clipboard.ok_wayland")
+        return False, _("clipboard.fail_wlcopy")
 
     if os.environ.get("DISPLAY"):
         xclip = shutil.which("xclip")
@@ -399,9 +406,9 @@ def _copy_to_system_clipboard(text: str) -> tuple[bool, str]:
                     timeout=timeout_seconds,
                 )
             except subprocess.TimeoutExpired:
-                return False, "Przekroczono limit czasu kopiowania przez xclip."
+                return False, _("clipboard.timeout_xclip")
             if completed.returncode == 0:
-                return True, "Schowek systemowy (X11 / xclip)."
+                return True, _("clipboard.ok_xclip")
 
         xsel = shutil.which("xsel")
         if xsel is not None:
@@ -415,16 +422,17 @@ def _copy_to_system_clipboard(text: str) -> tuple[bool, str]:
                     timeout=timeout_seconds,
                 )
             except subprocess.TimeoutExpired:
-                return False, "Przekroczono limit czasu kopiowania przez xsel."
+                return False, _("clipboard.timeout_xsel")
             if completed.returncode == 0:
-                return True, "Schowek systemowy (X11 / xsel)."
+                return True, _("clipboard.ok_xsel")
 
-        return False, "Brak narzędzia do schowka X11 (zainstaluj xclip albo xsel)."
+        return False, _("clipboard.no_x11_tool")
 
-    return False, "Nie wykryto środowiska schowka (WAYLAND_DISPLAY/DISPLAY)."
+    return False, _("clipboard.no_display")
 
 
 def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _CommandOutcome:
+    global TEXTUAL_HELP_TEXT, _TEXTUAL_HELP_COMMANDS
     command = raw.strip().lower()
     if command in {"/quit", "/exit"}:
         return _CommandOutcome(handled=True, messages=[], should_exit=True)
@@ -441,7 +449,7 @@ def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _Co
             return _CommandOutcome(
                 handled=True,
                 messages=[
-                    "--- PERMISSIONS ---",
+                    _("permissions.header"),
                     f"allow_all: {bool(getattr(permission_manager, 'allow_all', False))}",
                     f"granted_once_count: {granted_once_count}",
                 ],
@@ -451,7 +459,7 @@ def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _Co
             permission_manager.allow_all = True
             return _CommandOutcome(
                 handled=True,
-                messages=["Włączono globalną zgodę na zasoby."],
+                messages=[_("permissions.global_on")],
             )
 
         if action in {"ask", "off", "interactive"}:
@@ -459,8 +467,8 @@ def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _Co
             return _CommandOutcome(
                 handled=True,
                 messages=[
-                    "Włączono tryb pytań o zgodę per zasób.",
-                    "W trybie textual zgoda interakcyjna nie jest wyświetlana; użyj /permissions all, aby wysyłać zapytania do modelu.",
+                    _("permissions.ask_on"),
+                    _("permissions.ask_textual_hint"),
                 ],
             )
 
@@ -470,16 +478,44 @@ def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _Co
                 granted_once.clear()
                 return _CommandOutcome(
                     handled=True,
-                    messages=["Wyczyszczono zapamiętane zgody per zasób."],
+                    messages=[_("permissions.reset_done")],
                 )
             return _CommandOutcome(
                 handled=True,
-                messages=["Brak zapamiętanych zgód do wyczyszczenia."],
+                messages=[_("permissions.reset_empty")],
             )
 
         return _CommandOutcome(
             handled=True,
-            messages=["Użycie: /permissions [status|all|ask|reset]"],
+            messages=[_("permissions.usage")],
+        )
+
+    if command.startswith("/lang"):
+        from amiagi.i18n import set_language, get_language, available_languages
+
+        parts = command.split()
+        if len(parts) < 2:
+            return _CommandOutcome(
+                handled=True,
+                messages=[
+                    _("lang.current", lang=get_language()),
+                    _("lang.usage"),
+                ],
+            )
+        code = parts[1].strip().lower()
+        if code not in available_languages():
+            available = ", ".join(sorted(available_languages()))
+            return _CommandOutcome(
+                handled=True,
+                messages=[_("lang.not_found", lang=code, available=available)],
+            )
+        set_language(code)
+        # Rebuild global help text after language switch
+        _TEXTUAL_HELP_COMMANDS = _build_help_commands()
+        TEXTUAL_HELP_TEXT = _build_textual_help_text()
+        return _CommandOutcome(
+            handled=True,
+            messages=[_("lang.switched", lang=code)],
         )
 
     return _CommandOutcome(handled=False, messages=[])
@@ -498,9 +534,9 @@ def _is_model_access_allowed(permission_manager: PermissionLike, model_base_url:
 
 class _AmiagiTextualApp(App[None]):
     BINDINGS = [
-        ("ctrl+c", "copy_selection", "Kopiuj zaznaczenie"),
-        ("ctrl+shift+c", "copy_selection", "Kopiuj zaznaczenie"),
-        ("ctrl+q", "quit", "Wyjście"),
+        ("ctrl+c", "copy_selection", _("binding.copy_selection")),
+        ("ctrl+shift+c", "copy_selection", _("binding.copy_selection")),
+        ("ctrl+q", "quit", _("binding.quit")),
     ]
 
     CSS = """
@@ -665,7 +701,7 @@ class _AmiagiTextualApp(App[None]):
         }
         self._idle_until_epoch: float | None = None
         self._idle_until_source: str = ""
-        self._last_router_event: str = "Uruchomienie sesji"
+        self._last_router_event: str = _("router.session_start_event")
         self._plan_pause_active = False
         self._plan_pause_started_monotonic = 0.0
         self._plan_pause_reason = ""
@@ -692,17 +728,17 @@ class _AmiagiTextualApp(App[None]):
     def compose(self) -> ComposeResult:
         with Horizontal():
             with Vertical(id="main_column"):
-                yield Static("Użytkownik ↔ Polluks", classes="title")
+                yield Static(_("widget.user_model_title"), classes="title")
                 yield TextArea("", id="user_model_log", read_only=True, show_line_numbers=False)
-                yield Static("Status modelu: READY · możesz pisać", id="busy_indicator")
-                yield Input(placeholder="Wpisz polecenie i Enter (/quit aby wyjść)", id="input_box")
+                yield Static(_("widget.busy_ready"), id="busy_indicator")
+                yield Input(placeholder=_("widget.input_placeholder"), id="input_box")
             with Vertical(id="tech_column"):
-                yield Static("Router", classes="title")
+                yield Static(_("widget.router_title"), classes="title")
                 yield Static("", id="router_status")
                 yield Static("", id="api_usage_bar")
-                yield Static("Kastor → Router", classes="title")
+                yield Static(_("widget.supervisor_title"), classes="title")
                 yield TextArea("", id="supervisor_log", read_only=True, show_line_numbers=False)
-                yield Static("Polluks → Kastor", classes="title")
+                yield Static(_("widget.executor_title"), classes="title")
                 yield TextArea("", id="executor_log", read_only=True, show_line_numbers=False)
 
     def on_key(self, event: Key) -> None:
@@ -727,7 +763,7 @@ class _AmiagiTextualApp(App[None]):
 
     def _format_idle_until(self) -> str:
         if self._idle_until_epoch is None:
-            return "brak"
+            return _("router.idle_until_none")
         dt = datetime.fromtimestamp(self._idle_until_epoch, tz=timezone.utc)
         rendered = dt.isoformat().replace("+00:00", "Z")
         if self._idle_until_source:
@@ -741,7 +777,7 @@ class _AmiagiTextualApp(App[None]):
             return
         idle_for_seconds = max(0.0, time.monotonic() - self._last_progress_monotonic)
         lines = [
-            "Aktorzy:",
+            _("router.actors_header"),
             f"- Router: {self._actor_states.get('router', 'UNKNOWN')}",
             f"- Polluks: {self._actor_states.get('creator', 'UNKNOWN')}",
             f"- Kastor: {self._actor_states.get('supervisor', 'UNKNOWN')}",
@@ -761,9 +797,9 @@ class _AmiagiTextualApp(App[None]):
         except Exception:
             return
         if self._router_cycle_in_progress:
-            indicator.update("Status modelu: BUSY · trwa wykonywanie kroku")
+            indicator.update(_("widget.busy_working"))
             return
-        indicator.update("Status modelu: READY · możesz pisać")
+        indicator.update(_("widget.busy_ready"))
 
     def _set_actor_state(self, actor: str, state: str, event: str | None = None) -> None:
         def _apply() -> None:
@@ -852,7 +888,7 @@ class _AmiagiTextualApp(App[None]):
         return any(marker in normalized for marker in _MODEL_QUESTION_MARKERS)
 
     def _identity_reply(self) -> str:
-        return "Jestem Polluks, modelem wykonawczym frameworka amiagi."
+        return _("identity.reply")
 
     # ------------------------------------------------------------------
     # Premature plan completion detection & Kastor-based redirection
@@ -965,11 +1001,11 @@ class _AmiagiTextualApp(App[None]):
     def _single_sentence(self, text: str) -> str:
         compact = " ".join(text.strip().split())
         if not compact:
-            return "Jestem Polluks, modelem wykonawczym frameworka amiagi."
+            return _("identity.reply")
         for idx, char in enumerate(compact):
             if char in ".!?":
                 sentence = compact[: idx + 1].strip()
-                return sentence or "Jestem Polluks, modelem wykonawczym frameworka amiagi."
+                return sentence or _("identity.reply")
         return compact[:220]
 
     def _append_plan_event(self, event_type: str, payload: dict) -> None:
@@ -1040,7 +1076,7 @@ class _AmiagiTextualApp(App[None]):
 
     def _interrupt_followup_question(self) -> str:
         return (
-            " Czy chcesz, żebym kontynuował plan, przerwał go, czy przygotował nowe zadanie?"
+            _("identity.followup_question")
         )
 
     def _merge_supervisor_notes(self, base_note: str, supervisor_note: str) -> str:
@@ -1337,7 +1373,7 @@ class _AmiagiTextualApp(App[None]):
             )
             self._append_log(
                 "supervisor_log",
-                f"[Koordynator] Treść do Sponsora zawierała wyłącznie tool_call/JSON — przekierowano do executor_log.",
+                _("coordinator.tool_redirected"),
             )
             return None
         if sanitized != block_content:
@@ -1370,7 +1406,7 @@ class _AmiagiTextualApp(App[None]):
             if text:
                 copied, details = _copy_to_system_clipboard(text)
                 if copied:
-                    self.notify(f"Skopiowano do schowka ({details}).")
+                    self.notify(_("clipboard.copied_notify", details=details))
                 else:
                     self.copy_to_clipboard(text)
                     self.notify(
@@ -1380,7 +1416,7 @@ class _AmiagiTextualApp(App[None]):
                     )
                 return
         self.notify(
-            "Brak zaznaczonej treści do skopiowania. Kliknij w okno logu i zaznacz tekst.",
+            _("clipboard.no_selection"),
             severity="information",
         )
 
@@ -1409,75 +1445,75 @@ class _AmiagiTextualApp(App[None]):
 
         if lower == "/cls":
             self._clear_textual_panels(clear_all=False)
-            self.notify("Wyczyszczono ekran główny.", severity="information")
+            self.notify(_("cls.main_done"), severity="information")
             return _CommandOutcome(True, [])
 
         if lower == "/cls all":
             self._clear_textual_panels(clear_all=True)
-            self.notify("Wyczyszczono wszystkie panele.", severity="information")
+            self.notify(_("cls.all_done"), severity="information")
             return _CommandOutcome(True, [])
 
         if lower.startswith("/models"):
             parts = text.split()
             if len(parts) < 2:
-                return _CommandOutcome(True, ["Użycie: /models show | /models chose <nr>"])
+                return _CommandOutcome(True, [_("models.usage")])
 
             action = parts[1].lower()
             if action == "current":
                 # Polluks (executor)
-                polluks_model = str(getattr(self._chat_service.ollama_client, "model", "")) or "(nie ustawiony)"
+                polluks_model = str(getattr(self._chat_service.ollama_client, "model", "")) or _("models.not_set")
                 polluks_api = getattr(self._chat_service.ollama_client, "_is_api_client", False)
                 polluks_label = f"☁ {polluks_model}" if polluks_api else polluks_model
 
                 # Kastor (supervisor)
                 supervisor = self._chat_service.supervisor_service
                 if supervisor is not None:
-                    kastor_model = str(getattr(supervisor.ollama_client, "model", "")) or "(nie ustawiony)"
+                    kastor_model = str(getattr(supervisor.ollama_client, "model", "")) or _("models.not_set")
                     kastor_api = getattr(supervisor.ollama_client, "_is_api_client", False)
                     kastor_label = f"☁ {kastor_model}" if kastor_api else kastor_model
                 else:
-                    kastor_label = "(nieaktywny)"
+                    kastor_label = _("models.kastor_inactive")
 
                 return _CommandOutcome(True, [
-                    "--- AKTYWNE MODELE ---",
+                    _("models.active_header"),
                     f"  Polluks (wykonawca): {polluks_label}",
                     f"  Kastor  (nadzorca):  {kastor_label}",
                 ])
             if action == "show":
                 combined = self._build_wizard_model_list()
                 if not combined:
-                    return _CommandOutcome(True, ["Brak modeli dostępnych."])
+                    return _CommandOutcome(True, [_("models.none_available")])
 
                 current_model = str(getattr(self._chat_service.ollama_client, "model", ""))
                 is_api = getattr(self._chat_service.ollama_client, "_is_api_client", False)
-                messages = ["--- MODELE POLLUKSA ---"]
+                messages = [_("models.header_polluks")]
                 idx = 1
                 ollama_models = [(n, s) for n, s in combined if s == "ollama"]
                 api_models = [(n, s) for n, s in combined if s != "ollama"]
                 if ollama_models:
-                    messages.append("Modele lokalne (Ollama):")
-                    for name, _ in ollama_models:
-                        marker = "  [aktywny]" if name == current_model and not is_api else ""
+                    messages.append(_("models.local_header"))
+                    for name, _size in ollama_models:
+                        marker = _("models.active_marker") if name == current_model and not is_api else ""
                         messages.append(f"  {idx}. {name}{marker}")
                         idx += 1
                 if api_models:
-                    messages.append("Modele zewnętrzne (API):")
+                    messages.append(_("models.api_header"))
                     for name, source in api_models:
-                        marker = "  [aktywny]" if name == current_model and is_api else ""
+                        marker = _("models.active_marker") if name == current_model and is_api else ""
                         messages.append(f"  {idx}. ☁ {name}  [{source.upper()}]{marker}")
                         idx += 1
-                messages.append("Użycie: /models chose <nr>")
+                messages.append(_("models.chose_usage"))
                 return _CommandOutcome(True, messages)
 
             if action in {"chose", "choose"}:
                 if len(parts) < 3:
-                    return _CommandOutcome(True, ["Użycie: /models chose <nr>"])
+                    return _CommandOutcome(True, [_("models.chose_usage")])
                 try:
                     index = int(parts[2])
                 except ValueError:
                     return _CommandOutcome(
                         True,
-                        ["Nieprawidłowy numer modelu. Użyj wartości całkowitej, np. /models chose 1"],
+                        [_("models.invalid_number")],
                     )
 
                 combined = self._build_wizard_model_list()
@@ -1500,7 +1536,7 @@ class _AmiagiTextualApp(App[None]):
                     if not api_key and settings is not None:
                         api_key = settings.openai_api_key
                     if not api_key:
-                        return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY)."])
+                        return _CommandOutcome(True, [_("models.no_api_key")])
                     base_url = "https://api.openai.com/v1"
                     timeout = 120
                     if settings is not None:
@@ -1521,13 +1557,13 @@ class _AmiagiTextualApp(App[None]):
                     self._persist_model_config()
                     return _CommandOutcome(True, [f"Aktywny model wykonawczy: ☁ {name} [{source.upper()}]"])
 
-            return _CommandOutcome(True, ["Użycie: /models show | /models chose <nr>"])
+            return _CommandOutcome(True, [_("models.usage")])
 
         if lower == "/router-status":
             return _CommandOutcome(
                 True,
                 [
-                    "--- ROUTER STATUS ---",
+                    _("router_status.header"),
                     f"Router: {self._actor_states.get('router', 'UNKNOWN')}",
                     f"Polluks: {self._actor_states.get('creator', 'UNKNOWN')}",
                     f"Kastor: {self._actor_states.get('supervisor', 'UNKNOWN')}",
@@ -1556,7 +1592,7 @@ class _AmiagiTextualApp(App[None]):
 
             self._set_idle_until(parsed, source="terminal_command")
             if parsed is None:
-                return _CommandOutcome(True, ["Wyczyszczono zaplanowane okno IDLE."])
+                return _CommandOutcome(True, [_("idle_until.cleared")])
             return _CommandOutcome(True, [f"Ustawiono IDLE until: {self._format_idle_until()}"])
 
         if lower == "/queue-status":
@@ -1564,10 +1600,10 @@ class _AmiagiTextualApp(App[None]):
             vram_advisor = self._chat_service.ollama_client.vram_advisor
             messages = []
             if policy is None:
-                return _CommandOutcome(True, ["Polityka kolejki modeli jest wyłączona."])
+                return _CommandOutcome(True, [_("queue.disabled")])
 
             snapshot = policy.snapshot()
-            messages.append("--- MODEL QUEUE STATUS ---")
+            messages.append(_("queue.header"))
             messages.append(f"queue_length: {snapshot.get('queue_length', 0)}")
             messages.append(f"queue: {snapshot.get('queue', [])}")
             messages.append(f"queue_max_wait_seconds: {snapshot.get('queue_max_wait_seconds')}")
@@ -1581,7 +1617,7 @@ class _AmiagiTextualApp(App[None]):
                     f"suggested_num_ctx={profile.suggested_num_ctx}"
                 )
             else:
-                messages.append("vram: brak aktywnego doradcy VRAM")
+                messages.append(_("queue.no_vram_advisor"))
             return _CommandOutcome(True, messages)
 
         if lower.startswith("/capabilities"):
@@ -1597,13 +1633,13 @@ class _AmiagiTextualApp(App[None]):
             }
             if check_network:
                 capabilities["ollama_reachable"] = bool(self._chat_service.ollama_client.ping())
-            return _CommandOutcome(True, ["--- CAPABILITIES ---", json.dumps(capabilities, ensure_ascii=False, indent=2)])
+            return _CommandOutcome(True, [_("capabilities.header"), json.dumps(capabilities, ensure_ascii=False, indent=2)])
 
         if lower.startswith("/show-system-context"):
             parts = text.split(maxsplit=1)
             sample_message = parts[1].strip() if len(parts) == 2 else "kontekst diagnostyczny"
             prompt = self._chat_service.build_system_prompt(sample_message)
-            return _CommandOutcome(True, ["--- SYSTEM CONTEXT ---", prompt])
+            return _CommandOutcome(True, [_("system_context.header"), prompt])
 
         if lower in {"/goal-status", "/goal"}:
             snapshot = _read_plan_tracking_snapshot(self._work_dir)
@@ -1613,7 +1649,7 @@ class _AmiagiTextualApp(App[None]):
                 snapshot = _read_plan_tracking_snapshot(self._work_dir)
 
             messages = [
-                "--- GOAL STATUS ---",
+                _("goal.header"),
                 f"path: {snapshot.get('path')}",
                 f"exists: {snapshot.get('exists')}",
                 f"goal: {snapshot.get('goal', '')}",
@@ -1639,12 +1675,12 @@ class _AmiagiTextualApp(App[None]):
 
             dialogue = extract_dialogue_without_code(path.read_text(encoding="utf-8"))
             self._chat_service.save_discussion_context(dialogue)
-            return _CommandOutcome(True, ["Zapisano treść dialogu (bez kodu) do pamięci."])
+            return _CommandOutcome(True, [_("import_dialog.done")])
 
         if lower.startswith("/create-python"):
             parts = text.split(maxsplit=2)
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /create-python <plik> <opis>"])
+                return _CommandOutcome(True, [_("create_python.usage")])
 
             network_resource = _network_resource_for_model(self._chat_service.ollama_client.base_url)
             if not self._ensure_resource(
@@ -1665,7 +1701,7 @@ class _AmiagiTextualApp(App[None]):
         if lower.startswith("/run-python"):
             parts = shlex.split(text)
             if len(parts) < 2:
-                return _CommandOutcome(True, ["Użycie: /run-python <plik> [arg ...]"])
+                return _CommandOutcome(True, [_("run_python.usage")])
 
             if not self._ensure_resource("disk.read", "Uruchomienie skryptu wymaga odczytu pliku"):
                 return _CommandOutcome(True, [])
@@ -1688,10 +1724,10 @@ class _AmiagiTextualApp(App[None]):
         if lower.startswith("/run-shell"):
             parts = text.split(maxsplit=1)
             if len(parts) < 2 or not parts[1].strip():
-                return _CommandOutcome(True, ["Użycie: /run-shell <polecenie>"])
+                return _CommandOutcome(True, [_("run_shell.usage")])
 
             command_text = parts[1].strip()
-            _, validation_error = parse_and_validate_shell_command(command_text, self._shell_policy)
+            _ok, validation_error = parse_and_validate_shell_command(command_text, self._shell_policy)
             if validation_error is not None:
                 return _CommandOutcome(True, [f"Odrzucono polecenie: {validation_error}"])
 
@@ -1713,7 +1749,7 @@ class _AmiagiTextualApp(App[None]):
                 limit = max(1, min(200, int(parts[1])))
             messages = self._chat_service.memory_repository.recent_messages(limit=limit)
             if not messages:
-                return _CommandOutcome(True, ["Brak historii."])
+                return _CommandOutcome(True, [_("history.empty")])
             rendered = [
                 f"[{message.created_at.isoformat(timespec='seconds')}] {message.role}: {message.content}"
                 for message in messages
@@ -1723,16 +1759,16 @@ class _AmiagiTextualApp(App[None]):
         if lower.startswith("/remember"):
             parts = text.split(maxsplit=1)
             if len(parts) < 2:
-                return _CommandOutcome(True, ["Użycie: /remember <tekst>"])
+                return _CommandOutcome(True, [_("remember.usage")])
             self._chat_service.remember(parts[1].strip())
-            return _CommandOutcome(True, ["Zapisano notatkę."])
+            return _CommandOutcome(True, [_("remember.saved")])
 
         if lower.startswith("/memories"):
             parts = text.split(maxsplit=1)
             query = parts[1].strip() if len(parts) == 2 else None
             records = self._chat_service.memory_repository.search_memories(query=query, limit=20)
             if not records:
-                return _CommandOutcome(True, ["Brak wyników."])
+                return _CommandOutcome(True, [_("memories.empty")])
             rendered = [
                 f"[{record.created_at.isoformat(timespec='seconds')}] {record.kind}/{record.source}: {record.content}"
                 for record in records
@@ -1755,10 +1791,10 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(
                 True,
                 [
-                    "Zapisano podsumowanie sesji do kontynuacji po restarcie.",
-                    "--- START POINT ---",
+                    _("bye.saved"),
+                    _("bye.start_point"),
                     summary,
-                    "Do zobaczenia.",
+                    _("bye.farewell"),
                 ],
                 should_exit=True,
             )
@@ -1767,7 +1803,7 @@ class _AmiagiTextualApp(App[None]):
             parts = text.split()
             supervisor = self._chat_service.supervisor_service
             if supervisor is None:
-                return _CommandOutcome(True, ["Kastor jest nieaktywny w tej sesji."])
+                return _CommandOutcome(True, [_("kastor.inactive")])
 
             action = parts[1].lower() if len(parts) > 1 else "show"
             if action in {"show", "current"}:
@@ -1778,11 +1814,11 @@ class _AmiagiTextualApp(App[None]):
 
             if action in {"chose", "choose"}:
                 if len(parts) < 3:
-                    return _CommandOutcome(True, ["Użycie: /kastor-model chose <nr>"])
+                    return _CommandOutcome(True, [_("kastor.usage")])
                 try:
                     idx = int(parts[2])
                 except ValueError:
-                    return _CommandOutcome(True, ["Podaj numer modelu."])
+                    return _CommandOutcome(True, [_("kastor.give_number")])
 
                 combined = self._build_wizard_model_list()
                 if idx < 1 or idx > len(combined):
@@ -1806,7 +1842,7 @@ class _AmiagiTextualApp(App[None]):
                     if not api_key and settings is not None:
                         api_key = settings.openai_api_key
                     if not api_key:
-                        return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY)."])
+                        return _CommandOutcome(True, [_("models.no_api_key")])
                     base_url = "https://api.openai.com/v1"
                     timeout = 120
                     if settings is not None:
@@ -1830,13 +1866,13 @@ class _AmiagiTextualApp(App[None]):
             # Show available models list
             combined = self._build_wizard_model_list()
             body = self._format_wizard_model_list(combined)
-            return _CommandOutcome(True, ["--- MODELE DLA KASTORA ---", body, "Użycie: /kastor-model chose <nr>"])
+            return _CommandOutcome(True, [_("kastor.models_header"), body, _("kastor.usage")])
 
         if lower == "/api-usage":
             detailed = self._usage_tracker.format_detailed()
             if not detailed:
-                return _CommandOutcome(True, ["Brak danych o zużyciu API w tej sesji."])
-            return _CommandOutcome(True, ["--- API USAGE ---", detailed])
+                return _CommandOutcome(True, [_("api_usage.empty")])
+            return _CommandOutcome(True, [_("api_usage.header"), detailed])
 
         if lower == "/api-key verify":
             api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -1844,7 +1880,7 @@ class _AmiagiTextualApp(App[None]):
             if not api_key and settings is not None:
                 api_key = settings.openai_api_key
             if not api_key:
-                return _CommandOutcome(True, ["Brak klucza API (OPENAI_API_KEY nie ustawiony)."])
+                return _CommandOutcome(True, [_("api_key.missing")])
             masked = mask_api_key(api_key)
             try:
                 test_client = OpenAIClient(api_key=api_key, model="gpt-5-mini")
@@ -1861,7 +1897,7 @@ class _AmiagiTextualApp(App[None]):
         if lower == "/skills reload":
             sl = self._chat_service.skills_loader if self._chat_service else None
             if sl is None:
-                return _CommandOutcome(True, ["SkillsLoader nie jest skonfigurowany."])
+                return _CommandOutcome(True, [_("skills.no_loader")])
             sl.reload()
             available = sl.list_available()
             total = sum(len(v) for v in available.values())
@@ -1870,11 +1906,11 @@ class _AmiagiTextualApp(App[None]):
         if lower == "/skills":
             sl = self._chat_service.skills_loader if self._chat_service else None
             if sl is None:
-                return _CommandOutcome(True, ["SkillsLoader nie jest skonfigurowany."])
+                return _CommandOutcome(True, [_("skills.no_loader")])
             available = sl.list_available()
             if not available:
-                return _CommandOutcome(True, ["Brak załadowanych skills. Sprawdź katalog skills/."])
-            lines = ["--- ZAŁADOWANE SKILLS ---"]
+                return _CommandOutcome(True, [_("skills.empty")])
+            lines = [_("skills.header")]
             for role, names in sorted(available.items()):
                 lines.append(f"  {role}/: {', '.join(names)}")
             return _CommandOutcome(True, lines)
@@ -1967,15 +2003,15 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._agent_registry is None:
-            return _CommandOutcome(True, ["Rejestr agentów nie jest aktywny w tej sesji."])
+            return _CommandOutcome(True, [_("agents.no_registry")])
 
         if action == "list":
             agents = self._agent_registry.list_all()
             if not agents:
-                return _CommandOutcome(True, ["Brak zarejestrowanych agentów."])
-            messages = ["--- AGENCI ---"]
+                return _CommandOutcome(True, [_("agents.empty")])
+            messages = [_("agents.header")]
             for a in agents:
-                model_label = a.model_name or "(brak modelu)"
+                model_label = a.model_name or _("agents.no_model")
                 messages.append(
                     f"  {a.agent_id}  {a.name:12s}  rola={a.role.value:10s}  "
                     f"stan={a.state.value:10s}  model={model_label}"
@@ -1984,7 +2020,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "info":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agents info <id|nazwa>"])
+                return _CommandOutcome(True, [_("agents.info_usage")])
             query = parts[2]
             agent = self._agent_registry.get(query)
             if agent is None:
@@ -1996,7 +2032,7 @@ class _AmiagiTextualApp(App[None]):
             if agent is None:
                 return _CommandOutcome(True, [f"Nie znaleziono agenta: {query}"])
             messages = [
-                "--- AGENT INFO ---",
+                _("agents.info_header"),
                 f"  ID:        {agent.agent_id}",
                 f"  Nazwa:     {agent.name}",
                 f"  Rola:      {agent.role.value}",
@@ -2015,7 +2051,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "pause":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agents pause <id>"])
+                return _CommandOutcome(True, [_("agents.pause_usage")])
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.PAUSED, reason="manual")
@@ -2025,7 +2061,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "resume":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agents resume <id>"])
+                return _CommandOutcome(True, [_("agents.resume_usage")])
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.IDLE, reason="manual_resume")
@@ -2035,7 +2071,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "terminate":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agents terminate <id>"])
+                return _CommandOutcome(True, [_("agents.terminate_usage")])
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.TERMINATED, reason="manual_terminate")
@@ -2058,7 +2094,7 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "help"
 
         if self._agent_factory is None:
-            return _CommandOutcome(True, ["Fabryka agentów nie jest aktywna w tej sesji."])
+            return _CommandOutcome(True, [_("wizard.no_factory")])
 
         # Lazy-init the wizard service
         if self._wizard_service is None:
@@ -2071,14 +2107,14 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "create":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agent-wizard create <opis potrzeby>"])
+                return _CommandOutcome(True, [_("wizard.create_usage")])
             need = parts[2]
             try:
                 blueprint = self._wizard_service.generate_blueprint(need)
                 runtime = self._wizard_service.create_agent(blueprint)
                 saved_path = self._wizard_service.save_blueprint(blueprint)
                 return _CommandOutcome(True, [
-                    "--- AGENT WIZARD ---",
+                    _("wizard.created_header"),
                     f"Utworzono agenta: {blueprint.name} (ID: {runtime.agent_id})",
                     f"  Rola: {blueprint.role}",
                     f"  Funkcja: {blueprint.team_function}",
@@ -2091,21 +2127,21 @@ class _AmiagiTextualApp(App[None]):
         if action == "blueprints":
             names = self._wizard_service.list_blueprints()
             if not names:
-                return _CommandOutcome(True, ["Brak zapisanych blueprintów."])
-            messages = ["--- BLUEPRINTY ---"]
+                return _CommandOutcome(True, [_("wizard.no_blueprints")])
+            messages = [_("wizard.blueprints_header")]
             for i, name in enumerate(names, 1):
                 messages.append(f"  {i}. {name}")
             return _CommandOutcome(True, messages)
 
         if action == "load":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /agent-wizard load <nazwa>"])
+                return _CommandOutcome(True, [_("wizard.load_usage")])
             bp_name = parts[2].strip()
             blueprint = self._wizard_service.load_blueprint(bp_name)
             if blueprint is None:
                 return _CommandOutcome(True, [f"Nie znaleziono blueprintu: {bp_name}"])
             return _CommandOutcome(True, [
-                "--- BLUEPRINT ---",
+                _("wizard.blueprint_header"),
                 f"  Nazwa: {blueprint.name}",
                 f"  Rola: {blueprint.role}",
                 f"  Funkcja: {blueprint.team_function}",
@@ -2115,7 +2151,7 @@ class _AmiagiTextualApp(App[None]):
             ])
 
         return _CommandOutcome(True, [
-            "Użycie: /agent-wizard create <opis> | /agent-wizard blueprints | /agent-wizard load <nazwa>"
+            _("wizard.usage_full")
         ])
 
     # ------------------------------------------------------------------
@@ -2128,13 +2164,13 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._task_queue is None:
-            return _CommandOutcome(True, ["Kolejka zadań nie jest aktywna w tej sesji."])
+            return _CommandOutcome(True, [_("tasks.no_queue")])
 
         if action == "list":
             tasks = self._task_queue.list_all()
             if not tasks:
-                return _CommandOutcome(True, ["Brak zadań w kolejce."])
-            messages = ["--- ZADANIA ---"]
+                return _CommandOutcome(True, [_("tasks.empty")])
+            messages = [_("tasks.header")]
             for t in tasks:
                 agent_info = f" → {t.assigned_agent_id}" if t.assigned_agent_id else ""
                 messages.append(
@@ -2145,7 +2181,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "add":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /tasks add <tytuł zadania>"])
+                return _CommandOutcome(True, [_("tasks.add_usage")])
             title = parts[2].strip()
             import uuid as _uuid
             task = Task(
@@ -2159,7 +2195,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "info":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /tasks info <id>"])
+                return _CommandOutcome(True, [_("tasks.info_usage")])
             query = parts[2].strip()
             # Support partial ID match
             task = self._task_queue.get(query)
@@ -2171,7 +2207,7 @@ class _AmiagiTextualApp(App[None]):
             if task is None:
                 return _CommandOutcome(True, [f"Nie znaleziono zadania: {query}"])
             messages = [
-                "--- ZADANIE ---",
+                _("tasks.info_header"),
                 f"  ID:        {task.task_id}",
                 f"  Tytuł:     {task.title}",
                 f"  Opis:      {task.description[:200]}",
@@ -2188,7 +2224,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "cancel":
             if len(parts) < 3:
-                return _CommandOutcome(True, ["Użycie: /tasks cancel <id>"])
+                return _CommandOutcome(True, [_("tasks.cancel_usage")])
             task_id = parts[2].strip()
             task = self._task_queue.get(task_id)
             if task is None:
@@ -2201,7 +2237,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "stats":
             stats = self._task_queue.stats()
-            messages = ["--- STATYSTYKI ZADAŃ ---"]
+            messages = [_("tasks.stats_header")]
             for status_name, count in sorted(stats.items()):
                 messages.append(f"  {status_name}: {count}")
             return _CommandOutcome(True, messages)
@@ -2255,7 +2291,7 @@ class _AmiagiTextualApp(App[None]):
                 try:
                     port = int(parts[2])
                 except ValueError:
-                    return _CommandOutcome(True, ["Nieprawidłowy numer portu."])
+                    return _CommandOutcome(True, [_("dashboard.invalid_port")])
             elif self._settings is not None:
                 port = self._settings.dashboard_port
 
@@ -2280,28 +2316,28 @@ class _AmiagiTextualApp(App[None]):
             # --- Step 3: open default browser ---
             try:
                 webbrowser.open(dashboard_url)
-                msgs.append("Przeglądarka otwarta.")
+                msgs.append(_("dashboard.browser_opened"))
             except Exception:
                 msgs.append(f"Nie udało się otworzyć przeglądarki — otwórz ręcznie: {dashboard_url}")
 
-            msgs.append("Zatrzymanie: /dashboard stop")
+            msgs.append(_("dashboard.stop_hint"))
             return _CommandOutcome(True, msgs)
 
         if action == "stop":
             if self._dashboard_server is None or not self._dashboard_server.running:
-                return _CommandOutcome(True, ["Dashboard nie jest uruchomiony."])
+                return _CommandOutcome(True, [_("dashboard.not_running")])
             self._dashboard_server.stop()
             self._dashboard_server = None
-            return _CommandOutcome(True, ["Dashboard zatrzymany."])
+            return _CommandOutcome(True, [_("dashboard.stopped")])
 
         if action == "status":
             if self._dashboard_server is not None and self._dashboard_server.running:
                 port = self._dashboard_server.port
                 return _CommandOutcome(True, [f"Dashboard: AKTYWNY na porcie {port}"])
-            return _CommandOutcome(True, ["Dashboard: NIEAKTYWNY"])
+            return _CommandOutcome(True, [_("dashboard.inactive")])
 
         return _CommandOutcome(True, [
-            "Użycie: /dashboard start [port] | /dashboard stop | /dashboard status"
+            _("dashboard.usage")
         ])
 
     # ------------------------------------------------------------------
@@ -2314,7 +2350,7 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "status"
 
         if self._knowledge_base is None:
-            return _CommandOutcome(True, ["Baza wiedzy nie jest aktywna w tej sesji."])
+            return _CommandOutcome(True, [_("knowledge.inactive")])
 
         if action == "status":
             count = self._knowledge_base.count()
@@ -2324,7 +2360,7 @@ class _AmiagiTextualApp(App[None]):
             query_text = parts[2]
             results = self._knowledge_base.query(query_text, top_k=5)
             if not results:
-                return _CommandOutcome(True, ["Brak wyników."])
+                return _CommandOutcome(True, [_("memories.empty")])
             msgs = [f"--- Wyniki wyszukiwania ({len(results)}) ---"]
             for r in results:
                 snippet = r.text[:120].replace("\n", " ")
@@ -2337,7 +2373,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, [f"Dodano wpis #{entry_id}."])
 
         return _CommandOutcome(True, [
-            "Użycie: /knowledge status | /knowledge search <zapytanie> | /knowledge add <tekst>"
+            _("knowledge.usage")
         ])
 
     def _handle_workspace_command(self, raw_text: str) -> _CommandOutcome:
@@ -2346,12 +2382,12 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._shared_workspace is None:
-            return _CommandOutcome(True, ["Wspólny workspace nie jest aktywny."])
+            return _CommandOutcome(True, [_("workspace.inactive")])
 
         if action == "list":
             files = self._shared_workspace.list_files()
             if not files:
-                return _CommandOutcome(True, ["Workspace jest pusty."])
+                return _CommandOutcome(True, [_("workspace.empty")])
             msgs = [f"--- Pliki w workspace ({len(files)}) ---"]
             for f in files:
                 author = self._shared_workspace.last_author(f) or "?"
@@ -2367,14 +2403,14 @@ class _AmiagiTextualApp(App[None]):
         if action == "log":
             changes = self._shared_workspace.changes()
             if not changes:
-                return _CommandOutcome(True, ["Brak zmian w historii workspace."])
+                return _CommandOutcome(True, [_("workspace.changes_empty")])
             msgs = [f"--- Historia zmian ({len(changes)}) ---"]
             for c in changes[-20:]:
                 msgs.append(f"  {c.action:6s}  {c.path}  agent={c.agent_id}")
             return _CommandOutcome(True, msgs)
 
         return _CommandOutcome(True, [
-            "Użycie: /workspace list | /workspace read <ścieżka> | /workspace log"
+            _("workspace.usage")
         ])
 
     # ------------------------------------------------------------------
@@ -2387,12 +2423,12 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._audit_chain is None:
-            return _CommandOutcome(True, ["Łańcuch audytu nie jest aktywny."])
+            return _CommandOutcome(True, [_("audit.inactive")])
 
         if action == "list":
             entries = self._audit_chain.query(limit=20)
             if not entries:
-                return _CommandOutcome(True, ["Brak wpisów audytu."])
+                return _CommandOutcome(True, [_("audit.empty")])
             msgs = [f"--- Audyt ({self._audit_chain.count()} łącznie, ostatnie 20) ---"]
             for e in entries:
                 msgs.append(
@@ -2411,7 +2447,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, msgs)
 
         return _CommandOutcome(True, [
-            "Użycie: /audit list | /audit agent <agent_id>"
+            _("audit.usage")
         ])
 
     def _handle_sandbox_command(self, raw_text: str) -> _CommandOutcome:
@@ -2420,13 +2456,13 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._sandbox_manager is None:
-            return _CommandOutcome(True, ["Menadżer sandbox nie jest aktywny."])
+            return _CommandOutcome(True, [_("sandbox.inactive")])
 
         if action == "list":
             sandboxes = self._sandbox_manager.list_sandboxes()
             if not sandboxes:
-                return _CommandOutcome(True, ["Brak aktywnych sandboxów."])
-            msgs = ["--- Sandboxy ---"]
+                return _CommandOutcome(True, [_("sandbox.empty")])
+            msgs = [_("sandbox.header")]
             for agent_id, path in sandboxes.items():
                 size = self._sandbox_manager.sandbox_size(agent_id)
                 msgs.append(f"  {agent_id}: {path}  ({size} B)")
@@ -2445,7 +2481,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, [f"Brak sandbox dla {agent_id}."])
 
         return _CommandOutcome(True, [
-            "Użycie: /sandbox list | /sandbox create <agent_id> | /sandbox destroy <agent_id>"
+            _("sandbox.usage")
         ])
 
     # ------------------------------------------------------------------
@@ -2458,13 +2494,13 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "list"
 
         if self._workflow_engine is None:
-            return _CommandOutcome(True, ["Silnik workflow nie jest aktywny."])
+            return _CommandOutcome(True, [_("workflow.inactive")])
 
         if action == "list":
             runs = self._workflow_engine.list_runs()
             if not runs:
-                return _CommandOutcome(True, ["Brak uruchomionych workflow."])
-            msgs = ["--- Workflow ---"]
+                return _CommandOutcome(True, [_("workflow.empty")])
+            msgs = [_("workflow.header")]
             for r in runs:
                 total = len(r.workflow.nodes)
                 done = sum(1 for n in r.workflow.nodes if n.status.value in ("completed", "skipped"))
@@ -2531,8 +2567,8 @@ class _AmiagiTextualApp(App[None]):
                 workflows_dir = self._settings.workflows_dir
             templates = sorted({p.stem for p in list(workflows_dir.glob("*.yaml")) + list(workflows_dir.glob("*.json"))})
             if not templates:
-                return _CommandOutcome(True, ["Brak szablonów workflow."])
-            msgs = ["--- Szablony workflow ---"]
+                return _CommandOutcome(True, [_("workflow.no_templates")])
+            msgs = [_("workflow.templates_header")]
             for t in templates:
                 msgs.append(f"  {t}")
             return _CommandOutcome(True, msgs)
@@ -2552,13 +2588,13 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "status"
 
         if self._budget_manager is None:
-            return _CommandOutcome(True, ["BudgetManager nie jest aktywny."])
+            return _CommandOutcome(True, [_("budget.inactive")])
 
         if action == "status":
             summary = self._budget_manager.summary()
             if not summary:
-                return _CommandOutcome(True, ["Brak danych o budżetach agentów."])
-            msgs = ["--- BUDGET STATUS ---"]
+                return _CommandOutcome(True, [_("budget.no_data")])
+            msgs = [_("budget.header")]
             for agent_id, info in summary.items():
                 msgs.append(f"  {agent_id}: spent=${info['spent_usd']:.4f} / limit=${info['limit_usd']:.2f} ({info['utilization_pct']:.1f}%)")
             return _CommandOutcome(True, msgs)
@@ -2656,7 +2692,7 @@ class _AmiagiTextualApp(App[None]):
 
     def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
         if self._quota_policy is None:
-            return _CommandOutcome(True, ["QuotaPolicy nie jest aktywna."])
+            return _CommandOutcome(True, [_("quota.inactive")])
 
         parts = raw_text.strip().split()
         action = parts[1].lower() if len(parts) > 1 else "status"
@@ -2680,8 +2716,8 @@ class _AmiagiTextualApp(App[None]):
         # Default: status
         roles = self._quota_policy.list_roles()
         if not roles:
-            return _CommandOutcome(True, ["Brak zdefiniowanych quotas."])
-        msgs = ["--- QUOTA POLICY ---"]
+            return _CommandOutcome(True, [_("quota.empty")])
+        msgs = [_("quota.header")]
         for role in roles:
             q = self._quota_policy.get_role(role)
             if q:
@@ -2698,7 +2734,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "run":
             if self._eval_runner is None:
-                return _CommandOutcome(True, ["EvalRunner nie jest aktywny."])
+                return _CommandOutcome(True, [_("eval.inactive")])
             agent_id = parts[2] if len(parts) > 2 else None
             if not agent_id:
                 return _CommandOutcome(True, ["Użycie: /eval run <agent> [--benchmark <nazwa>]"])
@@ -2745,9 +2781,9 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "compare":
             if self._ab_test_runner is None:
-                return _CommandOutcome(True, ["ABTestRunner nie jest aktywny."])
+                return _CommandOutcome(True, [_("eval.compare_inactive")])
             if len(parts) < 4:
-                return _CommandOutcome(True, ["Użycie: /eval compare <agent_a> <agent_b>"])
+                return _CommandOutcome(True, [_("eval.compare_usage")])
             agent_a = parts[2]
             agent_b = parts[3]
             from amiagi.application.eval_runner import EvalScenario
@@ -2775,23 +2811,23 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "history":
             if self._eval_runner is None:
-                return _CommandOutcome(True, ["EvalRunner nie jest aktywny."])
+                return _CommandOutcome(True, [_("eval.inactive")])
             agent_id = parts[2] if len(parts) > 2 else None
             history = self._eval_runner.history(agent_id)
             if not history:
-                return _CommandOutcome(True, ["Brak historii ewaluacji."])
-            msgs = ["--- EVAL HISTORY ---"]
+                return _CommandOutcome(True, [_("eval.history_empty")])
+            msgs = [_("eval.history_header")]
             for r in history[-10:]:
                 msgs.append(f"  {r.agent_id}: passed={r.passed}/{r.passed + r.failed} score={r.aggregate_score:.1f}")
             return _CommandOutcome(True, msgs)
 
         if action == "baselines":
             if self._regression_detector is None:
-                return _CommandOutcome(True, ["RegressionDetector nie jest aktywny."])
+                return _CommandOutcome(True, [_("eval.regression_inactive")])
             baselines = self._regression_detector.list_baselines()
             if not baselines:
-                return _CommandOutcome(True, ["Brak zapisanych baselines."])
-            msgs = ["--- EVAL BASELINES ---"]
+                return _CommandOutcome(True, [_("eval.baselines_empty")])
+            msgs = [_("eval.baselines_header")]
             for b in baselines:
                 msgs.append(f"  {b}")
             return _CommandOutcome(True, msgs)
@@ -2802,7 +2838,7 @@ class _AmiagiTextualApp(App[None]):
 
     def _handle_feedback_command(self, raw_text: str) -> _CommandOutcome:
         if self._human_feedback is None:
-            return _CommandOutcome(True, ["HumanFeedbackCollector nie jest aktywny."])
+            return _CommandOutcome(True, [_("feedback.inactive")])
 
         parts = raw_text.strip().split(maxsplit=3)
         action = parts[1].lower() if len(parts) > 1 else "summary"
@@ -2810,8 +2846,8 @@ class _AmiagiTextualApp(App[None]):
         if action == "summary":
             s = self._human_feedback.summary()
             if not s:
-                return _CommandOutcome(True, ["Brak zebranych opinii."])
-            msgs = ["--- FEEDBACK SUMMARY ---"]
+                return _CommandOutcome(True, [_("feedback.empty")])
+            msgs = [_("feedback.header")]
             for agent_id, info in s.items():
                 msgs.append(f"  {agent_id}: +{info['positive']} / -{info['negative']} (total={info['total']})")
             return _CommandOutcome(True, msgs)
@@ -2838,11 +2874,11 @@ class _AmiagiTextualApp(App[None]):
         action = parts[1].lower() if len(parts) > 1 else "status"
 
         if self._rest_server is None:
-            return _CommandOutcome(True, ["RESTServer nie jest aktywny."])
+            return _CommandOutcome(True, [_("api.inactive")])
 
         if action == "status":
             d = self._rest_server.to_dict()
-            msgs = ["--- API STATUS ---"]
+            msgs = [_("api.status_header")]
             msgs.append(f"  running: {d['is_running']}")
             msgs.append(f"  address: {self._rest_server.address}")
             msgs.append(f"  routes: {len(d['routes'])}")
@@ -2854,13 +2890,13 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "stop":
             self._rest_server.stop()
-            return _CommandOutcome(True, ["REST API zatrzymane."])
+            return _CommandOutcome(True, [_("api.stopped")])
 
-        return _CommandOutcome(True, ["Użycie: /api status | /api start | /api stop"])
+        return _CommandOutcome(True, [_("api.usage")])
 
     def _handle_plugins_command(self, raw_text: str) -> _CommandOutcome:
         if self._plugin_loader is None:
-            return _CommandOutcome(True, ["PluginLoader nie jest aktywny."])
+            return _CommandOutcome(True, [_("plugins.inactive")])
 
         parts = raw_text.strip().split()
         action = parts[1].lower() if len(parts) > 1 else "list"
@@ -2868,8 +2904,8 @@ class _AmiagiTextualApp(App[None]):
         if action == "list":
             plugins = self._plugin_loader.list_plugins()
             if not plugins:
-                return _CommandOutcome(True, ["Brak załadowanych pluginów."])
-            msgs = ["--- PLUGINS ---"]
+                return _CommandOutcome(True, [_("plugins.empty")])
+            msgs = [_("plugins.header")]
             for p in plugins:
                 status = "✓" if p.loaded else "✗"
                 msgs.append(f"  {status} {p.name} v{p.version or '?'}: {p.description[:60] if p.description else '-'}")
@@ -2905,22 +2941,22 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "list":
             if self._team_dashboard is None:
-                return _CommandOutcome(True, ["TeamDashboard nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.dashboard_inactive")])
             teams = self._team_dashboard.list_teams()
             if not teams:
-                return _CommandOutcome(True, ["Brak zarejestrowanych zespołów."])
-            msgs = ["--- TEAMS ---"]
+                return _CommandOutcome(True, [_("team.empty")])
+            msgs = [_("team.header")]
             for t in teams:
                 msgs.append(f"  {t.team_id}: {t.name} ({t.size} członków)")
             return _CommandOutcome(True, msgs)
 
         if action == "templates":
             if self._team_composer is None:
-                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.composer_inactive")])
             templates = self._team_composer.list_templates()
             if not templates:
-                return _CommandOutcome(True, ["Brak dostępnych szablonów zespołów."])
-            msgs = ["--- TEAM TEMPLATES ---"]
+                return _CommandOutcome(True, [_("team.no_templates")])
+            msgs = [_("team.templates_header")]
             for t in templates:
                 msgs.append(f"  {t}")
             return _CommandOutcome(True, msgs)
@@ -2928,7 +2964,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "create" and len(parts) > 2:
             template_id = parts[2]
             if self._team_composer is None:
-                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.composer_inactive")])
             team = self._team_composer.from_template(template_id)
             if team is None:
                 return _CommandOutcome(True, [f"Szablon '{template_id}' nie istnieje."])
@@ -2939,7 +2975,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "status" and len(parts) > 2:
             team_id = parts[2]
             if self._team_dashboard is None:
-                return _CommandOutcome(True, ["TeamDashboard nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.dashboard_inactive")])
             chart = self._team_dashboard.org_chart(team_id)
             if "error" in chart:
                 return _CommandOutcome(True, [f"Zespół '{team_id}' nie istnieje."])
@@ -2952,12 +2988,12 @@ class _AmiagiTextualApp(App[None]):
         if action == "compose" and len(parts) > 2:
             goal = " ".join(parts[2:])
             if self._team_composer is None:
-                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.composer_inactive")])
             team = self._team_composer.build_team(goal)
             if self._team_dashboard is not None:
                 self._team_dashboard.register_team(team)
             msgs = [
-                f"--- TEAM COMPOSED ---",
+                _("team.composed_header"),
                 f"  Nazwa: {team.name}",
                 f"  Członkowie ({team.size}):",
             ]
@@ -2969,9 +3005,9 @@ class _AmiagiTextualApp(App[None]):
             team_id = parts[2]
             direction = parts[3].lower()
             if direction not in ("up", "down", "+1", "-1"):
-                return _CommandOutcome(True, ["Użycie: /team scale <id> up|down"])
+                return _CommandOutcome(True, [_("team.scale_usage")])
             if self._dynamic_scaler is None:
-                return _CommandOutcome(True, ["DynamicScaler nie jest aktywny."])
+                return _CommandOutcome(True, [_("team.scaler_inactive")])
             scale_dir = "up" if direction in ("up", "+1") else "down"
             from amiagi.application.dynamic_scaler import ScaleEvent
             event = ScaleEvent(
@@ -3012,7 +3048,7 @@ class _AmiagiTextualApp(App[None]):
         idx = 1
         if ollama_models:
             lines.append("  Modele lokalne (Ollama):")
-            for name, _ in ollama_models:
+            for name, _size in ollama_models:
                 marker = "  [domyślny]" if name == default_name else ""
                 lines.append(f"    {idx}. {name}{marker}")
                 idx += 1
@@ -3408,15 +3444,15 @@ class _AmiagiTextualApp(App[None]):
         # --- Start model selection wizard ---
         self._start_model_selection_wizard()
 
-        self._append_log("executor_log", "Oczekiwanie na odpowiedź modelu wykonawczego.")
+        self._append_log("executor_log", _("mount.executor_waiting"))
         if self._chat_service.supervisor_service is None:
             self._append_log(
                 "supervisor_log",
-                "Kastor jest nieaktywny w tej sesji (brak supervisor_service).",
+                _("mount.kastor_inactive"),
             )
             self._supervisor_notice_shown = True
         else:
-            self._append_log("supervisor_log", "Oczekiwanie na wpisy Kastora.")
+            self._append_log("supervisor_log", _("mount.kastor_waiting"))
         self.set_focus(self.query_one("#input_box", Input))
         self.set_interval(SUPERVISION_POLL_INTERVAL_SECONDS, self._poll_supervision_dialogue)
         self.set_interval(SUPERVISOR_WATCHDOG_INTERVAL_SECONDS, self._run_supervisor_idle_watchdog)
@@ -3454,7 +3490,7 @@ class _AmiagiTextualApp(App[None]):
             self._last_watchdog_cap_autonudge_monotonic = 0.0
             self._append_log(
                 "supervisor_log",
-                "Watchdog Kastora został ponownie aktywowany po nowej wiadomości użytkownika.",
+                _("mount.watchdog_reactivated"),
             )
 
         command_outcome = _handle_textual_command(text, self._permission_manager)
@@ -3483,7 +3519,7 @@ class _AmiagiTextualApp(App[None]):
             decision = self._extract_pause_decision(text)
             if decision == "continue":
                 self._record_collaboration_signal("cooperate", {"decision": "continue"})
-                self._append_log("user_model_log", "Wznawiam plan i kontynuuję pracę.")
+                self._append_log("user_model_log", _("user_turn.plan_continue"))
                 self._last_progress_monotonic = time.monotonic()
                 self._auto_resume_paused_plan_if_needed(time.monotonic(), force=True)
                 return
@@ -3492,7 +3528,7 @@ class _AmiagiTextualApp(App[None]):
                 self._pending_decision_identity_query = False
                 self._set_plan_paused(paused=False, reason="user_stop", source="user")
                 self._record_collaboration_signal("user_stopped_plan", {"decision": "stop"})
-                self._append_log("user_model_log", "Plan został przerwany. Podaj nowe zadanie, abym utworzył nowy plan.")
+                self._append_log("user_model_log", _("user_turn.plan_stopped"))
                 return
             if decision == "new_task":
                 self._pending_user_decision = False
@@ -3519,7 +3555,7 @@ class _AmiagiTextualApp(App[None]):
                 except Exception:
                     pass
                 self._record_collaboration_signal("new_plan_created", {"goal": new_goal[:200]})
-                self._append_log("user_model_log", "Utworzyłem nowy plan. Możesz wpisać kolejne polecenie, a rozpocznę realizację.")
+                self._append_log("user_model_log", _("user_turn.new_plan_created"))
                 return
 
         # --- Immediate echo + queue-based dispatch ---
@@ -3822,7 +3858,7 @@ class _AmiagiTextualApp(App[None]):
                         )
                         self._append_log("supervisor_log", f"[Kastor -> Polluks] {consult_reply}")
                     except (OllamaClientError, OSError):
-                        self._append_log("supervisor_log", "[Kastor] Błąd konsultacji — pomijam.")
+                        self._append_log("supervisor_log", _("watchdog.consult_error"))
                     self._set_actor_state("supervisor", "READY", "Kastor zakończył konsultację")
         else:
             # No addressed blocks — check if tool_call (exempt) or unaddressed
@@ -3853,7 +3889,7 @@ class _AmiagiTextualApp(App[None]):
         if self._chat_service.supervisor_service is None and not self._supervisor_notice_shown:
             self._append_log(
                 "supervisor_log",
-                "Kastor jest nieaktywny; panel pokazuje tylko komunikaty techniczne.",
+                _("mount.kastor_inactive_panel"),
             )
             self._supervisor_notice_shown = True
         self._poll_supervision_dialogue()
@@ -3957,7 +3993,7 @@ class _AmiagiTextualApp(App[None]):
             self._watchdog_capped_notified = True
             self._append_log(
                 "supervisor_log",
-                "Watchdog Kastora wstrzymany po błędzie nadzorcy; oczekuję nowej wiadomości użytkownika.",
+                _("watchdog.error_suspended"),
             )
             self._set_actor_state("router", "PAUSED", "Watchdog zatrzymany po błędzie nadzorcy")
             return
@@ -4501,7 +4537,7 @@ class _AmiagiTextualApp(App[None]):
             command_text = str(args.get("command", "")).strip()
             if not command_text:
                 return {"ok": False, "error": "missing_command"}
-            _, validation_error = parse_and_validate_shell_command(command_text, self._shell_policy)
+            _ok, validation_error = parse_and_validate_shell_command(command_text, self._shell_policy)
             if validation_error is not None:
                 return {"ok": False, "error": f"policy_rejected:{validation_error}"}
             result = self._script_executor.execute_shell(command_text)

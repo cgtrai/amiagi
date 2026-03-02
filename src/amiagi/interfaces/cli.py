@@ -32,6 +32,7 @@ from amiagi.application.tool_registry import list_registered_tools, resolve_regi
 from amiagi.infrastructure.script_executor import ScriptExecutor
 from amiagi.interfaces.permission_manager import PermissionManager
 from amiagi import __version__
+from amiagi.i18n import _
 
 
 # ---------------------------------------------------------------------------
@@ -75,36 +76,36 @@ def _build_landing_banner(*, mode: str) -> str:
 
 
 _HELP_COMMANDS: list[tuple[str, str]] = [
-        ("/help", "pokaż dostępne komendy"),
-    ("/cls", "wyczyść ekran główny terminala"),
-    ("/cls all", "wyczyść ekran i historię przewijania terminala"),
-    ("/models current", "pokaż aktualnie aktywny model wykonawczy"),
-    ("/models show", "pokaż modele dostępne w Ollama (1..x)"),
-    ("/models chose <nr>", "wybierz model wykonawczy po numerze z /models show"),
-    ("/permissions", "pokaż aktualny tryb zgód na zasoby"),
-    ("/permissions all", "włącz globalną zgodę na zasoby"),
-    ("/permissions ask", "wyłącz globalną zgodę (pytaj per zasób)"),
-    ("/permissions reset", "wyczyść zapamiętane zgody per zasób"),
-        ("/show-system-context [tekst]", "pokaż kontekst systemowy przekazywany do modelu"),
-    ("/goal-status", "pokaż cel główny i etap z notes/main_plan.json"),
-    ("/goal", "alias: pokaż cel główny i etap z notes/main_plan.json"),
-        ("/queue-status", "pokaż stan kolejki modeli i decyzji polityki VRAM"),
-        ("/capabilities [--network]", "pokaż gotowość narzędzi i backendów"),
-        ("/history [n]", "pokaż ostatnie wiadomości (domyślnie 10)"),
-        ("/remember <tekst>", "zapisz notatkę do pamięci"),
-        ("/memories [zapytanie]", "przeszukaj pamięć"),
-        ("/import-dialog [plik]", "zapisz dialog (bez kodu) jako kontekst pamięci"),
-        ("/create-python <plik> <opis>", "wygeneruj i zapisz skrypt Python przez model"),
-        ("/run-python <plik> [arg ...]", "uruchom skrypt Python z argumentami"),
-        ("/run-shell <polecenie>", "uruchom polecenie shell z polityką whitelist"),
-        ("/bye", "zapisz podsumowanie sesji i zakończ"),
-        ("/exit", "zakończ bez podsumowania"),
+        ("/help", _("cli.help.cmd.help")),
+    ("/cls", _("cli.help.cmd.cls")),
+    ("/cls all", _("cli.help.cmd.cls_all")),
+    ("/models current", _("cli.help.cmd.models_current")),
+    ("/models show", _("cli.help.cmd.models_show")),
+    ("/models chose <nr>", _("cli.help.cmd.models_chose")),
+    ("/permissions", _("cli.help.cmd.permissions")),
+    ("/permissions all", _("cli.help.cmd.permissions_all")),
+    ("/permissions ask", _("cli.help.cmd.permissions_ask")),
+    ("/permissions reset", _("cli.help.cmd.permissions_reset")),
+        ("/show-system-context [tekst]", _("cli.help.cmd.show_system_context")),
+    ("/goal-status", _("cli.help.cmd.goal_status")),
+    ("/goal", _("cli.help.cmd.goal")),
+        ("/queue-status", _("cli.help.cmd.queue_status")),
+        ("/capabilities [--network]", _("cli.help.cmd.capabilities")),
+        ("/history [n]", _("cli.help.cmd.history")),
+        ("/remember <tekst>", _("cli.help.cmd.remember")),
+        ("/memories [zapytanie]", _("cli.help.cmd.memories")),
+        ("/import-dialog [plik]", _("cli.help.cmd.import_dialog")),
+        ("/create-python <plik> <opis>", _("cli.help.cmd.create_python")),
+        ("/run-python <plik> [arg ...]", _("cli.help.cmd.run_python")),
+        ("/run-shell <polecenie>", _("cli.help.cmd.run_shell")),
+        ("/bye", _("cli.help.cmd.bye")),
+        ("/exit", _("cli.help.cmd.exit")),
 ]
 
 
 def _build_help_text() -> str:
-        command_width = max(len(command) for command, _ in _HELP_COMMANDS)
-        lines = ["Komendy (CLI):"]
+        command_width = max(len(command) for command, _desc in _HELP_COMMANDS)
+        lines = [_("cli.help.header")]
         for command, description in _HELP_COMMANDS:
                 lines.append(f"  {command.ljust(command_width)}  - {description}")
         return "\n".join(lines)
@@ -389,7 +390,7 @@ def _select_executor_model_by_index(chat_service: ChatService, one_based_index: 
     if error is not None:
         return False, f"Nie udało się pobrać listy modeli: {error}", []
     if not models:
-        return False, "Brak modeli dostępnych w Ollama.", []
+        return False, _("cli.models_empty"), []
     if one_based_index < 1 or one_based_index > len(models):
         return False, f"Nieprawidłowy numer modelu: {one_based_index}. Dostępny zakres: 1..{len(models)}.", models
 
@@ -1383,7 +1384,7 @@ def run_cli(
             command_text = str(args.get("command", "")).strip()
             if not command_text:
                 return {"ok": False, "error": "missing_command"}
-            _, validation_error = parse_and_validate_shell_command(command_text, shell_policy)
+            _ok, validation_error = parse_and_validate_shell_command(command_text, shell_policy)
             if validation_error is not None:
                 return {"ok": False, "error": f"policy_rejected:{validation_error}"}
             if not permission_manager.request_process_exec("Tool run_shell wymaga wykonania procesu."):
@@ -2157,7 +2158,7 @@ def run_cli(
         print(prompt, end="", flush=True)
         while True:
             try:
-                readable, _, _ = select.select([sys.stdin], [], [], timeout_seconds)
+                readable, _w, _x = select.select([sys.stdin], [], [], timeout_seconds)
             except Exception:
                 return input("\n" + prompt).strip()
             if readable:
@@ -2283,7 +2284,7 @@ def run_cli(
         intro_hint = str(intro_path.resolve()) if intro_path is not None else "wprowadzenie.md"
 
         forced_answer = model_answer
-        for _ in range(2):
+        for _attempt in range(2):
             corrective_prompt = _build_no_action_corrective_prompt(user_message, intro_hint)
             forced_answer = ask_executor_with_router_mailbox(corrective_prompt)
             forced_answer = apply_supervisor(corrective_prompt, forced_answer, stage="no_action_corrective")
@@ -2380,7 +2381,7 @@ def run_cli(
         if raw_lower.startswith("/models"):
             parts = raw.split()
             if len(parts) < 2:
-                print("Użycie: /models show | /models chose <nr>")
+                print(_("cli.models_usage"))
                 continue
 
             action = parts[1].lower()
@@ -2404,7 +2405,7 @@ def run_cli(
                     )
                     continue
                 if not models:
-                    print("Brak modeli dostępnych w Ollama.")
+                    print(_("cli.models_empty"))
                     log_action("models.show.empty", "Lista modeli Ollama jest pusta.")
                     continue
 
@@ -2413,7 +2414,7 @@ def run_cli(
                 for index, model_name in enumerate(models, start=1):
                     marker = "  [aktywny]" if model_name == current_model else ""
                     print(f"{index}. {model_name}{marker}")
-                print("Użycie: /models chose <nr>")
+                print(_("cli.models_chose_usage"))
                 log_action(
                     "models.show",
                     "Wyświetlono listę modeli dostępnych przez Ollama.",
@@ -2423,12 +2424,12 @@ def run_cli(
 
             if action in {"chose", "choose"}:
                 if len(parts) < 3:
-                    print("Użycie: /models chose <nr>")
+                    print(_("cli.models_chose_usage"))
                     continue
                 try:
                     index = int(parts[2])
                 except ValueError:
-                    print("Nieprawidłowy numer modelu. Użyj wartości całkowitej, np. /models chose 1")
+                    print(_("cli.models_invalid_number"))
                     continue
 
                 ok, payload, models = _select_executor_model_by_index(chat_service, index)
@@ -2449,7 +2450,7 @@ def run_cli(
                 )
                 continue
 
-            print("Użycie: /models show | /models chose <nr>")
+            print(_("cli.models_usage"))
             continue
 
         if raw_lower.startswith("/permissions"):
@@ -2473,13 +2474,13 @@ def run_cli(
 
             if action in {"all", "on", "global"}:
                 permission_manager.allow_all = True
-                print("Włączono globalną zgodę na zasoby.")
-                log_action("permissions.mode.global", "Włączono globalną zgodę na zasoby.")
+                print(_("cli.permissions.global_on"))
+                log_action("permissions.mode.global", _("cli.permissions.global_on"))
                 continue
 
             if action in {"ask", "off", "interactive"}:
                 permission_manager.allow_all = False
-                print("Włączono tryb pytań o zgodę per zasób.")
+                print(_("cli.permissions.ask_on"))
                 log_action("permissions.mode.ask", "Włączono interakcyjny tryb zgód per zasób.")
                 continue
 
@@ -2487,20 +2488,20 @@ def run_cli(
                 granted_once = getattr(permission_manager, "granted_once", None)
                 if isinstance(granted_once, set):
                     granted_once.clear()
-                    print("Wyczyszczono zapamiętane zgody per zasób.")
+                    print(_("cli.permissions.reset_done"))
                     log_action(
                         "permissions.reset",
-                        "Wyczyszczono zapamiętane zgody per zasób.",
+                        _("cli.permissions.reset_done"),
                     )
                 else:
-                    print("Brak zapamiętanych zgód do wyczyszczenia.")
+                    print(_("cli.permissions.reset_empty"))
                     log_action(
                         "permissions.reset.unavailable",
                         "Brak obsługi listy zapamiętanych zgód w aktywnym menedżerze uprawnień.",
                     )
                 continue
 
-            print("Użycie: /permissions [status|all|ask|reset]")
+            print(_("cli.permissions.usage"))
             log_action(
                 "permissions.invalid",
                 "Niepoprawne użycie komendy zarządzania zgodami.",
@@ -2627,7 +2628,7 @@ def run_cli(
                 )
                 continue
             summary = chat_service.summarize_session_for_restart()
-            print("Zapisano podsumowanie sesji do kontynuacji po restarcie.")
+            print(_("cli.session.bye_saved"))
             print("\n--- START POINT ---")
             print(summary)
             print("\nDo zobaczenia.")
@@ -2639,7 +2640,7 @@ def run_cli(
             break
 
         if raw_lower == "/exit":
-            print("Do zobaczenia.")
+            print(_("cli.session.bye_farewell"))
             log_action("session.exit", "Zakończenie sesji bez tworzenia podsumowania.")
             break
 
@@ -2647,7 +2648,7 @@ def run_cli(
             policy = chat_service.ollama_client.queue_policy
             vram_advisor = chat_service.ollama_client.vram_advisor
             if policy is None:
-                print("Polityka kolejki modeli jest wyłączona.")
+                print(_("cli.queue.disabled"))
                 log_action("queue.status", "Wyświetlenie statusu kolejki modeli (wyłączona).")
                 continue
 
@@ -2666,7 +2667,7 @@ def run_cli(
                     f"suggested_num_ctx={profile.suggested_num_ctx}"
                 )
             else:
-                print("vram: brak aktywnego doradcy VRAM")
+                print(_("cli.queue.no_vram"))
 
             recent = snapshot.get("recent_decisions", [])
             print("recent_decisions:")
@@ -2674,7 +2675,7 @@ def run_cli(
                 for item in recent[-10:]:
                     print(f"- {item}")
             else:
-                print("- brak")
+                print(_("cli.queue.no_decisions"))
 
             log_action(
                 "queue.status",
@@ -2830,7 +2831,7 @@ def run_cli(
             text = path.read_text(encoding="utf-8")
             discussion = extract_dialogue_without_code(text)
             chat_service.save_discussion_context(discussion)
-            print("Zapisano treść dialogu (bez kodu) do pamięci.")
+            print(_("cli.import.done"))
             log_action("import_dialog.done", "Zapisano kontekst dyskusji do pamięci.", {"path": str(path)})
             continue
 
@@ -2838,7 +2839,7 @@ def run_cli(
             log_action("create_python.request", "Generowanie i zapis kodu Python.")
             parts = raw.split(maxsplit=2)
             if len(parts) < 3:
-                print("Użycie: /create-python <plik> <opis>")
+                print(_("cli.create_python.usage"))
                 log_action("create_python.invalid", "Niepoprawne użycie komendy create-python.")
                 continue
 
@@ -2883,7 +2884,7 @@ def run_cli(
             log_action("run_python.request", "Uruchomienie skryptu Python.")
             parts = shlex.split(raw)
             if len(parts) < 2:
-                print("Użycie: /run-python <plik> [arg ...]")
+                print(_("cli.run_python.usage"))
                 log_action("run_python.invalid", "Niepoprawne użycie komendy run-python.")
                 continue
 
@@ -2932,12 +2933,12 @@ def run_cli(
             log_action("run_shell.request", "Uruchomienie polecenia shell z polityką whitelist.")
             parts = raw.split(maxsplit=1)
             if len(parts) < 2 or not parts[1].strip():
-                print("Użycie: /run-shell <polecenie>")
+                print(_("cli.run_shell.usage"))
                 log_action("run_shell.invalid", "Niepoprawne użycie komendy run-shell.")
                 continue
 
             command_text = parts[1].strip()
-            _, validation_error = parse_and_validate_shell_command(
+            _ok, validation_error = parse_and_validate_shell_command(
                 command_text,
                 shell_policy,
             )
@@ -2982,7 +2983,7 @@ def run_cli(
                 limit = max(1, min(200, int(parts[1])))
             messages = chat_service.memory_repository.recent_messages(limit=limit)
             if not messages:
-                print("Brak historii.")
+                print(_("cli.history.empty"))
                 continue
             for message in messages:
                 print(
@@ -2995,11 +2996,11 @@ def run_cli(
             log_action("remember.request", "Zapis notatki użytkownika.")
             parts = raw.split(maxsplit=1)
             if len(parts) < 2:
-                print("Użycie: /remember <tekst>")
+                print(_("cli.remember.usage"))
                 log_action("remember.invalid", "Niepoprawne użycie komendy remember.")
                 continue
             chat_service.remember(parts[1].strip())
-            print("Zapisano notatkę.")
+            print(_("cli.remember.done"))
             continue
 
         if raw_lower.startswith("/memories"):
@@ -3008,7 +3009,7 @@ def run_cli(
             query = parts[1].strip() if len(parts) == 2 else None
             records = chat_service.memory_repository.search_memories(query=query, limit=20)
             if not records:
-                print("Brak wyników.")
+                print(_("cli.memories.empty"))
                 continue
             for record in records:
                 print(

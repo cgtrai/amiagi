@@ -59,21 +59,22 @@ from amiagi.application.team_composer import TeamComposer
 from amiagi.interfaces.team_dashboard import TeamDashboard
 from amiagi.interfaces.cli import run_cli
 from amiagi.interfaces.textual_cli import run_textual_cli
+from amiagi.i18n import _, set_language, available_languages
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="amiagi CLI")
+    parser = argparse.ArgumentParser(description=_("main.arg.description"))
     parser.add_argument(
         "-cs",
         "--cold_start",
         action="store_true",
-        help="Wyczyść historię konwersacji i uruchom z kontekstem startowym.",
+        help=_("main.arg.cold_start"),
     )
     parser.add_argument(
         "-auto",
         "--auto",
         action="store_true",
-        help="Włącz tryb autonomiczny dla bieżącego uruchomienia.",
+        help=_("main.arg.auto"),
     )
     parser.add_argument(
         "-vram-off",
@@ -84,13 +85,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--startup_dialogue_path",
         default="wprowadzenie.md",
-        help="Ścieżka do pliku instrukcji startowych (markdown).",
+        help=_("main.arg.startup_dialogue"),
     )
     parser.add_argument(
         "--ui",
         choices=("cli", "textual"),
         default="cli",
-        help="Tryb interfejsu: klasyczny CLI lub Textual (podział ekranu).",
+        help=_("main.arg.ui"),
+    )
+    parser.add_argument(
+        "--lang",
+        choices=available_languages(),
+        default=None,
+        help=_("main.arg.lang"),
     )
     return parser.parse_args(argv)
 
@@ -150,6 +157,8 @@ def _resolve_startup_dialogue_path(raw_path: str, work_dir: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    if args.lang:
+        set_language(args.lang)
     settings = Settings.from_env()
     if args.auto:
         if is_dataclass(settings):

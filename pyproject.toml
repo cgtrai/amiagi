@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amiagi"
-version = "1.0.1"
+version = "1.0.2"
 description = "Local framework for evaluating LLM autonomy with controlled tool-use, multi-backend model support, and audit logs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"amiagi.i18n" = ["locales/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
