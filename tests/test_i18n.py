@@ -271,3 +271,63 @@ class TestLangArgparse:
         from amiagi.main import _parse_args
         with pytest.raises(SystemExit):
             _parse_args(["--lang", "xx"])
+
+
+# ---------------------------------------------------------------------------
+# Help text rebuild on language switch
+# ---------------------------------------------------------------------------
+
+class TestHelpTextRebuild:
+    """Verify that help text reflects the active language."""
+
+    def setup_method(self):
+        from amiagi.i18n import set_language
+        set_language("pl")
+
+    def teardown_method(self):
+        from amiagi.i18n import set_language
+        set_language("pl")
+        # Rebuild globals to Polish state
+        from amiagi.interfaces.cli import _rebuild_cli_help
+        _rebuild_cli_help()
+        from amiagi.interfaces.textual_cli import (
+            _handle_textual_command,
+        )
+        from unittest.mock import MagicMock
+        pm = MagicMock(); pm.allow_all = False; pm.granted_once = set()
+        _handle_textual_command("/lang pl", pm)
+
+    def test_textual_help_switches_to_english(self):
+        from amiagi.interfaces.textual_cli import _handle_textual_command, TEXTUAL_HELP_TEXT
+        from unittest.mock import MagicMock
+
+        pm = MagicMock(); pm.allow_all = False; pm.granted_once = set()
+
+        # Polish help
+        out_pl = _handle_textual_command("/help", pm)
+        pl_text = out_pl.messages[0]
+        assert "Komendy (textual):" in pl_text
+
+        # Switch to English
+        _handle_textual_command("/lang en", pm)
+
+        # English help
+        out_en = _handle_textual_command("/help", pm)
+        en_text = out_en.messages[0]
+        assert "Commands (textual):" in en_text
+        assert pl_text != en_text
+
+    def test_cli_help_switches_to_english(self):
+        from amiagi.interfaces.cli import HELP_TEXT, _rebuild_cli_help
+        from amiagi.i18n import set_language
+
+        # Polish help
+        assert "Komendy (CLI):" in HELP_TEXT
+
+        # Switch to English and rebuild
+        set_language("en")
+        _rebuild_cli_help()
+
+        from amiagi.interfaces import cli
+        assert "Commands (CLI):" in cli.HELP_TEXT
+        assert "Komendy (CLI):" not in cli.HELP_TEXT

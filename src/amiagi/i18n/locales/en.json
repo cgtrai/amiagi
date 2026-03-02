@@ -556,6 +556,7 @@
   "cli.help.cmd.run_python": "run a Python script with arguments",
   "cli.help.cmd.run_shell": "run a shell command with whitelist policy",
   "cli.help.cmd.bye": "save session summary and exit",
+  "cli.help.cmd.lang": "change interface language (pl/en)",
   "cli.help.cmd.exit": "exit without summary",
 
   "_comment_cli_misc": "=== CLI misc ===",

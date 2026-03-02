@@ -75,20 +75,21 @@ def _build_landing_banner(*, mode: str) -> str:
     return "\n".join(lines)
 
 
-_HELP_COMMANDS: list[tuple[str, str]] = [
+def _build_cli_help_commands() -> list[tuple[str, str]]:
+    return [
         ("/help", _("cli.help.cmd.help")),
-    ("/cls", _("cli.help.cmd.cls")),
-    ("/cls all", _("cli.help.cmd.cls_all")),
-    ("/models current", _("cli.help.cmd.models_current")),
-    ("/models show", _("cli.help.cmd.models_show")),
-    ("/models chose <nr>", _("cli.help.cmd.models_chose")),
-    ("/permissions", _("cli.help.cmd.permissions")),
-    ("/permissions all", _("cli.help.cmd.permissions_all")),
-    ("/permissions ask", _("cli.help.cmd.permissions_ask")),
-    ("/permissions reset", _("cli.help.cmd.permissions_reset")),
+        ("/cls", _("cli.help.cmd.cls")),
+        ("/cls all", _("cli.help.cmd.cls_all")),
+        ("/models current", _("cli.help.cmd.models_current")),
+        ("/models show", _("cli.help.cmd.models_show")),
+        ("/models chose <nr>", _("cli.help.cmd.models_chose")),
+        ("/permissions", _("cli.help.cmd.permissions")),
+        ("/permissions all", _("cli.help.cmd.permissions_all")),
+        ("/permissions ask", _("cli.help.cmd.permissions_ask")),
+        ("/permissions reset", _("cli.help.cmd.permissions_reset")),
         ("/show-system-context [tekst]", _("cli.help.cmd.show_system_context")),
-    ("/goal-status", _("cli.help.cmd.goal_status")),
-    ("/goal", _("cli.help.cmd.goal")),
+        ("/goal-status", _("cli.help.cmd.goal_status")),
+        ("/goal", _("cli.help.cmd.goal")),
         ("/queue-status", _("cli.help.cmd.queue_status")),
         ("/capabilities [--network]", _("cli.help.cmd.capabilities")),
         ("/history [n]", _("cli.help.cmd.history")),
@@ -98,17 +99,28 @@ _HELP_COMMANDS: list[tuple[str, str]] = [
         ("/create-python <plik> <opis>", _("cli.help.cmd.create_python")),
         ("/run-python <plik> [arg ...]", _("cli.help.cmd.run_python")),
         ("/run-shell <polecenie>", _("cli.help.cmd.run_shell")),
+        ("/lang <code>", _("cli.help.cmd.lang")),
         ("/bye", _("cli.help.cmd.bye")),
         ("/exit", _("cli.help.cmd.exit")),
-]
+    ]
+
+
+_HELP_COMMANDS: list[tuple[str, str]] = _build_cli_help_commands()
 
 
 def _build_help_text() -> str:
-        command_width = max(len(command) for command, _desc in _HELP_COMMANDS)
-        lines = [_("cli.help.header")]
-        for command, description in _HELP_COMMANDS:
-                lines.append(f"  {command.ljust(command_width)}  - {description}")
-        return "\n".join(lines)
+    command_width = max(len(command) for command, _desc in _HELP_COMMANDS)
+    lines = [_("cli.help.header")]
+    for command, description in _HELP_COMMANDS:
+        lines.append(f"  {command.ljust(command_width)}  - {description}")
+    return "\n".join(lines)
+
+
+def _rebuild_cli_help() -> None:
+    """Rebuild help commands and text after a language switch."""
+    global _HELP_COMMANDS, HELP_TEXT
+    _HELP_COMMANDS = _build_cli_help_commands()
+    HELP_TEXT = _build_help_text()
 
 
 HELP_TEXT = _build_help_text()
@@ -2376,6 +2388,23 @@ def run_cli(
         if raw_lower == "/cls all":
             _clear_cli_screen(clear_scrollback=True)
             log_action("screen.clear.all", "Wyczyszczono ekran i historię przewijania terminala.")
+            continue
+
+        if raw_lower.startswith("/lang"):
+            from amiagi.i18n import set_language, get_language, available_languages
+            lang_parts = raw_lower.split()
+            if len(lang_parts) < 2:
+                print(_("lang.current", lang=get_language()))
+                print(_("lang.usage"))
+            else:
+                code = lang_parts[1].strip()
+                if code not in available_languages():
+                    available = ", ".join(sorted(available_languages()))
+                    print(_("lang.not_found", lang=code, available=available))
+                else:
+                    set_language(code)
+                    _rebuild_cli_help()
+                    print(_("lang.switched", lang=code))
             continue
 
         if raw_lower.startswith("/models"):

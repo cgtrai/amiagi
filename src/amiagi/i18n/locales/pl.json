@@ -556,6 +556,7 @@
   "cli.help.cmd.run_python": "uruchom skrypt Python z argumentami",
   "cli.help.cmd.run_shell": "uruchom polecenie shell z polityką whitelist",
   "cli.help.cmd.bye": "zapisz podsumowanie sesji i zakończ",
+  "cli.help.cmd.lang": "zmień język interfejsu (pl/en)",
   "cli.help.cmd.exit": "zakończ bez podsumowania",
 
   "_comment_cli_misc": "=== CLI misc ===",
