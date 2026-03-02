@@ -33,6 +33,19 @@ Patch release: documentation alignment, naming consistency, and format migration
 - Served via `/static/dashboard.css` route.
 - Replaced inline `style=` attributes with CSS classes.
 
+### REST API route wiring fix
+- `wire_domain_routes()` was never called in production code — only in tests.
+- Added call in `main.py` after `RESTServer` creation, passing all 5 domain services.
+- `/api start` now exposes 9 routes + 1 SSE endpoint immediately.
+
+### Unified `/dashboard start` bootstrap
+- `/dashboard start` now performs full sequence automatically:
+  1. Starts REST API backend if not already running
+  2. Verifies registered routes
+  3. Starts dashboard frontend HTTP server
+  4. Opens default web browser to dashboard URL
+- Existing `/dashboard stop`, `/dashboard status`, `/api start|stop|status` remain for diagnostics.
+
 ### Documentation
 - Added missing README badges: Python version, License, Tests count, Version, Platform.
 - Updated test count from 815 → 1045 across all documentation files.
