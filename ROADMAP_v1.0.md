@@ -1,7 +1,7 @@
 # amiagi — Roadmap do v1.0
 
 Plan wdrożenia pełnoprawnego środowiska orkiestracji agentów.
-Stan aktualny: **v0.9.0** (Fazy 1–7 zrealizowane, 612 testów).
+Stan aktualny: **v1.0.0** (Fazy 1–11 zrealizowane, 815 testów).
 Stan wyjściowy: v0.2.0 (2 aktorów, multi-backend, skills, session persistence, 328 testów).
 
 Cel: system, w którym Sponsor **opisuje potrzebę**, a framework **powołuje, konfiguruje, testuje i nadzoruje** zespół agentów realizujących złożone zadania.
@@ -31,28 +31,17 @@ Kolejność wynika z analizy zależności i wartości operacyjnej na obecnym sta
 ### ✅ [ZREALIZOWANE] Priorytet 2 — Security & Isolation (Faza 7) → v0.9.0
 ### ✅ [ZREALIZOWANE] Priorytet 3 — Workflow Engine (Faza 6) → v0.9.0
 
-### Priorytet 4 — ŚREDNI: Cost Governance (Faza 8)
-
-**Dlaczego teraz**: z wieloma agentami i API backendem (OpenAI) koszty mogą wymknąć się spod kontroli. BudgetManager + RateLimiter + VRAMScheduler są konieczne do produkcyjnego użycia. Zależy od Dashboard (Faza 4) — alerty kosztowe rozszerzające AlertManager.
-
-### Priorytet 5 — ŚREDNI: Evaluation & Quality (Faza 9) ★ NASTĘPNA
-
-**Dlaczego teraz**: po ustabilizowaniu infrastruktury (Fazy 1–8), trzeba zmierzyć jakość. Rubric scoring, benchmarki, A/B testing i regression detection pozwalają iterować na konfiguracji agentów. AgentTestRunner z Fazy 2 jest zaczątkiem — Faza 9 to pełny framework ewaluacyjny.
-
-### Priorytet 6 — NIŻSZY: External Integration & API (Faza 10)
-
-**Dlaczego teraz**: REST API, webhooks, SDK i CI adapter otwierają system na integracje zewnętrzne. Sens ma dopiero gdy core jest kompletny i przetestowany (Fazy 1–9). Wcześniejsze udostępnienie API narażałoby na breaking changes.
-
-### Priorytet 7 — CAPSTONE: Team Composition (Faza 11 → v1.0.0)
-
-Wieńczący kamień milowy. TeamComposer + DynamicScaler + TeamDashboard. Wymaga wszystkich wcześniejszych faz. Przejście od "zbioru agentów" do "zarządzanego zespołu".
+### ✅ [ZREALIZOWANE] Priorytet 4 — Cost Governance (Faza 8) → v1.0.0
+### ✅ [ZREALIZOWANE] Priorytet 5 — Evaluation & Quality (Faza 9) → v1.0.0
+### ✅ [ZREALIZOWANE] Priorytet 6 — External Integration & API (Faza 10) → v1.0.0
+### ✅ [ZREALIZOWANE] Priorytet 7 — CAPSTONE: Team Composition (Faza 11) → v1.0.0
 
 ---
 
 ## Fazy wdrożenia
 
 ```text
-v0.9.0 (aktualny — Fazy 1–7 zrealizowane)
+v1.0.0 (aktualny — Fazy 1–11 zrealizowane, 815 testów)
   │
   ├─ Faza 1: Agent Registry & Lifecycle        → v0.6.0   ✅ DONE
   ├─ Faza 2: AgentWizard                       → v0.6.0   ✅ DONE
@@ -61,11 +50,10 @@ v0.9.0 (aktualny — Fazy 1–7 zrealizowane)
   ├─ Faza 5: Shared Context & Memory           → v0.9.0   ✅ DONE
   ├─ Faza 7: Security & Isolation (per-agent)   → v0.9.0   ✅ DONE
   ├─ Faza 6: Workflow Engine (DAG)              → v0.9.0   ✅ DONE
-  │
-  ├─ Faza 8: Resource & Cost Governance         → v0.10.0  ★ PRIORYTET 1 — ŚREDNI
-  ├─ Faza 9: Evaluation & Quality Framework     → v0.11.0  ★ PRIORYTET 2 — ŚREDNI
-  ├─ Faza 10: External Integration & API        → v0.12.0  ○ PRIORYTET 3 — NIŻSZY
-  └─ Faza 11: Persona & Team Composition        → v1.0.0   ◆ CAPSTONE
+  ├─ Faza 8: Resource & Cost Governance         → v1.0.0   ✅ DONE
+  ├─ Faza 9: Evaluation & Quality Framework     → v1.0.0   ✅ DONE
+  ├─ Faza 10: External Integration & API        → v1.0.0   ✅ DONE
+  └─ Faza 11: Persona & Team Composition        → v1.0.0   ✅ DONE
 ```
 
 > **Uwaga**: Faza 7 (Security) awansowała przed Fazę 6 (Workflow Engine) — bezpieczeństwo
@@ -296,7 +284,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 8 — Resource & Cost Governance (v0.10.0)
+## Faza 8 — Resource & Cost Governance (v1.0.0) ✅ DONE
 **Cel**: budżetowanie, rate limiting, zarządzanie GPU/VRAM dla wielu agentów.
 
 ### Deliverables
@@ -319,7 +307,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 9 — Evaluation & Quality Framework (v0.11.0)
+## Faza 9 — Evaluation & Quality Framework (v1.0.0) ✅ DONE
 
 **Cel**: systematyczna ocena jakości agentów z benchmarkami, A/B testami i regression detection.
 
@@ -343,7 +331,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 10 — External Integration & API (v0.12.0)
+## Faza 10 — External Integration & API (v1.0.0) ✅ DONE
 
 **Cel**: programowe sterowanie frameworkiem i integracja z zewnętrznymi systemami.
 
@@ -364,7 +352,7 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 
 ---
 
-## Faza 11 — Persona & Team Composition (v1.0.0)
+## Faza 11 — Persona & Team Composition (v1.0.0) ✅ DONE
 
 **Cel**: przejście od "zbioru agentów" do "zarządzanego zespołu" z rolami, strukturą i dynamicznym skalowaniem.
 
@@ -407,10 +395,10 @@ Sponsor: "Potrzebuję agenta do code review w Pythonie"
 | 5. Shared Context & Memory | v0.9.0 | Baza wiedzy + cross-agent memory | ✅ DONE | — |
 | 7. Security & Isolation | v0.9.0 | Per-agent permissions + sandbox | ✅ DONE | — |
 | 6. Workflow Engine (DAG) | v0.9.0 | Deklaratywne przepływy pracy | ✅ DONE | — |
-| **8. Resource & Cost Governance** | **v0.10.0** | **Budżety, rate limiting, VRAM scheduler** | następna | **★ 1 Średni** |
-| **9. Evaluation & Quality** | **v0.11.0** | **Benchmarki, A/B testing, regression** | planowana | **★ 2 Średni** |
-| 10. External Integration & API | v0.12.0 | REST API, webhooks, SDK, CI | planowana | ○ 3 Niższy |
-| 11. Persona & Team Composition | v1.0.0 | Zarządzane zespoły + dynamic scaling | planowana | ◆ Capstone |
+| 8. Resource & Cost Governance | v1.0.0 | Budżety, rate limiting, VRAM scheduler | ✅ DONE | — |
+| 9. Evaluation & Quality | v1.0.0 | Benchmarki, A/B testing, regression | ✅ DONE | — |
+| 10. External Integration & API | v1.0.0 | REST API, webhooks, SDK, CI | ✅ DONE | — |
+| 11. Persona & Team Composition | v1.0.0 | Zarządzane zespoły + dynamic scaling | ✅ DONE | — |
 
 ---
 
@@ -420,10 +408,9 @@ Przy założeniu pracy iteracyjnej (implementacja + testy + dokumentacja per faz
 
 - Fazy 1–4: ✅ **ZREALIZOWANE** w v0.6.0 (464 testy, 21 modułów)
 - Fazy 5+7+6: ✅ **ZREALIZOWANE** w v0.9.0 (612 testów, 34 modułów łącznie)
-- Fazy 8–9: governance + ewaluacja (~2 release'y)
-- Fazy 10–11: integracja + finalizacja (~2 release'y)
+- Fazy 8–11: ✅ **ZREALIZOWANE** w v1.0.0 (815 testów, 54 moduły łącznie)
 
-Pozostało: **4 wersje minor** od v0.10.0 do v1.0.0.
+**Roadmap v1.0.0 ukończony.**
 
 ---
 

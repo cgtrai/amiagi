@@ -74,6 +74,18 @@ class Settings:
     # v0.9+ — workflow engine (Phase 6)
     workflows_dir: Path = Path("./data/workflows")
     workflow_checkpoint_dir: Path = Path("./data/workflow_checkpoints")
+    # v0.10+ — resource & cost governance (Phase 8)
+    quota_policy_path: Path = Path("./data/quota_policy.json")
+    feedback_path: Path = Path("./data/human_feedback.jsonl")
+    # v0.11+ — evaluation & quality (Phase 9)
+    benchmarks_dir: Path = Path("./data/benchmarks")
+    baselines_dir: Path = Path("./data/eval_baselines")
+    # v0.12+ — external integration & API (Phase 10)
+    rest_api_port: int = 8090
+    rest_api_token: str = ""
+    plugins_dir: Path = Path("./plugins")
+    # v1.0 — team composition (Phase 11)
+    teams_dir: Path = Path("./data/teams")
 
     @staticmethod
     def from_env() -> "Settings":
@@ -237,5 +249,32 @@ class Settings:
             ),
             workflow_checkpoint_dir=Path(
                 os.getenv("AMIAGI_WORKFLOW_CHECKPOINT_DIR", "./data/workflow_checkpoints")
+            ),
+            # Phase 8
+            quota_policy_path=Path(
+                os.getenv("AMIAGI_QUOTA_POLICY_PATH", "./data/quota_policy.json")
+            ),
+            feedback_path=Path(
+                os.getenv("AMIAGI_FEEDBACK_PATH", "./data/human_feedback.jsonl")
+            ),
+            # Phase 9
+            benchmarks_dir=Path(
+                os.getenv("AMIAGI_BENCHMARKS_DIR", "./data/benchmarks")
+            ),
+            baselines_dir=Path(
+                os.getenv("AMIAGI_BASELINES_DIR", "./data/eval_baselines")
+            ),
+            # Phase 10
+            rest_api_port=_as_int(
+                os.getenv("AMIAGI_REST_API_PORT", "8090"),
+                default=8090,
+            ),
+            rest_api_token=os.getenv("AMIAGI_REST_API_TOKEN", ""),
+            plugins_dir=Path(
+                os.getenv("AMIAGI_PLUGINS_DIR", "./plugins")
+            ),
+            # Phase 11
+            teams_dir=Path(
+                os.getenv("AMIAGI_TEAMS_DIR", "./data/teams")
             ),
         )

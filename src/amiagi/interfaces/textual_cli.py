@@ -63,6 +63,26 @@ from amiagi.infrastructure.sandbox_manager import SandboxManager
 from amiagi.infrastructure.secret_vault import SecretVault
 from amiagi.infrastructure.workflow_checkpoint import WorkflowCheckpoint
 from amiagi.infrastructure.usage_tracker import UsageTracker
+# Phase 8
+from amiagi.application.budget_manager import BudgetManager
+from amiagi.domain.quota_policy import QuotaPolicy
+from amiagi.infrastructure.rate_limiter import RateLimiter
+from amiagi.infrastructure.vram_scheduler import VRAMScheduler
+# Phase 9
+from amiagi.application.eval_runner import EvalRunner
+from amiagi.application.regression_detector import RegressionDetector
+from amiagi.infrastructure.benchmark_suite import BenchmarkSuite
+from amiagi.interfaces.human_feedback import HumanFeedbackCollector
+# Phase 10
+from amiagi.application.plugin_loader import PluginLoader
+from amiagi.infrastructure.ci_adapter import CIAdapter
+from amiagi.infrastructure.rest_server import RESTServer
+from amiagi.infrastructure.webhook_dispatcher import WebhookDispatcher
+# Phase 11
+from amiagi.application.dynamic_scaler import DynamicScaler
+from amiagi.application.skill_catalog import SkillCatalog
+from amiagi.application.team_composer import TeamComposer
+from amiagi.interfaces.team_dashboard import TeamDashboard
 from amiagi.interfaces.cli import (
     _AMIAGI_LOGO,
     _build_landing_banner,
@@ -448,6 +468,26 @@ class _AmiagiTextualApp(App[None]):
         # Phase 6
         workflow_engine: WorkflowEngine | None = None,
         workflow_checkpoint: WorkflowCheckpoint | None = None,
+        # Phase 8
+        budget_manager: BudgetManager | None = None,
+        quota_policy: QuotaPolicy | None = None,
+        rate_limiter: RateLimiter | None = None,
+        vram_scheduler: VRAMScheduler | None = None,
+        # Phase 9
+        eval_runner: EvalRunner | None = None,
+        benchmark_suite: BenchmarkSuite | None = None,
+        regression_detector: RegressionDetector | None = None,
+        human_feedback: HumanFeedbackCollector | None = None,
+        # Phase 10
+        rest_server: RESTServer | None = None,
+        webhook_dispatcher: WebhookDispatcher | None = None,
+        plugin_loader: PluginLoader | None = None,
+        ci_adapter: CIAdapter | None = None,
+        # Phase 11
+        team_composer: TeamComposer | None = None,
+        skill_catalog: SkillCatalog | None = None,
+        dynamic_scaler: DynamicScaler | None = None,
+        team_dashboard: TeamDashboard | None = None,
     ) -> None:
         super().__init__()
         self._chat_service = chat_service
@@ -480,6 +520,26 @@ class _AmiagiTextualApp(App[None]):
         # ---- Phase 6 services ----
         self._workflow_engine = workflow_engine
         self._workflow_checkpoint = workflow_checkpoint
+        # ---- Phase 8 services ----
+        self._budget_manager = budget_manager
+        self._quota_policy = quota_policy
+        self._rate_limiter = rate_limiter
+        self._vram_scheduler = vram_scheduler
+        # ---- Phase 9 services ----
+        self._eval_runner = eval_runner
+        self._benchmark_suite = benchmark_suite
+        self._regression_detector = regression_detector
+        self._human_feedback = human_feedback
+        # ---- Phase 10 services ----
+        self._rest_server = rest_server
+        self._webhook_dispatcher = webhook_dispatcher
+        self._plugin_loader = plugin_loader
+        self._ci_adapter = ci_adapter
+        # ---- Phase 11 services ----
+        self._team_composer = team_composer
+        self._skill_catalog = skill_catalog
+        self._dynamic_scaler = dynamic_scaler
+        self._team_dashboard = team_dashboard
         self._wizard_service: AgentWizardService | None = None
         self._usage_tracker = UsageTracker()
         self._model_configured = False
@@ -1760,6 +1820,36 @@ class _AmiagiTextualApp(App[None]):
         if lower.startswith("/workflow"):
             return self._handle_workflow_command(text)
 
+        # ==================================================================
+        # Phase 8 — /budget, /quota commands
+        # ==================================================================
+        if lower.startswith("/budget"):
+            return self._handle_budget_command(text)
+        if lower.startswith("/quota"):
+            return self._handle_quota_command(text)
+
+        # ==================================================================
+        # Phase 9 — /eval, /feedback commands
+        # ==================================================================
+        if lower.startswith("/eval"):
+            return self._handle_eval_command(text)
+        if lower.startswith("/feedback"):
+            return self._handle_feedback_command(text)
+
+        # ==================================================================
+        # Phase 10 — /api, /plugins commands
+        # ==================================================================
+        if lower.startswith("/api"):
+            return self._handle_api_command(text)
+        if lower.startswith("/plugins"):
+            return self._handle_plugins_command(text)
+
+        # ==================================================================
+        # Phase 11 — /team commands
+        # ==================================================================
+        if lower.startswith("/team"):
+            return self._handle_team_command(text)
+
         return _CommandOutcome(False, [])
 
     # ------------------------------------------------------------------
@@ -2310,6 +2400,231 @@ class _AmiagiTextualApp(App[None]):
             "Użycie: /workflow list | /workflow run <szablon> | /workflow status <run_id>",
             "        /workflow approve <run_id> <node_id> | /workflow pause/resume <run_id>",
             "        /workflow templates",
+        ])
+
+    # ------------------------------------------------------------------
+    # Budget & Quota Commands (Phase 8)
+    # ------------------------------------------------------------------
+
+    def _handle_budget_command(self, raw_text: str) -> _CommandOutcome:
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "status"
+
+        if self._budget_manager is None:
+            return _CommandOutcome(True, ["BudgetManager nie jest aktywny."])
+
+        if action == "status":
+            summary = self._budget_manager.summary()
+            if not summary:
+                return _CommandOutcome(True, ["Brak danych o budżetach agentów."])
+            msgs = ["--- BUDGET STATUS ---"]
+            for agent_id, info in summary.items():
+                msgs.append(f"  {agent_id}: spent=${info['spent_usd']:.4f} / limit=${info['limit_usd']:.2f} ({info['utilization_pct']:.1f}%)")
+            return _CommandOutcome(True, msgs)
+
+        if action == "set" and len(parts) >= 4:
+            agent_id = parts[2]
+            try:
+                limit = float(parts[3])
+            except ValueError:
+                return _CommandOutcome(True, ["Podaj limit jako liczbę, np. /budget set polluks 10.0"])
+            self._budget_manager.set_budget(agent_id, limit)
+            return _CommandOutcome(True, [f"Budżet agenta {agent_id} ustawiony na ${limit:.2f}."])
+
+        if action == "reset" and len(parts) >= 3:
+            self._budget_manager.reset_agent(parts[2])
+            return _CommandOutcome(True, [f"Zresetowano budżet agenta {parts[2]}."])
+
+        return _CommandOutcome(True, [
+            "Użycie: /budget status | /budget set <agent> <limit_usd> | /budget reset <agent>",
+        ])
+
+    def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
+        if self._quota_policy is None:
+            return _CommandOutcome(True, ["QuotaPolicy nie jest aktywna."])
+        roles = self._quota_policy.list_roles()
+        if not roles:
+            return _CommandOutcome(True, ["Brak zdefiniowanych quotas."])
+        msgs = ["--- QUOTA POLICY ---"]
+        for role in roles:
+            q = self._quota_policy.get_role(role)
+            if q:
+                msgs.append(f"  {role}: tokens={q.daily_token_limit}, cost=${q.daily_cost_limit_usd:.2f}, req/h={q.max_requests_per_hour}")
+        return _CommandOutcome(True, msgs)
+
+    # ------------------------------------------------------------------
+    # Evaluation & Feedback Commands (Phase 9)
+    # ------------------------------------------------------------------
+
+    def _handle_eval_command(self, raw_text: str) -> _CommandOutcome:
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "help"
+
+        if action == "history":
+            if self._eval_runner is None:
+                return _CommandOutcome(True, ["EvalRunner nie jest aktywny."])
+            agent_id = parts[2] if len(parts) > 2 else None
+            history = self._eval_runner.history(agent_id)
+            if not history:
+                return _CommandOutcome(True, ["Brak historii ewaluacji."])
+            msgs = ["--- EVAL HISTORY ---"]
+            for r in history[-10:]:
+                msgs.append(f"  {r.agent_id}: passed={r.passed}/{r.passed + r.failed} score={r.aggregate_score:.1f}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "baselines":
+            if self._regression_detector is None:
+                return _CommandOutcome(True, ["RegressionDetector nie jest aktywny."])
+            baselines = self._regression_detector.list_baselines()
+            if not baselines:
+                return _CommandOutcome(True, ["Brak zapisanych baselines."])
+            msgs = ["--- EVAL BASELINES ---"]
+            for b in baselines:
+                msgs.append(f"  {b}")
+            return _CommandOutcome(True, msgs)
+
+        return _CommandOutcome(True, [
+            "Użycie: /eval history [agent] | /eval baselines",
+        ])
+
+    def _handle_feedback_command(self, raw_text: str) -> _CommandOutcome:
+        if self._human_feedback is None:
+            return _CommandOutcome(True, ["HumanFeedbackCollector nie jest aktywny."])
+
+        parts = raw_text.strip().split(maxsplit=3)
+        action = parts[1].lower() if len(parts) > 1 else "summary"
+
+        if action == "summary":
+            s = self._human_feedback.summary()
+            if not s:
+                return _CommandOutcome(True, ["Brak zebranych opinii."])
+            msgs = ["--- FEEDBACK SUMMARY ---"]
+            for agent_id, info in s.items():
+                msgs.append(f"  {agent_id}: +{info['positive']} / -{info['negative']} (total={info['total']})")
+            return _CommandOutcome(True, msgs)
+
+        if action in {"up", "down"} and len(parts) >= 3:
+            agent_id = parts[2]
+            comment = parts[3] if len(parts) > 3 else ""
+            if action == "up":
+                self._human_feedback.thumbs_up(agent_id, comment=comment)
+            else:
+                self._human_feedback.thumbs_down(agent_id, comment=comment)
+            return _CommandOutcome(True, [f"Zapisano opinię ({action}) dla {agent_id}."])
+
+        return _CommandOutcome(True, [
+            "Użycie: /feedback summary | /feedback up <agent> [komentarz] | /feedback down <agent> [komentarz]",
+        ])
+
+    # ------------------------------------------------------------------
+    # API & Plugins Commands (Phase 10)
+    # ------------------------------------------------------------------
+
+    def _handle_api_command(self, raw_text: str) -> _CommandOutcome:
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "status"
+
+        if self._rest_server is None:
+            return _CommandOutcome(True, ["RESTServer nie jest aktywny."])
+
+        if action == "status":
+            d = self._rest_server.to_dict()
+            msgs = ["--- API STATUS ---"]
+            msgs.append(f"  running: {d['is_running']}")
+            msgs.append(f"  address: {self._rest_server.address}")
+            msgs.append(f"  routes: {len(d['routes'])}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "start":
+            self._rest_server.start()
+            return _CommandOutcome(True, [f"REST API uruchomione na {self._rest_server.address}"])
+
+        if action == "stop":
+            self._rest_server.stop()
+            return _CommandOutcome(True, ["REST API zatrzymane."])
+
+        return _CommandOutcome(True, ["Użycie: /api status | /api start | /api stop"])
+
+    def _handle_plugins_command(self, raw_text: str) -> _CommandOutcome:
+        if self._plugin_loader is None:
+            return _CommandOutcome(True, ["PluginLoader nie jest aktywny."])
+
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if action == "list":
+            plugins = self._plugin_loader.list_plugins()
+            if not plugins:
+                return _CommandOutcome(True, ["Brak załadowanych pluginów."])
+            msgs = ["--- PLUGINS ---"]
+            for p in plugins:
+                status = "✓" if p.loaded else "✗"
+                msgs.append(f"  {status} {p.name} v{p.version or '?'}: {p.description[:60] if p.description else '-'}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "load":
+            results = self._plugin_loader.load_all()
+            loaded = sum(1 for r in results if r.loaded)
+            return _CommandOutcome(True, [f"Załadowano {loaded}/{len(results)} pluginów."])
+
+        return _CommandOutcome(True, ["Użycie: /plugins list | /plugins load"])
+
+    # ------------------------------------------------------------------
+    # Team Commands (Phase 11)
+    # ------------------------------------------------------------------
+
+    def _handle_team_command(self, raw_text: str) -> _CommandOutcome:
+        parts = raw_text.strip().split()
+        action = parts[1].lower() if len(parts) > 1 else "list"
+
+        if action == "list":
+            if self._team_dashboard is None:
+                return _CommandOutcome(True, ["TeamDashboard nie jest aktywny."])
+            teams = self._team_dashboard.list_teams()
+            if not teams:
+                return _CommandOutcome(True, ["Brak zarejestrowanych zespołów."])
+            msgs = ["--- TEAMS ---"]
+            for t in teams:
+                msgs.append(f"  {t.team_id}: {t.name} ({t.size} członków)")
+            return _CommandOutcome(True, msgs)
+
+        if action == "templates":
+            if self._team_composer is None:
+                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+            templates = self._team_composer.list_templates()
+            if not templates:
+                return _CommandOutcome(True, ["Brak dostępnych szablonów zespołów."])
+            msgs = ["--- TEAM TEMPLATES ---"]
+            for t in templates:
+                msgs.append(f"  {t}")
+            return _CommandOutcome(True, msgs)
+
+        if action == "create" and len(parts) > 2:
+            template_id = parts[2]
+            if self._team_composer is None:
+                return _CommandOutcome(True, ["TeamComposer nie jest aktywny."])
+            team = self._team_composer.from_template(template_id)
+            if team is None:
+                return _CommandOutcome(True, [f"Szablon '{template_id}' nie istnieje."])
+            if self._team_dashboard is not None:
+                self._team_dashboard.register_team(team)
+            return _CommandOutcome(True, [f"Zespół '{team.name}' utworzony z szablonu {template_id} ({team.size} członków)."])
+
+        if action == "status" and len(parts) > 2:
+            team_id = parts[2]
+            if self._team_dashboard is None:
+                return _CommandOutcome(True, ["TeamDashboard nie jest aktywny."])
+            chart = self._team_dashboard.org_chart(team_id)
+            if "error" in chart:
+                return _CommandOutcome(True, [f"Zespół '{team_id}' nie istnieje."])
+            msgs = [f"--- TEAM {chart['name']} ---", f"  Lead: {chart['lead']}"]
+            for m in chart["members"]:
+                lead_marker = " (lead)" if m["is_lead"] else ""
+                msgs.append(f"  {m['role']}: {m['name']}{lead_marker}")
+            return _CommandOutcome(True, msgs)
+
+        return _CommandOutcome(True, [
+            "Użycie: /team list | /team templates | /team create <szablon> | /team status <id>",
         ])
 
     # ------------------------------------------------------------------
@@ -4328,6 +4643,26 @@ def run_textual_cli(
     # Phase 6
     workflow_engine: WorkflowEngine | None = None,
     workflow_checkpoint: WorkflowCheckpoint | None = None,
+    # Phase 8
+    budget_manager: BudgetManager | None = None,
+    quota_policy: QuotaPolicy | None = None,
+    rate_limiter: RateLimiter | None = None,
+    vram_scheduler: VRAMScheduler | None = None,
+    # Phase 9
+    eval_runner: EvalRunner | None = None,
+    benchmark_suite: BenchmarkSuite | None = None,
+    regression_detector: RegressionDetector | None = None,
+    human_feedback: HumanFeedbackCollector | None = None,
+    # Phase 10
+    rest_server: RESTServer | None = None,
+    webhook_dispatcher: WebhookDispatcher | None = None,
+    plugin_loader: PluginLoader | None = None,
+    ci_adapter: CIAdapter | None = None,
+    # Phase 11
+    team_composer: TeamComposer | None = None,
+    skill_catalog: SkillCatalog | None = None,
+    dynamic_scaler: DynamicScaler | None = None,
+    team_dashboard: TeamDashboard | None = None,
 ) -> None:
     _AmiagiTextualApp(
         chat_service=chat_service,
@@ -4354,4 +4689,20 @@ def run_textual_cli(
         audit_chain=audit_chain,
         workflow_engine=workflow_engine,
         workflow_checkpoint=workflow_checkpoint,
+        budget_manager=budget_manager,
+        quota_policy=quota_policy,
+        rate_limiter=rate_limiter,
+        vram_scheduler=vram_scheduler,
+        eval_runner=eval_runner,
+        benchmark_suite=benchmark_suite,
+        regression_detector=regression_detector,
+        human_feedback=human_feedback,
+        rest_server=rest_server,
+        webhook_dispatcher=webhook_dispatcher,
+        plugin_loader=plugin_loader,
+        ci_adapter=ci_adapter,
+        team_composer=team_composer,
+        skill_catalog=skill_catalog,
+        dynamic_scaler=dynamic_scaler,
+        team_dashboard=team_dashboard,
     ).run()

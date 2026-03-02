@@ -36,6 +36,27 @@ from amiagi.infrastructure.shared_workspace import SharedWorkspace
 from amiagi.infrastructure.vram_advisor import VramAdvisor
 from amiagi.infrastructure.session_model_config import SessionModelConfig
 from amiagi.infrastructure.workflow_checkpoint import WorkflowCheckpoint
+# Phase 8
+from amiagi.application.budget_manager import BudgetManager
+from amiagi.domain.quota_policy import QuotaPolicy
+from amiagi.infrastructure.rate_limiter import RateLimiter
+from amiagi.infrastructure.vram_scheduler import VRAMScheduler
+# Phase 9
+from amiagi.domain.eval_rubric import EvalRubric
+from amiagi.application.eval_runner import EvalRunner
+from amiagi.application.regression_detector import RegressionDetector
+from amiagi.infrastructure.benchmark_suite import BenchmarkSuite
+from amiagi.interfaces.human_feedback import HumanFeedbackCollector
+# Phase 10
+from amiagi.application.plugin_loader import PluginLoader
+from amiagi.infrastructure.ci_adapter import CIAdapter
+from amiagi.infrastructure.rest_server import RESTServer
+from amiagi.infrastructure.webhook_dispatcher import WebhookDispatcher
+# Phase 11
+from amiagi.application.dynamic_scaler import DynamicScaler
+from amiagi.application.skill_catalog import SkillCatalog
+from amiagi.application.team_composer import TeamComposer
+from amiagi.interfaces.team_dashboard import TeamDashboard
 from amiagi.interfaces.cli import run_cli
 from amiagi.interfaces.textual_cli import run_textual_cli
 
@@ -358,6 +379,48 @@ def main(argv: list[str] | None = None) -> None:
         checkpoint_dir=settings.workflow_checkpoint_dir,
     )
 
+    # ------------------------------------------------------------------
+    # Resource & Cost Governance (Phase 8)
+    # ------------------------------------------------------------------
+    budget_manager = BudgetManager()
+    quota_policy = QuotaPolicy()
+    if settings.quota_policy_path.exists():
+        try:
+            quota_policy = QuotaPolicy.load_json(settings.quota_policy_path)
+        except Exception:  # noqa: BLE001
+            pass
+    rate_limiter = RateLimiter()
+    vram_scheduler = VRAMScheduler()
+
+    # ------------------------------------------------------------------
+    # Evaluation & Quality (Phase 9)
+    # ------------------------------------------------------------------
+    eval_runner = EvalRunner(rubric=EvalRubric(name="default"))
+    benchmark_suite = BenchmarkSuite(benchmarks_dir=str(settings.benchmarks_dir))
+    regression_detector = RegressionDetector(baselines_dir=settings.baselines_dir)
+    human_feedback = HumanFeedbackCollector(settings.feedback_path)
+
+    # ------------------------------------------------------------------
+    # External Integration & API (Phase 10)
+    # ------------------------------------------------------------------
+    rest_server = RESTServer(
+        port=settings.rest_api_port,
+        bearer_token=settings.rest_api_token,
+    )
+    webhook_dispatcher = WebhookDispatcher()
+    plugin_loader = PluginLoader(plugins_dir=settings.plugins_dir)
+    ci_adapter = CIAdapter()
+
+    # ------------------------------------------------------------------
+    # Team Composition (Phase 11)
+    # ------------------------------------------------------------------
+    team_composer = TeamComposer(
+        templates_dir=str(settings.teams_dir) if settings.teams_dir.is_dir() else None,
+    )
+    skill_catalog = SkillCatalog()
+    dynamic_scaler = DynamicScaler()
+    team_dashboard = TeamDashboard()
+
     max_idle_autoreactivations = getattr(settings, "max_idle_autoreactivations", 2)
     router_mailbox_log_path = getattr(settings, "router_mailbox_log_path", Path("./logs/router_mailbox.jsonl"))
 
@@ -421,6 +484,26 @@ def main(argv: list[str] | None = None) -> None:
                 audit_chain=audit_chain,
                 workflow_engine=workflow_engine,
                 workflow_checkpoint=workflow_checkpoint,
+                # Phase 8
+                budget_manager=budget_manager,
+                quota_policy=quota_policy,
+                rate_limiter=rate_limiter,
+                vram_scheduler=vram_scheduler,
+                # Phase 9
+                eval_runner=eval_runner,
+                benchmark_suite=benchmark_suite,
+                regression_detector=regression_detector,
+                human_feedback=human_feedback,
+                # Phase 10
+                rest_server=rest_server,
+                webhook_dispatcher=webhook_dispatcher,
+                plugin_loader=plugin_loader,
+                ci_adapter=ci_adapter,
+                # Phase 11
+                team_composer=team_composer,
+                skill_catalog=skill_catalog,
+                dynamic_scaler=dynamic_scaler,
+                team_dashboard=team_dashboard,
             )
         else:
             run_cli(

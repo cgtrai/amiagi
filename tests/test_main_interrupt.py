@@ -99,6 +99,14 @@ def test_main_reads_startup_dialogue_from_work_dir_when_default_relative_path_mi
         audit_log_path=tmp_path / "audit.jsonl",
         workflows_dir=tmp_path / "workflows",
         workflow_checkpoint_dir=tmp_path / "checkpoints",
+        quota_policy_path=tmp_path / "quota_policy.json",
+        feedback_path=tmp_path / "feedback.jsonl",
+        benchmarks_dir=tmp_path / "benchmarks",
+        baselines_dir=tmp_path / "baselines",
+        rest_api_port=8090,
+        rest_api_token="",
+        plugins_dir=tmp_path / "plugins",
+        teams_dir=tmp_path / "teams",
     )
 
     repositories: list[CapturingMemoryRepository] = []
@@ -167,6 +175,14 @@ def test_main_handles_keyboard_interrupt_without_traceback(tmp_path: Path, monke
         audit_log_path=tmp_path / "audit.jsonl",
         workflows_dir=tmp_path / "workflows",
         workflow_checkpoint_dir=tmp_path / "checkpoints",
+        quota_policy_path=tmp_path / "quota_policy.json",
+        feedback_path=tmp_path / "feedback.jsonl",
+        benchmarks_dir=tmp_path / "benchmarks",
+        baselines_dir=tmp_path / "baselines",
+        rest_api_port=8090,
+        rest_api_token="",
+        plugins_dir=tmp_path / "plugins",
+        teams_dir=tmp_path / "teams",
     )
 
     fake_activity = FakeActivityLogger(settings.activity_log_path)
@@ -234,6 +250,14 @@ def test_main_auto_flag_forces_autonomous_mode(tmp_path: Path, monkeypatch) -> N
         audit_log_path=tmp_path / "audit.jsonl",
         workflows_dir=tmp_path / "workflows",
         workflow_checkpoint_dir=tmp_path / "checkpoints",
+        quota_policy_path=tmp_path / "quota_policy.json",
+        feedback_path=tmp_path / "feedback.jsonl",
+        benchmarks_dir=tmp_path / "benchmarks",
+        baselines_dir=tmp_path / "baselines",
+        rest_api_port=8090,
+        rest_api_token="",
+        plugins_dir=tmp_path / "plugins",
+        teams_dir=tmp_path / "teams",
     )
 
     run_cli_kwargs: dict = {}
