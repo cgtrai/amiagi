@@ -411,6 +411,15 @@ def main(argv: list[str] | None = None) -> None:
     plugin_loader = PluginLoader(plugins_dir=settings.plugins_dir)
     ci_adapter = CIAdapter()
 
+    # Wire domain routes so /api start exposes real endpoints
+    rest_server.wire_domain_routes(
+        agent_registry=agent_registry,
+        task_queue=task_queue,
+        workflow_engine=workflow_engine,
+        metrics_collector=metrics_collector,
+        budget_manager=budget_manager,
+    )
+
     # ------------------------------------------------------------------
     # Team Composition (Phase 11)
     # ------------------------------------------------------------------
