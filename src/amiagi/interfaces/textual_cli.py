@@ -2619,7 +2619,7 @@ class _AmiagiTextualApp(App[None]):
                 return f"[{agent_a}] response"
             def _fn_b(prompt: str) -> str:
                 return f"[{agent_b}] response"
-            result = self._ab_test_runner.compare(agent_a, agent_b, _fn_a, _fn_b, scenarios)
+            result = self._ab_test_runner.compare(agent_a, _fn_a, agent_b, _fn_b, scenarios)
             msgs = [
                 f"--- A/B COMPARE: {agent_a} vs {agent_b} ---",
                 f"  A wins: {result.a_wins}, B wins: {result.b_wins}, Ties: {result.ties}",
@@ -2833,7 +2833,7 @@ class _AmiagiTextualApp(App[None]):
                 team_id=team_id,
                 reason=f"Manual scale {scale_dir} via TUI",
             )
-            self._dynamic_scaler._history.append(event)
+            self._dynamic_scaler._events.append(event)
             return _CommandOutcome(True, [f"Zespół '{team_id}' — skalowanie {scale_dir} zarejestrowane."])
 
         return _CommandOutcome(True, [

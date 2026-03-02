@@ -12,6 +12,7 @@ try:
 
     _HAS_YAML = True
 except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
     _HAS_YAML = False
 
 from amiagi.application.eval_runner import EvalScenario
@@ -121,6 +122,7 @@ class BenchmarkSuite:
         try:
             raw_text = path.read_text(encoding="utf-8")
             if path.suffix in (".yaml", ".yml") and _HAS_YAML:
+                assert yaml is not None
                 data = yaml.safe_load(raw_text)
             else:
                 data = json.loads(raw_text)

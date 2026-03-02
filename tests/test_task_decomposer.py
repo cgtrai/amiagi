@@ -6,6 +6,31 @@ from amiagi.application.task_decomposer import TaskDecomposer
 from amiagi.domain.task import Task, TaskPriority
 
 
+class _MockChatClient:
+    """Minimal mock satisfying ChatCompletionClient protocol."""
+
+    def __init__(self, response: str = "[]") -> None:
+        self._response = response
+
+    @property
+    def model(self) -> str:
+        return "mock-model"
+
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        system_prompt: str = "",
+        num_ctx: int | None = None,
+    ) -> str:
+        return self._response
+
+    def ping(self) -> bool:
+        return True
+
+    def list_models(self) -> list[str]:
+        return ["mock-model"]
+
+
 class TestTaskDecomposer:
     def test_trivial_decompose_without_client(self) -> None:
         decomposer = TaskDecomposer(client=None)
@@ -37,11 +62,7 @@ class TestTaskDecomposer:
             {"title": "Write tests", "description": "Add unit tests", "priority": "normal", "dependencies": [1]},
         ]
 
-        class MockClient:
-            def chat(self, *, messages, system_prompt=""):
-                return json.dumps(sub_items)
-
-        decomposer = TaskDecomposer(client=MockClient())
+        decomposer = TaskDecomposer(client=_MockChatClient(json.dumps(sub_items)))
         parent = Task(task_id="p1", title="Build feature X", description="Full implementation")
         subtasks = decomposer.decompose(parent)
         assert len(subtasks) == 3
@@ -54,12 +75,7 @@ class TestTaskDecomposer:
 
     def test_decompose_with_llm_returning_garbage_falls_back(self) -> None:
         """When LLM returns non-JSON, fall back to trivial decompose."""
-
-        class MockClient:
-            def chat(self, *, messages, system_prompt=""):
-                return "I'm not sure how to decompose this task."
-
-        decomposer = TaskDecomposer(client=MockClient())
+        decomposer = TaskDecomposer(client=_MockChatClient("I'm not sure how to decompose this task."))
         parent = Task(task_id="p1", title="Ambiguous task")
         subtasks = decomposer.decompose(parent)
         # Should fall back to trivial (single subtask)
@@ -69,11 +85,16 @@ class TestTaskDecomposer:
     def test_decompose_with_llm_raising_falls_back(self) -> None:
         """When LLM raises, fall back to trivial decompose."""
 
-        class MockClient:
-            def chat(self, *, messages, system_prompt=""):
+        class _RaisingClient(_MockChatClient):
+            def chat(
+                self,
+                messages: list[dict[str, str]],
+                system_prompt: str = "",
+                num_ctx: int | None = None,
+            ) -> str:
                 raise RuntimeError("Connection refused")
 
-        decomposer = TaskDecomposer(client=MockClient())
+        decomposer = TaskDecomposer(client=_RaisingClient())
         parent = Task(task_id="p1", title="Task")
         subtasks = decomposer.decompose(parent)
         assert len(subtasks) == 1

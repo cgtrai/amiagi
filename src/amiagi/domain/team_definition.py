@@ -16,6 +16,7 @@ try:
 
     _HAS_YAML = True
 except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
     _HAS_YAML = False
 
 
@@ -131,6 +132,7 @@ class TeamDefinition:
         """Save team definition to a YAML file."""
         if not _HAS_YAML:
             raise RuntimeError("PyYAML is required: pip install pyyaml")
+        assert yaml is not None
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
@@ -142,5 +144,6 @@ class TeamDefinition:
         """Load team definition from a YAML file."""
         if not _HAS_YAML:
             raise RuntimeError("PyYAML is required: pip install pyyaml")
+        assert yaml is not None
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return cls.from_dict(raw)

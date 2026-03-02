@@ -12,6 +12,7 @@ try:
 
     _HAS_YAML = True
 except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore[assignment]
     _HAS_YAML = False
 
 
@@ -167,6 +168,7 @@ class EvalRubric:
         """Save rubric to a YAML file."""
         if not _HAS_YAML:
             raise RuntimeError("PyYAML is required for YAML support: pip install pyyaml")
+        assert yaml is not None
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             yaml.dump(self.to_dict(), default_flow_style=False, allow_unicode=True),
@@ -178,6 +180,7 @@ class EvalRubric:
         """Load rubric from a YAML file."""
         if not _HAS_YAML:
             raise RuntimeError("PyYAML is required for YAML support: pip install pyyaml")
+        assert yaml is not None
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return EvalRubric.from_dict(raw)
 
