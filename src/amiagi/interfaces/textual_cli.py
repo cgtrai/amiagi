@@ -1526,6 +1526,7 @@ class _AmiagiTextualApp(App[None]):
                     ok, payload, _models = _select_executor_model_by_index(self._chat_service, index)
                     if not ok:
                         return _CommandOutcome(True, [payload])
+                    self._sync_agent_model("polluks", payload, "ollama")
                     self._persist_model_config()
                     return _CommandOutcome(True, [_("models.active_executor", model=payload)])
                 else:
@@ -1552,6 +1553,7 @@ class _AmiagiTextualApp(App[None]):
                         usage_tracker=self._usage_tracker,
                     )
                     self._chat_service.ollama_client = openai_client
+                    self._sync_agent_model("polluks", name, source)
                     self._show_api_usage_bar()
                     self._persist_model_config()
                     return _CommandOutcome(True, [_("models.active_executor_api", name=name, source=source.upper())])
@@ -3352,6 +3354,11 @@ class _AmiagiTextualApp(App[None]):
                         _("wizard.finalize_kastor_no_key")
                     )
 
+        # --- Sync AgentDescriptor in registry ---
+        self._sync_agent_model("polluks", polluks_name, polluks_source)
+        if kastor_name:
+            self._sync_agent_model("kastor", kastor_name, kastor_source)
+
         # --- Show errors ---
         for msg in errors:
             self._append_log("user_model_log", msg)
@@ -3400,6 +3407,19 @@ class _AmiagiTextualApp(App[None]):
                 "kastor_source": kastor_source,
             },
         )
+
+    def _sync_agent_model(
+        self, agent_id: str, model_name: str, source: str = "ollama"
+    ) -> None:
+        """Update the agent descriptor in the registry so the dashboard shows the correct model."""
+        if self._agent_registry is None:
+            return
+        try:
+            self._agent_registry.update_model(
+                agent_id, model_name=model_name, model_backend=source
+            )
+        except KeyError:
+            pass  # agent not registered — nothing to sync
 
     def _persist_model_config(self) -> None:
         """Snapshot current model assignments and save to disk."""

@@ -99,6 +99,29 @@ class AgentRegistry:
             "reason": reason,
         })
 
+    def update_model(
+        self,
+        agent_id: str,
+        model_name: str,
+        model_backend: str = "",
+    ) -> None:
+        """Update the declared model for *agent_id*.
+
+        Only changes fields that are non-empty so callers can update just one.
+        """
+        with self._lock:
+            descriptor = self._agents.get(agent_id)
+            if descriptor is None:
+                raise KeyError(f"Agent {agent_id!r} not found")
+            if model_name:
+                descriptor.model_name = model_name
+            if model_backend:
+                descriptor.model_backend = model_backend
+        self._emit("agent.model_changed", agent_id, {
+            "model_name": model_name or descriptor.model_name,
+            "model_backend": model_backend or descriptor.model_backend,
+        })
+
     # ---- helpers ----
 
     def _emit(
