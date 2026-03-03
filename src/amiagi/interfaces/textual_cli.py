@@ -311,6 +311,9 @@ def _build_help_commands() -> list[tuple[str, str]]:
         ("/budget reset <agent>", _("help.cmd.budget_reset")),
         ("/quota status", _("help.cmd.quota_status")),
         ("/quota set <rola> <tokens> <cost> <req/h>", _("help.cmd.quota_set")),
+        ("/energy status", _("help.cmd.energy_status")),
+        ("/energy set <#.##>", _("help.cmd.energy_set")),
+        ("/energy reset", _("help.cmd.energy_reset")),
         # --- Phase 9: Evaluation & Feedback ---
         ("/eval run <agent> [--benchmark X]", _("help.cmd.eval_run")),
         ("/eval compare <agent_a> <agent_b>", _("help.cmd.eval_compare")),
@@ -1968,12 +1971,14 @@ class _AmiagiTextualApp(App[None]):
             return self._handle_workflow_command(text)
 
         # ==================================================================
-        # Phase 8 — /budget, /quota commands
+        # Phase 8 — /budget, /quota, /energy commands
         # ==================================================================
         if lower.startswith("/budget"):
             return self._handle_budget_command(text)
         if lower.startswith("/quota"):
             return self._handle_quota_command(text)
+        if lower.startswith("/energy") or lower.startswith("/koszt"):
+            return self._handle_energy_command(text)
 
         # ==================================================================
         # Phase 9 — /eval, /feedback commands
@@ -2695,6 +2700,64 @@ class _AmiagiTextualApp(App[None]):
         return _CommandOutcome(True, [
             _("budget.usage")
         ])
+
+    def _handle_energy_command(self, raw_text: str) -> _CommandOutcome:
+        """Handle ``/energy`` (EN) and ``/koszt`` (PL) commands."""
+        tracker = getattr(self._chat_service, "energy_tracker", None)
+        if tracker is None:
+            return _CommandOutcome(True, [_("energy.inactive")])
+
+        parts = raw_text.strip().split()
+        # Normalise: '/koszt energii set 0.85' -> action='set', or '/energy set 0.85'
+        action = ""
+        value_idx = 2
+        if len(parts) > 1:
+            second = parts[1].lower()
+            if second == "energii" and len(parts) > 2:
+                action = parts[2].lower()
+                value_idx = 3
+            else:
+                action = second
+        if not action:
+            action = "status"
+
+        if action in {"set", "ustaw"}:
+            if len(parts) <= value_idx:
+                return _CommandOutcome(True, [_("energy.set_usage")])
+            try:
+                price = float(parts[value_idx])
+            except ValueError:
+                return _CommandOutcome(True, [_("energy.set_usage")])
+            currency = parts[value_idx + 1].upper() if len(parts) > value_idx + 1 else ""
+            tracker.set_price_per_kwh(price, currency)
+            cur = tracker.currency
+            return _CommandOutcome(True, [
+                _("energy.set_done", price=f"{price:.2f}", currency=cur),
+            ])
+
+        if action == "reset":
+            tracker.reset()
+            return _CommandOutcome(True, [_("energy.reset_done")])
+
+        # status (default)
+        s = tracker.summary()
+        if s.total_requests == 0 and s.price_per_kwh == 0:
+            return _CommandOutcome(True, [_("energy.no_data")])
+
+        msgs = [_("energy.header")]
+        gpu_info = f"{s.gpu_power_limit_w:.0f} W" if s.gpu_power_limit_w else _("energy.gpu_unknown")
+        msgs.append(_("energy.gpu_tdp", tdp=gpu_info))
+        msgs.append(_("energy.price", price=f"{s.price_per_kwh:.2f}", currency=s.currency))
+        msgs.append(_("energy.requests", n=str(s.total_requests)))
+        msgs.append(_("energy.inference_time", seconds=f"{s.total_inference_seconds:.1f}"))
+        avg_draw = f"{s.avg_power_draw_w:.1f} W" if s.avg_power_draw_w else "—"
+        msgs.append(_("energy.avg_power", watts=avg_draw))
+        msgs.append(_("energy.total_energy", wh=f"{s.total_energy_wh:.4f}"))
+        if s.price_per_kwh > 0:
+            msgs.append(_("energy.total_cost", cost=f"{s.total_cost_local:.6f}", currency=s.currency))
+        else:
+            msgs.append(_("energy.no_price_set"))
+        return _CommandOutcome(True, msgs)
 
     def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
         if self._quota_policy is None:

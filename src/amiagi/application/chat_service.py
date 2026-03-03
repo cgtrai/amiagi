@@ -13,6 +13,7 @@ from amiagi.application.communication_protocol import (
 from amiagi.application.model_client_protocol import ChatCompletionClient
 from amiagi.application.skills_loader import SkillsLoader
 from amiagi.i18n import get_language_directive
+from amiagi.infrastructure.energy_cost_tracker import EnergyCostTracker
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
 from amiagi.infrastructure.vram_advisor import VramAdvisor
@@ -200,6 +201,7 @@ class ChatService:
     supervisor_service: "SupervisorService | None" = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
     skills_loader: SkillsLoader | None = None
+    energy_tracker: EnergyCostTracker | None = None
 
     # Backward-compat alias — legacy code may still use ollama_client.
     @property
@@ -213,6 +215,48 @@ class ChatService:
     def is_api_model(self) -> bool:
         """Return True when the current model client is a cloud API backend."""
         return getattr(self.model_client, "_is_api_client", False)
+
+    def _tracked_chat(
+        self,
+        messages: list[dict[str, str]],
+        system_prompt: str,
+        num_ctx: int | None = None,
+    ) -> str:
+        """Call *model_client.chat()* with energy metering when a tracker is set."""
+        tracker = self.energy_tracker
+        if tracker is None or self.is_api_model():
+            return self.model_client.chat(
+                messages=messages,
+                system_prompt=system_prompt,
+                num_ctx=num_ctx,
+            )
+        import uuid as _uuid
+        req_id = str(_uuid.uuid4())
+        start, snap_before = tracker.begin_request()
+        try:
+            result = self.model_client.chat(
+                messages=messages,
+                system_prompt=system_prompt,
+                num_ctx=num_ctx,
+            )
+        except Exception:
+            # Still record partial energy on error
+            tracker.end_request(
+                req_id,
+                str(getattr(self.model_client, 'model', '')),
+                str(getattr(self.model_client, 'client_role', 'executor')),
+                start,
+                snap_before,
+            )
+            raise
+        tracker.end_request(
+            req_id,
+            str(getattr(self.model_client, 'model', '')),
+            str(getattr(self.model_client, 'client_role', 'executor')),
+            start,
+            snap_before,
+        )
+        return result
 
     def _workspace_guide(self) -> str:
         resolved = self.work_dir.resolve()
@@ -424,7 +468,7 @@ class ChatService:
             conversation[-1]["content"] = f"{actor_prefix}{user_message_for_model}"
 
         system_prompt = self.build_system_prompt(user_message)
-        response = self.model_client.chat(
+        response = self._tracked_chat(
             messages=conversation,
             system_prompt=system_prompt,
             num_ctx=self._effective_num_ctx(),
@@ -502,7 +546,7 @@ class ChatService:
             f"Opis: {description}"
         )
         conversation.append({"role": "user", "content": user_prompt})
-        response = self.model_client.chat(
+        response = self._tracked_chat(
             messages=conversation,
             system_prompt=CODE_SYSTEM_PROMPT,
             num_ctx=self._effective_num_ctx(),
@@ -545,7 +589,7 @@ class ChatService:
                 ),
             }
         ]
-        summary = self.model_client.chat(
+        summary = self._tracked_chat(
             messages=conversation,
             system_prompt=SUMMARY_SYSTEM_PROMPT,
             num_ctx=self._effective_num_ctx(),
@@ -573,7 +617,7 @@ class ChatService:
             )
 
         system_prompt = self.build_system_prompt("bootstrap runtime")
-        readiness = self.model_client.chat(
+        readiness = self._tracked_chat(
             messages=[{"role": "user", "content": BOOTSTRAP_USER_PROMPT}],
             system_prompt=system_prompt,
             num_ctx=self._effective_num_ctx(),

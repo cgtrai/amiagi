@@ -39,6 +39,8 @@ from amiagi.infrastructure.workflow_checkpoint import WorkflowCheckpoint
 # Phase 8
 from amiagi.application.budget_manager import BudgetManager
 from amiagi.domain.quota_policy import QuotaPolicy
+from amiagi.infrastructure.energy_cost_tracker import EnergyCostTracker
+from amiagi.infrastructure.gpu_power_monitor import GpuPowerMonitor
 from amiagi.infrastructure.rate_limiter import RateLimiter
 from amiagi.infrastructure.vram_scheduler import VRAMScheduler
 # Phase 9
@@ -296,6 +298,7 @@ def main(argv: list[str] | None = None) -> None:
         work_dir=settings.work_dir,
         supervisor_service=supervisor_service,
         skills_loader=skills_loader,
+        energy_tracker=EnergyCostTracker(gpu_monitor=GpuPowerMonitor()),
     )
 
     # --- Populate supervisor's sponsor_task from startup dialogue ---
