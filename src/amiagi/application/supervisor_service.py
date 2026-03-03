@@ -13,6 +13,7 @@ from amiagi.application.communication_protocol import (
 )
 from amiagi.application.model_client_protocol import ChatCompletionClient
 from amiagi.application.tool_calling import ToolCall, parse_tool_calls
+from amiagi.i18n import get_language_directive
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.ollama_client import OllamaClientError
 
@@ -65,7 +66,9 @@ class SupervisorService:
 
     def _full_system_prompt(self) -> str:
         comm_prompt = build_kastor_communication_prompt(self.comm_rules)
-        return f"{SUPERVISOR_SYSTEM_PROMPT}\n\n{comm_prompt}"
+        lang_directive = get_language_directive()
+        lang_block = f"\n\n{lang_directive}" if lang_directive else ""
+        return f"{SUPERVISOR_SYSTEM_PROMPT}\n\n{comm_prompt}{lang_block}"
 
     _ALLOWED_WORK_STATES = {
         "RUNNING",

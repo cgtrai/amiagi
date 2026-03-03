@@ -12,6 +12,7 @@ from amiagi.application.communication_protocol import (
 )
 from amiagi.application.model_client_protocol import ChatCompletionClient
 from amiagi.application.skills_loader import SkillsLoader
+from amiagi.i18n import get_language_directive
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.memory_repository import MemoryRepository
 from amiagi.infrastructure.vram_advisor import VramAdvisor
@@ -599,8 +600,11 @@ class ChatService:
         plan_context = self._build_plan_context()
         comm_prompt = build_polluks_communication_prompt(self.comm_rules)
         skills_section = self._build_skills_section("polluks")
+        lang_directive = get_language_directive()
+        lang_block = f"{lang_directive}\n\n" if lang_directive else ""
         return (
             f"{SYSTEM_PROMPT}\n\n"
+            f"{lang_block}"
             f"{comm_prompt}\n\n"
             f"{FRAMEWORK_RUNTIME_GUIDE}\n\n"
             f"{FRAMEWORK_CAPABILITIES_MAP}\n\n"

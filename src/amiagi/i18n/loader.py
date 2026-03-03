@@ -79,6 +79,35 @@ def _(key: str, **kwargs: Any) -> str:
 
 
 # ------------------------------------------------------------------
+# Language directive for LLM system prompts
+# ------------------------------------------------------------------
+
+_LANG_NAMES: dict[str, str] = {
+    "pl": "Polish",
+    "en": "English",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "uk": "Ukrainian",
+}
+
+
+def get_language_directive() -> str:
+    """Return a short English instruction telling the model which language to use.
+
+    Returns an empty string for the default language (``pl``) because the
+    hardcoded prompts are already in Polish.
+    """
+    if _current_lang == "pl":
+        return ""
+    lang_name = _LANG_NAMES.get(_current_lang, _current_lang)
+    return (
+        f"LANGUAGE DIRECTIVE: You MUST respond to the user in {lang_name}. "
+        f"All your answers, explanations, and status messages must be in {lang_name}."
+    )
+
+
+# ------------------------------------------------------------------
 # Auto-initialise from environment on import
 # ------------------------------------------------------------------
 _initial_lang = os.environ.get("AMIAGI_LANG", "pl").strip().lower()

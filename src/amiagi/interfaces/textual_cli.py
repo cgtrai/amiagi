@@ -545,7 +545,8 @@ class _AmiagiTextualApp(App[None]):
     #tech_column { width: 40%; height: 100%; layout: vertical; }
     #user_model_log { height: 1fr; border: round #4ea1ff; }
     #busy_indicator { height: 3; border: round #9a6bff; padding: 0 1; }
-    #input_box { dock: bottom; }
+    #input_box { dock: bottom; border: tall $success-lighten-2; }
+    #input_box:focus { border: tall $accent; }
     #router_status { height: 8; border: round #9a6bff; }
     #api_usage_bar { height: 2; border: round #ff9500; padding: 0 1; display: none; }
     #supervisor_log { height: 1fr; border: round #47c26b; }

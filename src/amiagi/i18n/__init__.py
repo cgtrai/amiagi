@@ -16,6 +16,6 @@ Language resolution order:
 4. Default: ``"pl"``
 """
 
-from amiagi.i18n.loader import _, set_language, get_language, available_languages
+from amiagi.i18n.loader import _, set_language, get_language, available_languages, get_language_directive
 
-__all__ = ["_", "set_language", "get_language", "available_languages"]
+__all__ = ["_", "set_language", "get_language", "available_languages", "get_language_directive"]
