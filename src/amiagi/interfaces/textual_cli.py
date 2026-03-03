@@ -569,6 +569,7 @@ class _AmiagiTextualApp(App[None]):
         router_mailbox_log_path: Path | None = None,
         activity_logger: ActivityLogger | None = None,
         settings: Settings | None = None,
+        autonomous_mode: bool = False,
         agent_registry: AgentRegistry | None = None,
         agent_factory: AgentFactory | None = None,
         task_queue: TaskQueue | None = None,
@@ -620,6 +621,9 @@ class _AmiagiTextualApp(App[None]):
         self._router_mailbox_log_path = router_mailbox_log_path or Path("./logs/router_mailbox.jsonl")
         self._activity_logger = activity_logger
         self._settings = settings
+        self._autonomous_mode = autonomous_mode
+        if autonomous_mode:
+            permission_manager.allow_all = True
         # ---- Phase 1-4 services ----
         self._agent_registry = agent_registry
         self._agent_factory = agent_factory
@@ -698,6 +702,7 @@ class _AmiagiTextualApp(App[None]):
             default_seconds=SUPERVISOR_IDLE_THRESHOLD_SECONDS,
         )
         self._router_cycle_in_progress = False
+        self._last_background_worker: threading.Thread | None = None
         self._supervisor_outbox: list[dict[str, str]] = []
         self._actor_states: dict[str, str] = {
             "router": "INIT",
@@ -1123,14 +1128,27 @@ class _AmiagiTextualApp(App[None]):
             },
         )
 
+        # --- Dispatch heavy model work to background thread (non-blocking) ---
+        self._router_cycle_in_progress = True
+        self._set_actor_state("router", "RESUMING", f"Auto-wznowienie planu po {INTERRUPT_AUTORESUME_IDLE_SECONDS:.0f}s IDLE")
+        self._set_actor_state("creator", "THINKING", "Polluks wznawia plan")
+
+        worker = threading.Thread(
+            target=self._auto_resume_background,
+            daemon=True,
+            name="amiagi-auto-resume",
+        )
+        self._last_background_worker = worker
+        worker.start()
+        return True
+
+    def _auto_resume_background(self) -> None:
+        """Execute auto-resume model inference in a background thread."""
         resume_prompt = (
             "Wznów przerwany plan po timeout decyzji użytkownika. "
             "Jeśli nie ma aktywnego planu, zacznij od poznania zasobów frameworka przez pojedynczy tool_call "
             "(preferuj check_capabilities lub list_dir)."
         )
-        self._router_cycle_in_progress = True
-        self._set_actor_state("router", "RESUMING", f"Auto-wznowienie planu po {INTERRUPT_AUTORESUME_IDLE_SECONDS:.0f}s IDLE")
-        self._set_actor_state("creator", "THINKING", "Polluks wznawia plan")
         try:
             answer = self._ask_executor_with_router_mailbox(resume_prompt)
             if self._chat_service.supervisor_service is not None:
@@ -1154,7 +1172,7 @@ class _AmiagiTextualApp(App[None]):
         except (OllamaClientError, OSError) as error:
             self._append_log("user_model_log", f"Błąd auto-wznowienia planu: {error}")
             self._finalize_router_cycle(event="Auto-wznowienie przerwane błędem")
-            return True
+            return
 
         answer = self._enforce_supervised_progress(resume_prompt, answer)
         answer = self._resolve_tool_calls(answer)
@@ -1171,7 +1189,6 @@ class _AmiagiTextualApp(App[None]):
             self._set_actor_state("creator", "PASSIVE", "Auto-wznowienie bez kroku narzędziowego")
             self._record_collaboration_signal("no_handoff", {"phase": "auto_resume", "tool": False})
         self._finalize_router_cycle(event="Router wznowił plan po timeout decyzji")
-        return True
 
     def _finalize_router_cycle(self, *, event: str) -> None:
         self._router_cycle_in_progress = False
@@ -3133,40 +3150,84 @@ class _AmiagiTextualApp(App[None]):
         """Begin the interactive model selection wizard on mount.
 
         If a saved model config exists, auto-restore it and skip the wizard.
+        Heavy HTTP work (model listing, API pings) is dispatched to a
+        background thread so the Textual event loop is never blocked.
         """
-        # --- Try to restore from previous session ---
-        saved = SessionModelConfig.load(self._model_config_path)
-        if saved and saved.polluks_model:
-            available = self._build_wizard_model_list()
-            available_names = {n for n, _s in available}
-            polluks_ok = saved.polluks_model in available_names or saved.polluks_source != "ollama"
-            kastor_ok = (
-                not saved.kastor_model
-                or saved.kastor_model in available_names
-                or saved.kastor_source != "ollama"
-            )
-            if polluks_ok:
-                self._wizard_polluks_choice = (saved.polluks_model, saved.polluks_source)
-                self._wizard_kastor_models = available
-                self._wizard_models = available
-                self._wizard_finalize(saved.kastor_model if kastor_ok else "", saved.kastor_source if kastor_ok else "ollama")
-                self._append_log(
-                    "user_model_log",
-                    _("wizard.restored"),
+        self._append_log(
+            "user_model_log",
+            "⏳ Ładowanie konfiguracji modeli…",
+        )
+        worker = threading.Thread(
+            target=self._wizard_startup_background,
+            daemon=True,
+            name="amiagi-wizard-startup",
+        )
+        self._last_background_worker = worker
+        worker.start()
+
+    def _wizard_startup_background(self) -> None:
+        """Background thread: fetch models & auto-restore or prepare interactive wizard."""
+        try:
+            saved = SessionModelConfig.load(self._model_config_path)
+            if saved and saved.polluks_model:
+                available = self._build_wizard_model_list()
+                available_names = {n for n, _s in available}
+                polluks_ok = saved.polluks_model in available_names or saved.polluks_source != "ollama"
+                kastor_ok = (
+                    not saved.kastor_model
+                    or saved.kastor_model in available_names
+                    or saved.kastor_source != "ollama"
                 )
+                if polluks_ok:
+                    self._wizard_polluks_choice = (saved.polluks_model, saved.polluks_source)
+                    self._wizard_kastor_models = available
+                    self._wizard_models = available
+                    self._wizard_finalize(saved.kastor_model if kastor_ok else "", saved.kastor_source if kastor_ok else "ollama")
+                    self._run_on_ui_thread(lambda: self._append_log(
+                        "user_model_log",
+                        _("wizard.restored"),
+                    ))
+                    self._on_wizard_ready()
+                    return
+
+            models = self._build_wizard_model_list()
+            if not models:
+                def _no_models():
+                    self._append_log(
+                        "user_model_log",
+                        _("wizard.no_models"),
+                    )
+                    self._model_configured = True
+                self._run_on_ui_thread(_no_models)
+                self._on_wizard_ready()
                 return
 
-        self._wizard_models = self._build_wizard_model_list()
-        if not self._wizard_models:
-            self._append_log(
-                "user_model_log",
-                _("wizard.no_models"),
-            )
-            self._model_configured = True  # Unblock input
-            return
+            # Interactive wizard — show prompt on UI thread
+            self._wizard_models = models
+            def _show_interactive():
+                self._wizard_phase = 1
+                self._wizard_show_polluks_prompt()
+            self._run_on_ui_thread(_show_interactive)
+        except Exception as exc:
+            def _show_error():
+                self._append_log(
+                    "user_model_log",
+                    f"Błąd inicjalizacji wizarda modeli: {exc}",
+                )
+                self._model_configured = True
+            self._run_on_ui_thread(_show_error)
+            self._on_wizard_ready()
 
-        self._wizard_phase = 1
-        self._wizard_show_polluks_prompt()
+    def _on_wizard_ready(self) -> None:
+        """Called after wizard completes (from background thread).
+
+        If autonomous_mode is active, auto-dispatch an initial 'kontynuuj' turn.
+        """
+        if getattr(self, "_autonomous_mode", False) and self._model_configured:
+            def _auto_kickoff():
+                if not self._router_cycle_in_progress:
+                    self._dispatch_user_turn("kontynuuj")
+            self._run_on_ui_thread(_auto_kickoff)
 
     def _wizard_show_polluks_prompt(self) -> None:
         """Display (or re-display) the Polluks model selection prompt."""
@@ -3470,6 +3531,10 @@ class _AmiagiTextualApp(App[None]):
                 "kastor_source": kastor_source,
             },
         )
+
+        # If called from the interactive wizard on UI thread, trigger auto-kickoff
+        if threading.get_ident() == self._main_thread_id:
+            self._on_wizard_ready()
 
     def _sync_agent_model(
         self, agent_id: str, model_name: str, source: str = "ollama"
@@ -4041,6 +4106,9 @@ class _AmiagiTextualApp(App[None]):
 
         self._watchdog_attempts += 1
         self._watchdog_capped_notified = False
+
+        # --- Dispatch heavy model work to background thread (non-blocking) ---
+        self._router_cycle_in_progress = True
         self._set_actor_state("router", "WATCHDOG", "Router wzbudza Kastora po bezczynności")
         self._set_actor_state("supervisor", "REVIEWING", "Kastor sprawdza status działań Twórcy")
 
@@ -4055,6 +4123,22 @@ class _AmiagiTextualApp(App[None]):
             "should_remind_continuation": True,
             "gpu_busy_over_50": False,
         }
+
+        worker = threading.Thread(
+            target=self._watchdog_background_work,
+            args=(supervisor, context),
+            daemon=True,
+            name="amiagi-watchdog",
+        )
+        self._last_background_worker = worker
+        worker.start()
+
+    def _watchdog_background_work(
+        self,
+        supervisor: Any,
+        context: dict[str, Any],
+    ) -> None:
+        """Execute watchdog model inference in a background thread."""
 
         prompt = (
             "[RUNTIME_SUPERVISION_CONTEXT]\n"
@@ -4086,6 +4170,7 @@ class _AmiagiTextualApp(App[None]):
                 _("watchdog.error_suspended"),
             )
             self._set_actor_state("router", "PAUSED", "Watchdog zatrzymany po błędzie nadzorcy")
+            self._finalize_router_cycle(event="Watchdog przerwany błędem")
             return
 
         self._set_actor_state("supervisor", "READY", "Kastor zakończył wzbudzenie")
@@ -5138,6 +5223,7 @@ def run_textual_cli(
     router_mailbox_log_path: Path | None = None,
     activity_logger: ActivityLogger | None = None,
     settings: Settings | None = None,
+    autonomous_mode: bool = False,
     agent_registry: AgentRegistry | None = None,
     agent_factory: AgentFactory | None = None,
     task_queue: TaskQueue | None = None,
@@ -5188,6 +5274,7 @@ def run_textual_cli(
         router_mailbox_log_path=router_mailbox_log_path,
         activity_logger=activity_logger,
         settings=settings,
+        autonomous_mode=autonomous_mode,
         agent_registry=agent_registry,
         agent_factory=agent_factory,
         task_queue=task_queue,

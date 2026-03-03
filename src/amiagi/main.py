@@ -488,6 +488,7 @@ def main(argv: list[str] | None = None) -> None:
                 router_mailbox_log_path=router_mailbox_log_path,
                 activity_logger=activity_logger,
                 settings=settings,
+                autonomous_mode=settings.autonomous_mode,
                 agent_registry=agent_registry,
                 agent_factory=agent_factory,
                 task_queue=task_queue,

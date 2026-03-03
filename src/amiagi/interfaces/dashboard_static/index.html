@@ -144,9 +144,10 @@ function connectSSE() {
 }
 
 // Initial load + periodic refresh
-refresh();
-setInterval(refresh, 5000);
-connectSSE();
+refresh().finally(() => {
+  setInterval(refresh, 5000);
+  connectSSE();
+});
 </script>
 </body>
 </html>

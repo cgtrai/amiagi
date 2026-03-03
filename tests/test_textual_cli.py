@@ -863,6 +863,10 @@ def test_textual_watchdog_auto_resumes_paused_plan_after_idle_timeout(monkeypatc
 
     app._run_supervisor_idle_watchdog()
 
+    # Model work is dispatched to a background thread; wait for it
+    if app._last_background_worker is not None:
+        app._last_background_worker.join(timeout=10)
+
     assert app._plan_pause_active is False
     assert app._pending_user_decision is False
     assert "textual_interrupt_autoresume" in supervisor.stages
@@ -930,6 +934,10 @@ def test_textual_watchdog_nudges_supervisor_after_inactivity(monkeypatch, tmp_pa
     app._last_progress_monotonic = 0.0
 
     app._run_supervisor_idle_watchdog()
+
+    # Model work is dispatched to a background thread; wait for it
+    if app._last_background_worker is not None:
+        app._last_background_worker.join(timeout=10)
 
     assert "textual_watchdog_nudge" in supervisor.stages
     assert logs["user_model_log"][-1] == "Model(auto): Watchdog uruchomił kolejny krok."

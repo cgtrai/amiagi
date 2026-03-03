@@ -6,7 +6,7 @@ import json
 import math
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
 
@@ -308,7 +308,8 @@ class DashboardServer:
         _DashboardHandler._budget_manager = self._budget_manager
         _DashboardHandler._static_dir = self._static_dir
 
-        self._server = HTTPServer(("0.0.0.0", port), _DashboardHandler)
+        self._server = ThreadingHTTPServer(("0.0.0.0", port), _DashboardHandler)
+        self._server.daemon_threads = True
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name="dashboard-server",
