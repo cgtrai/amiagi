@@ -1410,8 +1410,7 @@ class _AmiagiTextualApp(App[None]):
                 else:
                     self.copy_to_clipboard(text)
                     self.notify(
-                        "Skopiowano przez tryb terminalowy (OSC52). "
-                        f"Szczegóły środowiska: {details}",
+                        _("clipboard.osc52_notify", details=details),
                         severity="information",
                     )
                 return
@@ -1432,10 +1431,7 @@ class _AmiagiTextualApp(App[None]):
             return True
         self._append_log(
             "user_model_log",
-            (
-                f"Odmowa: {reason} (zasób: {resource}). "
-                "W trybie textual użyj /permissions all, aby odblokować operacje."
-            ),
+            _("resource.denied", reason=reason, resource=resource),
         )
         return False
 
@@ -1476,8 +1472,8 @@ class _AmiagiTextualApp(App[None]):
 
                 return _CommandOutcome(True, [
                     _("models.active_header"),
-                    f"  Polluks (wykonawca): {polluks_label}",
-                    f"  Kastor  (nadzorca):  {kastor_label}",
+                    _("models.polluks_label", label=polluks_label),
+                    _("models.kastor_label", label=kastor_label),
                 ])
             if action == "show":
                 combined = self._build_wizard_model_list()
@@ -1571,7 +1567,7 @@ class _AmiagiTextualApp(App[None]):
                     f"plan_pause: {'ON' if self._plan_pause_active else 'OFF'}",
                     f"pending_decision: {'YES' if self._pending_user_decision else 'NO'}",
                     f"IDLE until: {self._format_idle_until()}",
-                    f"Ostatnie zdarzenie: {self._last_router_event}",
+                    f"{_('router.last_event_label')} {self._last_router_event}",
                 ],
             )
 
@@ -1586,14 +1582,14 @@ class _AmiagiTextualApp(App[None]):
                 return _CommandOutcome(
                     True,
                     [
-                        "Niepoprawny format. Użyj: /idle-until 2026-02-27T23:15:00Z lub /idle-until off",
+                        _("idle_until.invalid_format"),
                     ],
                 )
 
             self._set_idle_until(parsed, source="terminal_command")
             if parsed is None:
                 return _CommandOutcome(True, [_("idle_until.cleared")])
-            return _CommandOutcome(True, [f"Ustawiono IDLE until: {self._format_idle_until()}"])
+            return _CommandOutcome(True, [_("idle_until.set", value=self._format_idle_until())])
 
         if lower == "/queue-status":
             policy = self._chat_service.ollama_client.queue_policy
@@ -1648,13 +1644,14 @@ class _AmiagiTextualApp(App[None]):
                 repair_info = _repair_plan_tracking_file(self._work_dir)
                 snapshot = _read_plan_tracking_snapshot(self._work_dir)
 
+            tasks_lbl = _("goal.tasks_label", done=snapshot.get('tasks_done', 0), total=snapshot.get('tasks_total', 0))
             messages = [
                 _("goal.header"),
                 f"path: {snapshot.get('path')}",
                 f"exists: {snapshot.get('exists')}",
                 f"goal: {snapshot.get('goal', '')}",
                 f"current_stage: {snapshot.get('current_stage', '')}",
-                f"tasks: {snapshot.get('tasks_done', 0)}/{snapshot.get('tasks_total', 0)} zakończonych",
+                f"tasks: {tasks_lbl}",
             ]
             if snapshot.get("parse_error"):
                 messages.append("parse_error: true")
@@ -1665,13 +1662,13 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, messages)
 
         if lower.startswith("/import-dialog"):
-            if not self._ensure_resource("disk.read", "Import dialogu wymaga odczytu pliku z dysku"):
+            if not self._ensure_resource("disk.read", _("resource.import_dialog_read")):
                 return _CommandOutcome(True, [])
 
             parts = text.split(maxsplit=1)
             path = Path(parts[1].strip()) if len(parts) == 2 else Path("początkowe_konsultacje.md")
             if not path.exists():
-                return _CommandOutcome(True, [f"Nie znaleziono pliku: {path}"])
+                return _CommandOutcome(True, [_("import_dialog.file_not_found", path=path)])
 
             dialogue = extract_dialogue_without_code(path.read_text(encoding="utf-8"))
             self._chat_service.save_discussion_context(dialogue)
@@ -1685,10 +1682,10 @@ class _AmiagiTextualApp(App[None]):
             network_resource = _network_resource_for_model(self._chat_service.ollama_client.base_url)
             if not self._ensure_resource(
                 network_resource,
-                "Połączenie z modelem wymaga zasobu sieciowego",
+                _("resource.model_network"),
             ):
                 return _CommandOutcome(True, [])
-            if not self._ensure_resource("disk.write", "Zapis skryptu wymaga dostępu do dysku"):
+            if not self._ensure_resource("disk.write", _("resource.script_write")):
                 return _CommandOutcome(True, [])
 
             output_path = Path(parts[1].strip())
@@ -1696,25 +1693,27 @@ class _AmiagiTextualApp(App[None]):
             output_path.parent.mkdir(parents=True, exist_ok=True)
             code = self._chat_service.generate_python_code(description)
             output_path.write_text(code + "\n", encoding="utf-8")
-            return _CommandOutcome(True, [f"Zapisano skrypt: {output_path}"])
+            return _CommandOutcome(True, [_("create_python.saved", path=output_path)])
 
         if lower.startswith("/run-python"):
             parts = shlex.split(text)
             if len(parts) < 2:
                 return _CommandOutcome(True, [_("run_python.usage")])
 
-            if not self._ensure_resource("disk.read", "Uruchomienie skryptu wymaga odczytu pliku"):
+            if not self._ensure_resource("disk.read", _("resource.script_read")):
                 return _CommandOutcome(True, [])
-            if not self._ensure_resource("process.exec", "Uruchomienie skryptu wymaga wykonania procesu"):
+            if not self._ensure_resource("process.exec", _("resource.script_exec")):
                 return _CommandOutcome(True, [])
 
             script_path = Path(parts[1])
             script_args = parts[2:]
             if not script_path.exists():
-                return _CommandOutcome(True, [f"Nie znaleziono skryptu: {script_path}"])
+                return _CommandOutcome(True, [_("run_python.script_not_found", path=script_path)])
 
             result = self._script_executor.execute_python(script_path, script_args)
-            messages = [f"Polecenie: {' '.join(result.command)}", f"Kod wyjścia: {result.exit_code}"]
+            cmd_lbl = _("run_python.command_label", command=' '.join(result.command))
+            exit_lbl = _("run_python.exit_code_label", code=result.exit_code)
+            messages = [cmd_lbl, exit_lbl]
             if result.stdout.strip():
                 messages.extend(["--- STDOUT ---", result.stdout])
             if result.stderr.strip():
@@ -1729,13 +1728,15 @@ class _AmiagiTextualApp(App[None]):
             command_text = parts[1].strip()
             _ok, validation_error = parse_and_validate_shell_command(command_text, self._shell_policy)
             if validation_error is not None:
-                return _CommandOutcome(True, [f"Odrzucono polecenie: {validation_error}"])
+                return _CommandOutcome(True, [_("run_shell.rejected", error=validation_error)])
 
-            if not self._ensure_resource("process.exec", "Uruchomienie shell wymaga wykonania procesu"):
+            if not self._ensure_resource("process.exec", _("resource.shell_exec")):
                 return _CommandOutcome(True, [])
 
             result = self._script_executor.execute_shell(command_text)
-            messages = [f"Polecenie: {' '.join(result.command)}", f"Kod wyjścia: {result.exit_code}"]
+            cmd_lbl = _("run_python.command_label", command=' '.join(result.command))
+            exit_lbl = _("run_python.exit_code_label", code=result.exit_code)
+            messages = [cmd_lbl, exit_lbl]
             if result.stdout.strip():
                 messages.extend(["--- STDOUT ---", result.stdout])
             if result.stderr.strip():
@@ -1779,7 +1780,7 @@ class _AmiagiTextualApp(App[None]):
             network_resource = _network_resource_for_model(self._chat_service.ollama_client.base_url)
             if not self._ensure_resource(
                 network_resource,
-                "Podsumowanie sesji wymaga dostępu sieciowego do modelu",
+                _("resource.session_summary_network"),
             ):
                 return _CommandOutcome(True, [])
             comm_state = {
@@ -1901,7 +1902,7 @@ class _AmiagiTextualApp(App[None]):
             sl.reload()
             available = sl.list_available()
             total = sum(len(v) for v in available.values())
-            return _CommandOutcome(True, [f"Skills przeładowane. Znaleziono {total} skill(s) w {len(available)} roli/rolach."])
+            return _CommandOutcome(True, [_("skills.reloaded", total=total, roles=len(available))])
 
         if lower == "/skills":
             sl = self._chat_service.skills_loader if self._chat_service else None
@@ -2030,23 +2031,24 @@ class _AmiagiTextualApp(App[None]):
                         agent = a
                         break
             if agent is None:
-                return _CommandOutcome(True, [f"Nie znaleziono agenta: {query}"])
+                return _CommandOutcome(True, [_("agents.not_found", query=query)])
+            no_val = _("agents.info.no_skills")
             messages = [
                 _("agents.info_header"),
                 f"  ID:        {agent.agent_id}",
-                f"  Nazwa:     {agent.name}",
-                f"  Rola:      {agent.role.value}",
-                f"  Stan:      {agent.state.value}",
-                f"  Backend:   {agent.model_backend}",
-                f"  Model:     {agent.model_name or '(brak)'}",
-                f"  Umiejętn.: {', '.join(agent.skills) or '(brak)'}",
-                f"  Narzędzia: {', '.join(agent.tools) or '(brak)'}",
-                f"  Utworzony:  {agent.created_at.isoformat(timespec='seconds')}",
+                f"  {_('agents.label.name')}     {agent.name}",
+                f"  {_('agents.label.role')}      {agent.role.value}",
+                f"  {_('agents.label.state')}      {agent.state.value}",
+                f"  {_('agents.label.backend')}   {agent.model_backend}",
+                f"  {_('agents.label.model')}     {agent.model_name or no_val}",
+                f"  {_('agents.label.skills')} {', '.join(agent.skills) or no_val}",
+                f"  {_('agents.label.tools')} {', '.join(agent.tools) or no_val}",
+                f"  {_('agents.label.created')}  {agent.created_at.isoformat(timespec='seconds')}",
             ]
             if agent.persona_prompt:
-                messages.append(f"  Persona:   {agent.persona_prompt[:120]}...")
+                messages.append(f"  {_('agents.label.persona')}   {agent.persona_prompt[:120]}...")
             if agent.metadata:
-                messages.append(f"  Metadata:  {json.dumps(agent.metadata, ensure_ascii=False)}")
+                messages.append(f"  {_('agents.label.metadata')}  {json.dumps(agent.metadata, ensure_ascii=False)}")
             return _CommandOutcome(True, messages)
 
         if action == "pause":
@@ -2055,9 +2057,9 @@ class _AmiagiTextualApp(App[None]):
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.PAUSED, reason="manual")
-                return _CommandOutcome(True, [f"Agent {agent_id} wstrzymany."])
+                return _CommandOutcome(True, [_("agents.paused", id=agent_id)])
             except (KeyError, ValueError) as exc:
-                return _CommandOutcome(True, [f"Błąd: {exc}"])
+                return _CommandOutcome(True, [_("agents.error", error=exc)])
 
         if action == "resume":
             if len(parts) < 3:
@@ -2065,9 +2067,9 @@ class _AmiagiTextualApp(App[None]):
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.IDLE, reason="manual_resume")
-                return _CommandOutcome(True, [f"Agent {agent_id} wznowiony."])
+                return _CommandOutcome(True, [_("agents.resumed", id=agent_id)])
             except (KeyError, ValueError) as exc:
-                return _CommandOutcome(True, [f"Błąd: {exc}"])
+                return _CommandOutcome(True, [_("agents.error", error=exc)])
 
         if action == "terminate":
             if len(parts) < 3:
@@ -2075,13 +2077,12 @@ class _AmiagiTextualApp(App[None]):
             agent_id = parts[2]
             try:
                 self._agent_registry.update_state(agent_id, AgentState.TERMINATED, reason="manual_terminate")
-                return _CommandOutcome(True, [f"Agent {agent_id} zakończony."])
+                return _CommandOutcome(True, [_("agents.terminated", id=agent_id)])
             except (KeyError, ValueError) as exc:
-                return _CommandOutcome(True, [f"Błąd: {exc}"])
+                return _CommandOutcome(True, [_("agents.error", error=exc)])
 
         return _CommandOutcome(True, [
-            "Użycie: /agents list | /agents info <id> | /agents pause <id> "
-            "| /agents resume <id> | /agents terminate <id>"
+            _("agents.usage_full")
         ])
 
     # ------------------------------------------------------------------
@@ -2115,14 +2116,14 @@ class _AmiagiTextualApp(App[None]):
                 saved_path = self._wizard_service.save_blueprint(blueprint)
                 return _CommandOutcome(True, [
                     _("wizard.created_header"),
-                    f"Utworzono agenta: {blueprint.name} (ID: {runtime.agent_id})",
-                    f"  Rola: {blueprint.role}",
-                    f"  Funkcja: {blueprint.team_function}",
-                    f"  Narzędzia: {', '.join(blueprint.required_tools)}",
+                    _("wizard.created", name=blueprint.name, id=runtime.agent_id),
+                    f"  {_('agents.label.role')}  {blueprint.role}",
+                    f"  {_('agents.label.function')} {blueprint.team_function}",
+                    f"  {_('agents.label.tools')} {', '.join(blueprint.required_tools)}",
                     f"  Blueprint: {saved_path}",
                 ])
             except Exception as exc:
-                return _CommandOutcome(True, [f"Błąd tworzenia agenta: {exc}"])
+                return _CommandOutcome(True, [_("wizard.create_error", error=exc)])
 
         if action == "blueprints":
             names = self._wizard_service.list_blueprints()
@@ -2139,15 +2140,15 @@ class _AmiagiTextualApp(App[None]):
             bp_name = parts[2].strip()
             blueprint = self._wizard_service.load_blueprint(bp_name)
             if blueprint is None:
-                return _CommandOutcome(True, [f"Nie znaleziono blueprintu: {bp_name}"])
+                return _CommandOutcome(True, [_("wizard.load_not_found", name=bp_name)])
             return _CommandOutcome(True, [
                 _("wizard.blueprint_header"),
-                f"  Nazwa: {blueprint.name}",
-                f"  Rola: {blueprint.role}",
-                f"  Funkcja: {blueprint.team_function}",
-                f"  Umiejętn.: {', '.join(blueprint.required_skills)}",
-                f"  Narzędzia: {', '.join(blueprint.required_tools)}",
-                f"  Persona: {blueprint.persona_prompt[:120]}...",
+                f"  {_('agents.label.name')}  {blueprint.name}",
+                f"  {_('agents.label.role')}  {blueprint.role}",
+                f"  {_('agents.label.function')} {blueprint.team_function}",
+                f"  {_('agents.label.skills')} {', '.join(blueprint.required_skills)}",
+                f"  {_('agents.label.tools')} {', '.join(blueprint.required_tools)}",
+                f"  {_('agents.label.persona')}   {blueprint.persona_prompt[:120]}...",
             ])
 
         return _CommandOutcome(True, [
@@ -2191,7 +2192,7 @@ class _AmiagiTextualApp(App[None]):
                 priority=TaskPriority.NORMAL,
             )
             self._task_queue.enqueue(task)
-            return _CommandOutcome(True, [f"Dodano zadanie: {task.task_id} — {title}"])
+            return _CommandOutcome(True, [_("tasks.added", id=task.task_id, title=title)])
 
         if action == "info":
             if len(parts) < 3:
@@ -2205,21 +2206,22 @@ class _AmiagiTextualApp(App[None]):
                         task = t
                         break
             if task is None:
-                return _CommandOutcome(True, [f"Nie znaleziono zadania: {query}"])
+                return _CommandOutcome(True, [_("tasks.not_found", query=query)])
+            not_assigned = _("tasks.info_not_assigned")
             messages = [
                 _("tasks.info_header"),
                 f"  ID:        {task.task_id}",
-                f"  Tytuł:     {task.title}",
-                f"  Opis:      {task.description[:200]}",
-                f"  Priorytet: {task.priority.name}",
-                f"  Status:    {task.status.value}",
-                f"  Agent:     {task.assigned_agent_id or '(nieprzypisany)'}",
-                f"  Utworzono:  {task.created_at.isoformat(timespec='seconds')}",
+                f"  {_('tasks.label.title')}     {task.title}",
+                f"  {_('tasks.label.desc')}      {task.description[:200]}",
+                f"  {_('tasks.label.priority')} {task.priority.name}",
+                f"  {_('tasks.label.status')}    {task.status.value}",
+                f"  {_('tasks.label.agent')}     {task.assigned_agent_id or not_assigned}",
+                f"  {_('tasks.label.created')}  {task.created_at.isoformat(timespec='seconds')}",
             ]
             if task.dependencies:
-                messages.append(f"  Zależności: {', '.join(task.dependencies)}")
+                messages.append(f"  {_('tasks.label.deps')} {', '.join(task.dependencies)}")
             if task.result:
-                messages.append(f"  Wynik:     {task.result[:200]}")
+                messages.append(f"  {_('tasks.label.result')}     {task.result[:200]}")
             return _CommandOutcome(True, messages)
 
         if action == "cancel":
@@ -2228,12 +2230,12 @@ class _AmiagiTextualApp(App[None]):
             task_id = parts[2].strip()
             task = self._task_queue.get(task_id)
             if task is None:
-                return _CommandOutcome(True, [f"Nie znaleziono zadania: {task_id}"])
+                return _CommandOutcome(True, [_("tasks.not_found", query=task_id)])
             try:
                 task.cancel()
-                return _CommandOutcome(True, [f"Anulowano zadanie: {task_id}"])
+                return _CommandOutcome(True, [_("tasks.cancelled", id=task_id)])
             except ValueError as exc:
-                return _CommandOutcome(True, [f"Błąd: {exc}"])
+                return _CommandOutcome(True, [_("agents.error", error=exc)])
 
         if action == "stats":
             stats = self._task_queue.stats()
@@ -2243,8 +2245,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, messages)
 
         return _CommandOutcome(True, [
-            "Użycie: /tasks list | /tasks add <tytuł> | /tasks info <id> "
-            "| /tasks cancel <id> | /tasks stats"
+            _("tasks.usage_full")
         ])
 
     # ------------------------------------------------------------------
@@ -2269,7 +2270,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "start":
             if self._dashboard_server is not None and self._dashboard_server.running:
                 port = self._dashboard_server.port
-                return _CommandOutcome(True, [f"Dashboard już działa na porcie {port}."])
+                return _CommandOutcome(True, [_("dashboard.already_running", port=port)])
 
             msgs: list[str] = []
 
@@ -2277,13 +2278,13 @@ class _AmiagiTextualApp(App[None]):
             if self._rest_server is not None:
                 if not self._rest_server.is_running:
                     self._rest_server.start()
-                    msgs.append(f"REST API uruchomione na {self._rest_server.address}")
+                    msgs.append(_("dashboard.rest_started", address=self._rest_server.address))
                 else:
-                    msgs.append(f"REST API: już aktywne ({self._rest_server.address})")
+                    msgs.append(_("dashboard.rest_active", address=self._rest_server.address))
                 route_count = len(self._rest_server.list_routes())
-                msgs.append(f"  routes: {route_count}")
+                msgs.append(_("dashboard.rest_routes", count=route_count))
             else:
-                msgs.append("REST API: brak instancji (pominięto)")
+                msgs.append(_("dashboard.rest_missing"))
 
             # --- Step 2: start dashboard frontend ---
             port = 8080
@@ -2307,10 +2308,10 @@ class _AmiagiTextualApp(App[None]):
             try:
                 self._dashboard_server.start(port=port)
                 dashboard_url = f"http://localhost:{port}"
-                msgs.append(f"Dashboard uruchomiony: {dashboard_url}")
+                msgs.append(_("dashboard.started", url=dashboard_url))
             except Exception as exc:
                 self._dashboard_server = None
-                msgs.append(f"Nie udało się uruchomić dashboardu: {exc}")
+                msgs.append(_("dashboard.start_failed", error=exc))
                 return _CommandOutcome(True, msgs)
 
             # --- Step 3: open default browser ---
@@ -2318,7 +2319,7 @@ class _AmiagiTextualApp(App[None]):
                 webbrowser.open(dashboard_url)
                 msgs.append(_("dashboard.browser_opened"))
             except Exception:
-                msgs.append(f"Nie udało się otworzyć przeglądarki — otwórz ręcznie: {dashboard_url}")
+                msgs.append(_("dashboard.browser_failed", url=dashboard_url))
 
             msgs.append(_("dashboard.stop_hint"))
             return _CommandOutcome(True, msgs)
@@ -2333,7 +2334,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "status":
             if self._dashboard_server is not None and self._dashboard_server.running:
                 port = self._dashboard_server.port
-                return _CommandOutcome(True, [f"Dashboard: AKTYWNY na porcie {port}"])
+                return _CommandOutcome(True, [_("dashboard.active", port=port)])
             return _CommandOutcome(True, [_("dashboard.inactive")])
 
         return _CommandOutcome(True, [
@@ -2354,14 +2355,14 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "status":
             count = self._knowledge_base.count()
-            return _CommandOutcome(True, [f"Baza wiedzy: {count} wpisów."])
+            return _CommandOutcome(True, [_("knowledge.count", count=count)])
 
         if action == "search" and len(parts) > 2:
             query_text = parts[2]
             results = self._knowledge_base.query(query_text, top_k=5)
             if not results:
                 return _CommandOutcome(True, [_("memories.empty")])
-            msgs = [f"--- Wyniki wyszukiwania ({len(results)}) ---"]
+            msgs = [_("knowledge.search_header", count=len(results))]
             for r in results:
                 snippet = r.text[:120].replace("\n", " ")
                 msgs.append(f"  [{r.entry_id}] (score={r.score:.3f}) {snippet}")
@@ -2370,7 +2371,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "add" and len(parts) > 2:
             text_to_add = parts[2]
             entry_id = self._knowledge_base.store(text_to_add)
-            return _CommandOutcome(True, [f"Dodano wpis #{entry_id}."])
+            return _CommandOutcome(True, [_("knowledge.added", id=entry_id)])
 
         return _CommandOutcome(True, [
             _("knowledge.usage")
@@ -2388,7 +2389,7 @@ class _AmiagiTextualApp(App[None]):
             files = self._shared_workspace.list_files()
             if not files:
                 return _CommandOutcome(True, [_("workspace.empty")])
-            msgs = [f"--- Pliki w workspace ({len(files)}) ---"]
+            msgs = [_("workspace.files_header", count=len(files))]
             for f in files:
                 author = self._shared_workspace.last_author(f) or "?"
                 msgs.append(f"  {f}  (autor: {author})")
@@ -2397,14 +2398,14 @@ class _AmiagiTextualApp(App[None]):
         if action == "read" and len(parts) > 2:
             content = self._shared_workspace.read_file(parts[2])
             if content is None:
-                return _CommandOutcome(True, [f"Plik nie istnieje: {parts[2]}"])
+                return _CommandOutcome(True, [_("workspace.file_not_found", name=parts[2])])
             return _CommandOutcome(True, [f"--- {parts[2]} ---", content[:2000]])
 
         if action == "log":
             changes = self._shared_workspace.changes()
             if not changes:
                 return _CommandOutcome(True, [_("workspace.changes_empty")])
-            msgs = [f"--- Historia zmian ({len(changes)}) ---"]
+            msgs = [_("workspace.changes_header", count=len(changes))]
             for c in changes[-20:]:
                 msgs.append(f"  {c.action:6s}  {c.path}  agent={c.agent_id}")
             return _CommandOutcome(True, msgs)
@@ -2429,7 +2430,7 @@ class _AmiagiTextualApp(App[None]):
             entries = self._audit_chain.query(limit=20)
             if not entries:
                 return _CommandOutcome(True, [_("audit.empty")])
-            msgs = [f"--- Audyt ({self._audit_chain.count()} łącznie, ostatnie 20) ---"]
+            msgs = [_("audit.header", count=self._audit_chain.count())]
             for e in entries:
                 msgs.append(
                     f"  [{e.outcome}] {e.agent_id}: {e.action} → {e.target}"
@@ -2440,8 +2441,8 @@ class _AmiagiTextualApp(App[None]):
             agent_id = parts[2]
             entries = self._audit_chain.query(agent_id=agent_id, limit=20)
             if not entries:
-                return _CommandOutcome(True, [f"Brak wpisów audytu dla {agent_id}."])
-            msgs = [f"--- Audyt agenta {agent_id} ---"]
+                return _CommandOutcome(True, [_("audit.agent_empty", agent_id=agent_id)])
+            msgs = [_("audit.agent_header", agent_id=agent_id)]
             for e in entries:
                 msgs.append(f"  [{e.outcome}] {e.action} → {e.target}")
             return _CommandOutcome(True, msgs)
@@ -2471,14 +2472,14 @@ class _AmiagiTextualApp(App[None]):
         if action == "create" and len(parts) > 2:
             agent_id = parts[2]
             path = self._sandbox_manager.create(agent_id)
-            return _CommandOutcome(True, [f"Sandbox utworzony: {path}"])
+            return _CommandOutcome(True, [_("sandbox.created", path=path)])
 
         if action == "destroy" and len(parts) > 2:
             agent_id = parts[2]
             ok = self._sandbox_manager.destroy(agent_id)
             if ok:
-                return _CommandOutcome(True, [f"Sandbox usunięty dla {agent_id}."])
-            return _CommandOutcome(True, [f"Brak sandbox dla {agent_id}."])
+                return _CommandOutcome(True, [_("sandbox.destroyed", agent_id=agent_id)])
+            return _CommandOutcome(True, [_("sandbox.not_found", agent_id=agent_id)])
 
         return _CommandOutcome(True, [
             _("sandbox.usage")
@@ -2519,23 +2520,23 @@ class _AmiagiTextualApp(App[None]):
             if not template_path.exists():
                 available = sorted({p.stem for p in list(workflows_dir.glob("*.yaml")) + list(workflows_dir.glob("*.json"))})
                 return _CommandOutcome(True, [
-                    f"Szablon '{template_name}' nie istnieje.",
-                    f"Dostępne: {', '.join(available) or 'brak'}",
+                    _("workflow.template_not_found", name=template_name),
+                    _("workflow.available_templates", list=', '.join(available) or 'brak'),
                 ])
             try:
                 wf = WorkflowDefinition.load_file(template_path)
                 run = self._workflow_engine.start(wf)
                 return _CommandOutcome(True, [
-                    f"Workflow '{wf.name}' uruchomiony jako {run.run_id}.",
+                    _("workflow.started", name=wf.name, run_id=run.run_id),
                 ])
             except Exception as exc:
-                return _CommandOutcome(True, [f"Błąd uruchamiania workflow: {exc}"])
+                return _CommandOutcome(True, [_("workflow.start_error", error=exc)])
 
         if action == "status" and len(parts) > 2:
             run_id = parts[2]
             run = self._workflow_engine.get_run(run_id)
             if run is None:
-                return _CommandOutcome(True, [f"Brak workflow o id {run_id}."])
+                return _CommandOutcome(True, [_("workflow.not_found", run_id=run_id)])
             msgs = [f"--- Workflow {run.run_id}: {run.workflow.name} [{run.status}] ---"]
             for n in run.workflow.nodes:
                 msgs.append(f"  {n.node_id:20s} [{n.node_type.value:12s}] → {n.status.value}")
@@ -2546,19 +2547,19 @@ class _AmiagiTextualApp(App[None]):
             node_id = parts[3]
             ok = self._workflow_engine.approve_gate(run_id, node_id)
             if ok:
-                return _CommandOutcome(True, [f"Zatwierdzono bramkę {node_id} w {run_id}."])
-            return _CommandOutcome(True, [f"Nie udało się zatwierdzić bramki {node_id}."])
+                return _CommandOutcome(True, [_("workflow.gate_approved", node_id=node_id, run_id=run_id)])
+            return _CommandOutcome(True, [_("workflow.gate_failed", node_id=node_id)])
 
         if action == "pause" and len(parts) > 2:
             ok = self._workflow_engine.pause(parts[2])
             return _CommandOutcome(True, [
-                f"Workflow {parts[2]} wstrzymany." if ok else f"Nie udało się wstrzymać {parts[2]}."
+                _("workflow.paused", id=parts[2]) if ok else _("workflow.pause_failed", id=parts[2])
             ])
 
         if action == "resume" and len(parts) > 2:
             ok = self._workflow_engine.resume(parts[2])
             return _CommandOutcome(True, [
-                f"Workflow {parts[2]} wznowiony." if ok else f"Nie udało się wznowić {parts[2]}."
+                _("workflow.resumed", id=parts[2]) if ok else _("workflow.resume_failed", id=parts[2])
             ])
 
         if action == "templates":
@@ -2574,9 +2575,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, msgs)
 
         return _CommandOutcome(True, [
-            "Użycie: /workflow list | /workflow run <szablon> | /workflow status <run_id>",
-            "        /workflow approve <run_id> <node_id> | /workflow pause/resume <run_id>",
-            "        /workflow templates",
+            _("workflow.usage")
         ])
 
     # ------------------------------------------------------------------
@@ -2604,13 +2603,13 @@ class _AmiagiTextualApp(App[None]):
             try:
                 limit = float(parts[3])
             except ValueError:
-                return _CommandOutcome(True, ["Podaj limit jako liczbę, np. /budget set polluks 10.0"])
+                return _CommandOutcome(True, [_("budget.set_usage")])
             self._budget_manager.set_budget(agent_id, limit)
-            return _CommandOutcome(True, [f"Budżet agenta {agent_id} ustawiony na ${limit:.2f}."])
+            return _CommandOutcome(True, [_("budget.set_done", agent_id=agent_id, limit=f"{limit:.2f}")])
 
         if action == "reset" and len(parts) >= 3:
             self._budget_manager.reset_agent(parts[2])
-            return _CommandOutcome(True, [f"Zresetowano budżet agenta {parts[2]}."])
+            return _CommandOutcome(True, [_("budget.reset_done", agent_id=parts[2])])
 
         if action == "dashboard":
             msgs = ["╔══════════════════════════════════════════════════════╗"]
@@ -2636,7 +2635,8 @@ class _AmiagiTextualApp(App[None]):
                     status = "⚠" if pct >= 80 else ("🛑" if pct >= 100 else "✓")
                     msgs.append(f"║  {status} {aid:<14} ${info['spent_usd']:>7.4f}/${info['limit_usd']:>6.2f} [{abar}] {pct:5.1f}%")
             else:
-                msgs.append("║ Brak budżetów agentów.                               ║")
+                no_agents_msg = _("budget.no_agents")
+                msgs.append(f"║ {no_agents_msg:<53}║")
             # Per-task budgets
             task_summary = self._budget_manager.task_summary()
             if task_summary:
@@ -2657,9 +2657,9 @@ class _AmiagiTextualApp(App[None]):
                     try:
                         limit = float(parts[3])
                     except ValueError:
-                        return _CommandOutcome(True, ["Podaj limit jako liczbę, np. /budget session set 50.0"])
+                        return _CommandOutcome(True, [_("budget.session_set_usage")])
                     self._budget_manager.set_session_budget(limit)
-                    return _CommandOutcome(True, [f"Budżet sesji ustawiony na ${limit:.2f}."])
+                    return _CommandOutcome(True, [_("budget.session_set_done", limit=f"{limit:.2f}")])
             ss = self._budget_manager.session_summary()
             return _CommandOutcome(True, [
                 f"Sesja: spent=${ss['spent_usd']:.4f} / limit=${ss['limit_usd']:.2f} ({ss['utilization_pct']:.1f}%)",
@@ -2673,21 +2673,20 @@ class _AmiagiTextualApp(App[None]):
                 try:
                     limit = float(parts[4])
                 except ValueError:
-                    return _CommandOutcome(True, ["Użycie: /budget task set <task_id> <limit_usd>"])
+                    return _CommandOutcome(True, [_("budget.task_set_usage")])
                 self._budget_manager.set_task_budget(task_id, limit)
-                return _CommandOutcome(True, [f"Budżet zadania {task_id} ustawiony na ${limit:.2f}."])
+                return _CommandOutcome(True, [_("budget.task_set_done", task_id=task_id, limit=f"{limit:.2f}")])
             # show specific task
             task_id = parts[2]
             tb = self._budget_manager.get_task_budget(task_id)
             if tb is None:
-                return _CommandOutcome(True, [f"Brak budżetu dla zadania '{task_id}'."])
+                return _CommandOutcome(True, [_("budget.task_not_found", task_id=task_id)])
             return _CommandOutcome(True, [
                 f"Zadanie {task_id}: spent=${tb.spent_usd:.4f} / limit=${tb.limit_usd:.2f} ({tb.utilization_pct:.1f}%)",
             ])
 
         return _CommandOutcome(True, [
-            "Użycie: /budget status | /budget set <agent> <limit_usd> | /budget reset <agent>",
-            "        /budget dashboard | /budget session [set <limit>] | /budget task set <id> <limit>",
+            _("budget.usage")
         ])
 
     def _handle_quota_command(self, raw_text: str) -> _CommandOutcome:
@@ -2704,14 +2703,14 @@ class _AmiagiTextualApp(App[None]):
                 cost = float(parts[4])
                 req_h = int(parts[5]) if len(parts) > 5 else 0
             except (ValueError, IndexError):
-                return _CommandOutcome(True, ["Użycie: /quota set <rola> <tokens> <cost_usd> [req/h]"])
+                return _CommandOutcome(True, [_("quota.set_usage")])
             from amiagi.domain.quota_policy import RoleQuota
             self._quota_policy.set_role(role, RoleQuota(
                 daily_token_limit=tokens,
                 daily_cost_limit_usd=cost,
                 max_requests_per_hour=req_h,
             ))
-            return _CommandOutcome(True, [f"Quota dla roli '{role}' ustawiona: tokens={tokens}, cost=${cost:.2f}, req/h={req_h}."])
+            return _CommandOutcome(True, [_("quota.set_done", role=role, tokens=tokens, cost=f"{cost:.2f}", req_h=req_h)])
 
         # Default: status
         roles = self._quota_policy.list_roles()
@@ -2737,7 +2736,7 @@ class _AmiagiTextualApp(App[None]):
                 return _CommandOutcome(True, [_("eval.inactive")])
             agent_id = parts[2] if len(parts) > 2 else None
             if not agent_id:
-                return _CommandOutcome(True, ["Użycie: /eval run <agent> [--benchmark <nazwa>]"])
+                return _CommandOutcome(True, [_("eval.run_usage")])
             # Check for --benchmark flag
             benchmark_name = None
             if "--benchmark" in parts:
@@ -2749,7 +2748,7 @@ class _AmiagiTextualApp(App[None]):
             if benchmark_name and self._benchmark_suite is not None:
                 scenarios = self._benchmark_suite.get_scenarios(benchmark_name)
                 if not scenarios:
-                    return _CommandOutcome(True, [f"Benchmark '{benchmark_name}' nie znaleziony lub pusty."])
+                    return _CommandOutcome(True, [_("eval.benchmark_empty", name=benchmark_name)])
             if not scenarios:
                 # Use a trivial default scenario
                 from amiagi.application.eval_runner import EvalScenario
@@ -2772,7 +2771,7 @@ class _AmiagiTextualApp(App[None]):
                     return f"[eval-stub] Agent {agent_id} response to: {prompt[:100]}"
             result = self._eval_runner.run(agent_id, _agent_fn, scenarios)
             msgs = [
-                f"--- EVAL RUN: {agent_id} ---",
+                _("eval.run_header", agent_id=agent_id),
                 f"  Scenarios: {result.scenarios_count}",
                 f"  Passed: {result.passed}, Failed: {result.failed}",
                 f"  Aggregate score: {result.aggregate_score:.1f}",
@@ -2803,7 +2802,7 @@ class _AmiagiTextualApp(App[None]):
                 return f"[{agent_b}] response"
             result = self._ab_test_runner.compare(agent_a, _fn_a, agent_b, _fn_b, scenarios)
             msgs = [
-                f"--- A/B COMPARE: {agent_a} vs {agent_b} ---",
+                _("eval.compare_header", a=agent_a, b=agent_b),
                 f"  A wins: {result.a_wins}, B wins: {result.b_wins}, Ties: {result.ties}",
                 f"  Score delta: {result.score_delta:+.2f}",
             ]
@@ -2833,7 +2832,7 @@ class _AmiagiTextualApp(App[None]):
             return _CommandOutcome(True, msgs)
 
         return _CommandOutcome(True, [
-            "Użycie: /eval run <agent> [--benchmark X] | /eval compare <a> <b> | /eval history [agent] | /eval baselines",
+            _("eval.usage"),
         ])
 
     def _handle_feedback_command(self, raw_text: str) -> _CommandOutcome:
@@ -2859,10 +2858,10 @@ class _AmiagiTextualApp(App[None]):
                 self._human_feedback.thumbs_up(agent_id, comment=comment)
             else:
                 self._human_feedback.thumbs_down(agent_id, comment=comment)
-            return _CommandOutcome(True, [f"Zapisano opinię ({action}) dla {agent_id}."])
+            return _CommandOutcome(True, [_("feedback.recorded", action=action, agent_id=agent_id)])
 
         return _CommandOutcome(True, [
-            "Użycie: /feedback summary | /feedback up <agent> [komentarz] | /feedback down <agent> [komentarz]",
+            _("feedback.usage"),
         ])
 
     # ------------------------------------------------------------------
@@ -2886,7 +2885,7 @@ class _AmiagiTextualApp(App[None]):
 
         if action == "start":
             self._rest_server.start()
-            return _CommandOutcome(True, [f"REST API uruchomione na {self._rest_server.address}"])
+            return _CommandOutcome(True, [_("api.started", address=self._rest_server.address)])
 
         if action == "stop":
             self._rest_server.stop()
@@ -2914,7 +2913,7 @@ class _AmiagiTextualApp(App[None]):
         if action == "load":
             results = self._plugin_loader.load_all()
             loaded = sum(1 for r in results if r.loaded)
-            return _CommandOutcome(True, [f"Załadowano {loaded}/{len(results)} pluginów."])
+            return _CommandOutcome(True, [_("plugins.loaded", loaded=loaded, total=len(results))])
 
         if action == "install" and len(parts) > 2:
             plugin_path = parts[2]
@@ -2922,14 +2921,14 @@ class _AmiagiTextualApp(App[None]):
             from pathlib import Path as _Path
             src = _Path(plugin_path)
             if not src.exists():
-                return _CommandOutcome(True, [f"Plik '{plugin_path}' nie istnieje."])
+                return _CommandOutcome(True, [_("plugins.src_missing", path=plugin_path)])
             plugins_dir = _Path("plugins")
             plugins_dir.mkdir(exist_ok=True)
             dest = plugins_dir / src.name
             shutil.copy2(src, dest)
-            return _CommandOutcome(True, [f"Plugin '{src.name}' zainstalowany do plugins/. Użyj /plugins load aby załadować."])
+            return _CommandOutcome(True, [_("plugins.installed", name=src.name)])
 
-        return _CommandOutcome(True, ["Użycie: /plugins list | /plugins load | /plugins install <ścieżka>"])
+        return _CommandOutcome(True, [_("plugins.usage")])
 
     # ------------------------------------------------------------------
     # Team Commands (Phase 11)
@@ -2967,10 +2966,10 @@ class _AmiagiTextualApp(App[None]):
                 return _CommandOutcome(True, [_("team.composer_inactive")])
             team = self._team_composer.from_template(template_id)
             if team is None:
-                return _CommandOutcome(True, [f"Szablon '{template_id}' nie istnieje."])
+                return _CommandOutcome(True, [_("team.template_not_found", id=template_id)])
             if self._team_dashboard is not None:
                 self._team_dashboard.register_team(team)
-            return _CommandOutcome(True, [f"Zespół '{team.name}' utworzony z szablonu {template_id} ({team.size} członków)."])
+            return _CommandOutcome(True, [_("team.created", name=team.name, template=template_id, size=team.size)])
 
         if action == "status" and len(parts) > 2:
             team_id = parts[2]
@@ -2978,7 +2977,7 @@ class _AmiagiTextualApp(App[None]):
                 return _CommandOutcome(True, [_("team.dashboard_inactive")])
             chart = self._team_dashboard.org_chart(team_id)
             if "error" in chart:
-                return _CommandOutcome(True, [f"Zespół '{team_id}' nie istnieje."])
+                return _CommandOutcome(True, [_("team.not_found", id=team_id)])
             msgs = [f"--- TEAM {chart['name']} ---", f"  Lead: {chart['lead']}"]
             for m in chart["members"]:
                 lead_marker = " (lead)" if m["is_lead"] else ""
@@ -3016,10 +3015,10 @@ class _AmiagiTextualApp(App[None]):
                 reason=f"Manual scale {scale_dir} via TUI",
             )
             self._dynamic_scaler._events.append(event)
-            return _CommandOutcome(True, [f"Zespół '{team_id}' — skalowanie {scale_dir} zarejestrowane."])
+            return _CommandOutcome(True, [_("team.scaled", id=team_id, direction=scale_dir)])
 
         return _CommandOutcome(True, [
-            "Użycie: /team list | /team templates | /team create <szablon> | /team compose <cel> | /team status <id> | /team scale <id> up|down",
+            _("team.usage"),
         ])
 
     # ------------------------------------------------------------------
