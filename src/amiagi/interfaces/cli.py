@@ -47,28 +47,20 @@ _AMIAGI_LOGO = r"""
            /_/   \_\_| |_| |_|___/_/   \_\____|___|
 """
 
-_MOTD_POOL = [
-    "AGI nadci\u0105ga i nadci\u0105ga, my b\u0119dziemy wiedzie\u0107 kiedy...",
-    "Lokalne LLM-y: bo prywatno\u015b\u0107 to nie bug, to feature.",
-    "Polluks my\u015bli, Kastor nadzoruje, Sponsor p\u0142aci rachunki.",
-    "Autonomia zaczyna si\u0119 od pierwszego tool_call.",
-    "Kto potrzebuje chmury, kiedy ma Ollama na localhost?",
-    "Tw\u00f3j prywatny agent AI \u2014 bez chmury, bez \u015bledzenia, bez \u017cart\u00f3w.",
-    "Ma\u0142a sztuczna inteligencja, wielkie ambicje.",
-    "Ka\u017cdy plan zaczyna si\u0119 od /help.",
-]
+_MOTD_COUNT = 8
 
 
 def _build_landing_banner(*, mode: str) -> str:
     """Return the startup banner string for *mode* ('textual' or 'cli')."""
-    motd = random.choice(_MOTD_POOL)  # noqa: S311
+    pool = [_(f"motd.{i}") for i in range(_MOTD_COUNT)]
+    motd = random.choice(pool)  # noqa: S311
     lines = [
         _AMIAGI_LOGO.rstrip(),
-        f"           v:{__version__}  \u00b7  mode: {mode}",
+        _("banner.mode_line", version=__version__, mode=mode),
         "",
-        f"  \u2726 {motd}",
+        _("banner.motd_prefix", motd=motd),
         "",
-        "  Wpisz /help, aby zobaczy\u0107 dost\u0119pne komendy.",
+        _("banner.help_hint"),
         " ",
         " ",
     ]
