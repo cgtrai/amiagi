@@ -438,6 +438,8 @@ def _handle_textual_command(raw: str, permission_manager: PermissionLike) -> _Co
         return _CommandOutcome(handled=True, messages=[], should_exit=True)
 
     if command == "/help":
+        _TEXTUAL_HELP_COMMANDS = _build_help_commands()
+        TEXTUAL_HELP_TEXT = _build_textual_help_text()
         return _CommandOutcome(handled=True, messages=[TEXTUAL_HELP_TEXT])
 
     if command.startswith("/permissions"):
@@ -1405,13 +1407,13 @@ class _AmiagiTextualApp(App[None]):
         if isinstance(focused, TextArea):
             text = focused.selected_text or focused.text
             if text:
-                copied, details = _copy_to_system_clipboard(text)
+                copied, _details = _copy_to_system_clipboard(text)
                 if copied:
-                    self.notify(_("clipboard.copied_notify", details=details))
+                    self.notify(_("clipboard.copied_notify"))
                 else:
                     self.copy_to_clipboard(text)
                     self.notify(
-                        _("clipboard.osc52_notify", details=details),
+                        _("clipboard.copied_notify"),
                         severity="information",
                     )
                 return
@@ -3102,7 +3104,7 @@ class _AmiagiTextualApp(App[None]):
     def _wizard_show_polluks_prompt(self) -> None:
         """Display (or re-display) the Polluks model selection prompt."""
         header = _("wizard.polluks_header")
-        footer = "╰───────────────────────────────────────────────────────────╯"
+        footer = "╰───────────────────────────────────────────────────────────╯ \n"
         body = self._format_wizard_model_list(self._wizard_models)
         b1 = _("wizard.polluks_body1")
         b2 = _("wizard.polluks_body2")
@@ -3124,7 +3126,7 @@ class _AmiagiTextualApp(App[None]):
     def _wizard_show_kastor_prompt(self, default_name: str = "") -> None:
         """Display (or re-display) the Kastor model selection prompt."""
         header = _("wizard.kastor_header")
-        footer = "╰───────────────────────────────────────────────────────────╯"
+        footer = "╰───────────────────────────────────────────────────────────╯ \n"
         body = self._format_wizard_model_list(
             self._wizard_kastor_models, default_name=default_name
         )

@@ -124,8 +124,8 @@
   "clipboard.ok_xsel": "System clipboard (X11 / xsel).",
   "clipboard.no_x11_tool": "No X11 clipboard tool found (install xclip or xsel).",
   "clipboard.no_display": "No clipboard environment detected (WAYLAND_DISPLAY/DISPLAY).",
-  "clipboard.copied_notify": "Copied to clipboard ({details}).",
-  "clipboard.osc52_notify": "Copied via terminal mode (OSC52). Environment details: {details}",
+  "clipboard.copied_notify": "Copied to clipboard.",
+  "clipboard.osc52_notify": "Copied to clipboard.",
   "clipboard.no_selection": "No selected content to copy. Click the log window and select text.",
 
   "_comment_permissions": "=== Permissions ===",
@@ -500,7 +500,7 @@
   "wizard.finalize_kastor_fail": "Failed to set Kastor model: {name}",
   "wizard.finalize_kastor_no_key": "⚠ No API key for Kastor model. Kastor will keep the default local model.",
   "wizard.finalize_kastor_disabled": "(disabled)",
-  "wizard.finalize_summary_header": "╭─ Session Configuration ───────────────────────────────────╮",
+  "wizard.finalize_summary_header": "╭─ Session Configuration ──────────────────────────────────╮",
   "wizard.finalize_ready": "Ready. Type a command or /help.",
 
   "_comment_mount": "=== on_mount messages ===",

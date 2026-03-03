@@ -124,8 +124,8 @@
   "clipboard.ok_xsel": "Schowek systemowy (X11 / xsel).",
   "clipboard.no_x11_tool": "Brak narzędzia do schowka X11 (zainstaluj xclip albo xsel).",
   "clipboard.no_display": "Nie wykryto środowiska schowka (WAYLAND_DISPLAY/DISPLAY).",
-  "clipboard.copied_notify": "Skopiowano do schowka ({details}).",
-  "clipboard.osc52_notify": "Skopiowano przez tryb terminalowy (OSC52). Szczegóły środowiska: {details}",
+  "clipboard.copied_notify": "Skopiowano do schowka.",
+  "clipboard.osc52_notify": "Skopiowano do schowka.",
   "clipboard.no_selection": "Brak zaznaczonej treści do skopiowania. Kliknij w okno logu i zaznacz tekst.",
 
   "_comment_permissions": "=== Permissions ===",
