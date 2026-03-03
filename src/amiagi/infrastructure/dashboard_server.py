@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -210,13 +211,27 @@ class _DashboardHandler(BaseHTTPRequestHandler):
     # ---- helpers ----
 
     def _json_response(self, data: Any) -> None:
-        body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
+        safe = self._sanitize(data)
+        body = json.dumps(safe, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    @staticmethod
+    def _sanitize(obj: Any) -> Any:
+        """Recursively replace float inf/NaN with ``None`` (RFC 8259)."""
+        if isinstance(obj, float):
+            if math.isinf(obj) or math.isnan(obj):
+                return None
+            return obj
+        if isinstance(obj, dict):
+            return {k: _DashboardHandler._sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_DashboardHandler._sanitize(v) for v in obj]
+        return obj
 
     def _serve_static(self, filename: str, content_type: str) -> None:
         if self._static_dir is None:

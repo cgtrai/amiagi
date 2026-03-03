@@ -2306,6 +2306,8 @@ class _AmiagiTextualApp(App[None]):
                 metrics_collector=self._metrics_collector,
                 alert_manager=self._alert_manager,
                 session_replay=self._session_replay,
+                budget_manager=self._budget_manager,
+                team_dashboard=self._team_dashboard,
                 static_dir=static_dir,
             )
             try:
