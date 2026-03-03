@@ -408,7 +408,7 @@ def main(argv: list[str] | None = None) -> None:
     # Evaluation & Quality (Phase 9)
     # ------------------------------------------------------------------
     eval_runner = EvalRunner(rubric=EvalRubric(name="default"))
-    benchmark_suite = BenchmarkSuite(benchmarks_dir=str(settings.benchmarks_dir))
+    benchmark_suite = BenchmarkSuite(benchmarks_dir=settings.benchmarks_dir)
     regression_detector = RegressionDetector(baselines_dir=settings.baselines_dir)
     human_feedback = HumanFeedbackCollector(settings.feedback_path)
 
