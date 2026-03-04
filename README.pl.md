@@ -423,44 +423,124 @@ Umiejętności są ładowane tylko dla modeli API z dużym oknem kontekstu.
 
 ## Uruchomienie
 
-Jeśli używasz lokalnego `.venv`, najpierw aktywuj środowisko:
+Najpierw aktywuj środowisko:
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate    # virtualenv
+# lub
+conda activate <twoja_nazwa_env>  # conda
 ```
 
-Jeśli używasz Conda, najpierw aktywuj swoje środowisko:
+### Skrócona tabela
 
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate <twoja_nazwa_env>
-```
+| Komenda | Opis |
+|---------|------|
+| `amiagi` | Standardowy start — kreator modeli, potem Textual TUI |
+| `amiagi --auto` | Tryb autonomiczny — agent pracuje bez czekania na potwierdzenie |
+| `amiagi --cold_start` | Świeży start — czyści bazę, logi, konfigurację modeli, historię |
+| `amiagi --cold_start --auto` | Czysta karta + autonomia — najlepszy do nowego projektu |
+| `amiagi --ui textual` | Textual TUI (domyślny) — wielopanelowy interfejs ze statusem aktorów |
+| `amiagi --ui cli` | Klasyczne synchroniczne CLI — prosty stdin/stdout |
+| `amiagi --lang en` | Interfejs po angielsku |
+| `amiagi --lang pl` | Interfejs po polsku (domyślny) |
+| `amiagi --vram-off` | Wyłącz monitoring VRAM — Ollama sam zarządza pamięcią GPU |
 
-Preferowana komenda:
+### Scenariusze użycia
 
+**Pierwsze uruchomienie:**
 ```bash
 amiagi
 ```
+Interaktywny kreator przeprowadzi przez wybór modeli dla obu ról
+(Polluks — wykonawca, Kastor — nadzorca). Wybory są zapisywane
+na przyszłe sesje.
 
-Komenda kompatybilna wstecz:
-
+**Nowy projekt (czysta karta):**
 ```bash
-amiagi
+amiagi --cold_start
+```
+Czyści wszystkie dane z poprzedniej sesji:
+- Bazę pamięci SQLite
+- Wszystkie logi JSONL (model I/O, aktywność, dialog nadzorczy)
+- Zapisaną konfigurację modeli (wymusza ponowny wybór)
+- Historię poleceń
+
+Użyj, gdy przechodzisz do zupełnie innego projektu lub zadania.
+
+**Tryb autonomiczny — agent pracuje samodzielnie:**
+```bash
+amiagi --auto
+```
+Agent wykonuje narzędzia i realizuje plan bez pytania o potwierdzenie
+na każdym kroku. Nadzorca (Kastor) wciąż kontroluje jakość.
+Idealny do dłuższych zadań: generowanie kodu, research.
+
+**Nowy projekt + autonomia (najczęstszy setup):**
+```bash
+amiagi --cold_start --auto
+```
+Łączy oba: czysta historia + agent działa samodzielnie. Rekomendowany
+sposób na rozpoczęcie nowego zadania programistycznego lub badawczego.
+
+**Interfejs po angielsku:**
+```bash
+amiagi --lang en
+```
+Wszystkie komunikaty UI, help i statusy przełączają się na angielski.
+Alternatywnie ustaw `AMIAGI_LANG=en` w `.env`.
+
+**Klasyczne CLI zamiast Textual TUI:**
+```bash
+amiagi --ui cli
+```
+Prosty synchroniczny terminal — przydatny do sesji SSH, połączeń
+o niskiej przepustowości lub skryptowania. Wszystkie komendy działają
+identycznie.
+
+**Mało VRAM / współdzielony GPU:**
+```bash
+amiagi --vram-off
+```
+Wyłącza kontrolę VRAM runtime i scheduler kolejki modeli. Ollama sam
+zarządza pamięcią GPU. Użyj na współdzielonej maszynie lub ze słabym GPU.
+
+**Własny kontekst startowy:**
+```bash
+amiagi --startup_dialogue_path ./moj-projekt/kontekst.md
+```
+Plik Markdown z kontekstem projektu, który zasila początkową pamięć agenta.
+Domyślnie: `wprowadzenie.md` w katalogu roboczym.
+
+**Łączenie wszystkiego:**
+```bash
+amiagi --cold_start --auto --lang en --ui textual --vram-off
+```
+Pełny reset, autonomia, angielski, Textual TUI, bez kontroli VRAM.
+
+### Zmienne środowiskowe (.env)
+
+Kluczowe zmienne wpływające na zachowanie runtime:
+
+```env
+# Konfiguracja modeli
+OLLAMA_MODEL=hf.co/TeichAI/...          # Model wykonawcy (Polluks)
+AMIAGI_SUPERVISOR_MODEL=cogito:14b      # Model nadzorcy (Kastor)
+AMIAGI_SUPERVISOR_ENABLED=true          # Włącz/wyłącz nadzorcę
+
+# Zachowanie autonomiczne
+AMIAGI_AUTONOMOUS_MODE=true             # Jak flaga --auto
+AMIAGI_MAX_IDLE_AUTOREACTIVATIONS=2     # Maks. cykli idle-reactivation
+
+# Język
+AMIAGI_LANG=en                          # Jak flaga --lang
+
+# Ścieżki
+AMIAGI_WORK_DIR=./amiagi-my-work        # Katalog roboczy agenta
+AMIAGI_DB_PATH=./data/amiagi.db         # Baza pamięci SQLite
+AMIAGI_SHELL_POLICY_PATH=./config/shell_allowlist.json
 ```
 
-Alternatywnie:
-
-```bash
-python -m main
-```
-
-Przydatne tryby:
-
-```bash
-python -m main --cold_start
-python -m main --auto
-python -m main --cold_start --auto
-```
+Pełna lista z domyślnymi wartościami: `.env.example`.
 
 ## Testy
 
