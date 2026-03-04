@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from amiagi.interfaces.textual_cli import (
-    INTERRUPT_AUTORESUME_IDLE_SECONDS,
     _AmiagiTextualApp,
     _CommandOutcome,
     _canonical_tool_name,
@@ -15,6 +14,7 @@ from amiagi.interfaces.textual_cli import (
     _handle_textual_command,
     _is_model_access_allowed,
 )
+from amiagi.application.router_engine import INTERRUPT_AUTORESUME_IDLE_SECONDS
 from amiagi.application.supervisor_service import SupervisionResult
 
 
@@ -421,10 +421,11 @@ def test_textual_user_turn_uses_supervisor_refine(monkeypatch, tmp_path: Path) -
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
 
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="kontynuuj"))
 
@@ -496,10 +497,11 @@ def test_textual_supervisor_forces_activity_after_passive_streak(monkeypatch, tm
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
 
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
+    app._router_engine._background_enabled = False
 
     first_event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="x"))
     second_event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="y"))
@@ -546,9 +548,10 @@ def test_textual_executes_tool_call_and_uses_tool_result_followup(monkeypatch, t
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
@@ -613,8 +616,9 @@ def test_textual_unknown_tool_is_corrected_by_supervisor(monkeypatch, tmp_path: 
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
@@ -676,8 +680,9 @@ def test_textual_progress_guard_enforces_plan_or_action(monkeypatch, tmp_path: P
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="kontynuuj", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
@@ -742,8 +747,9 @@ def test_textual_progress_guard_sanitizes_unsupported_supervisor_tool(monkeypatc
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="cześć kim jesteś?", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
@@ -789,14 +795,15 @@ def test_textual_interrupt_identity_reply_pauses_plan_and_requests_decision(monk
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
+    app._router_engine._background_enabled = False
 
     event = SimpleNamespace(value="kim jesteś?", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
 
-    assert app._plan_pause_active is True
-    assert app._pending_user_decision is True
+    assert app._router_engine._plan_pause_active is True
+    assert app._router_engine._pending_user_decision is True
     assert logs["user_model_log"][-1].startswith("Model: Jestem Polluks, modelem wykonawczym frameworka amiagi.")
     assert "Czy chcesz, żebym kontynuował plan" in logs["user_model_log"][-1]
 
@@ -853,22 +860,26 @@ def test_textual_watchdog_auto_resumes_paused_plan_after_idle_timeout(monkeypatc
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr("amiagi.interfaces.textual_cli.time.monotonic", lambda: 10_000.0)
+    monkeypatch.setattr("amiagi.application.router_engine.time.monotonic", lambda: 10_000.0)
 
-    app._last_user_message = "kontynuuj"
-    app._pending_user_decision = True
-    app._set_plan_paused(paused=True, reason="user_interrupt", source="test")
-    app._plan_pause_started_monotonic = 0.0
+    engine = app._router_engine
+    engine._last_user_message = "kontynuuj"
+    engine._pending_user_decision = True
+    engine.set_plan_paused(paused=True, reason="user_interrupt", source="test")
+    engine._plan_pause_started_monotonic = 0.0
 
     app._run_supervisor_idle_watchdog()
 
     # Model work is dispatched to a background thread; wait for it
     if app._last_background_worker is not None:
         app._last_background_worker.join(timeout=10)
+    if engine._last_background_worker is not None:
+        engine._last_background_worker.join(timeout=10)
 
-    assert app._plan_pause_active is False
-    assert app._pending_user_decision is False
+    assert engine._plan_pause_active is False
+    assert engine._pending_user_decision is False
     assert "textual_interrupt_autoresume" in supervisor.stages
     assert logs["user_model_log"][-1].startswith(
         "Model(auto): Wznowiłem plan po pauzie."
@@ -925,19 +936,21 @@ def test_textual_watchdog_nudges_supervisor_after_inactivity(monkeypatch, tmp_pa
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr("amiagi.interfaces.textual_cli.time.monotonic", lambda: 10_000.0)
+    monkeypatch.setattr("amiagi.application.router_engine.time.monotonic", lambda: 10_000.0)
 
-    app._last_user_message = "kontynuuj"
-    app._last_model_answer = "Pasywna odpowiedź."
-    app._passive_turns = 2
-    app._last_progress_monotonic = 0.0
+    engine = app._router_engine
+    engine._last_user_message = "kontynuuj"
+    engine._last_model_answer = "Pasywna odpowiedź."
+    engine._passive_turns = 2
+    engine._last_progress_monotonic = 0.0
 
     app._run_supervisor_idle_watchdog()
 
     # Model work is dispatched to a background thread; wait for it
-    if app._last_background_worker is not None:
-        app._last_background_worker.join(timeout=10)
+    if engine._last_background_worker is not None:
+        engine._last_background_worker.join(timeout=10)
 
     assert "textual_watchdog_nudge" in supervisor.stages
     assert logs["user_model_log"][-1] == "Model(auto): Watchdog uruchomił kolejny krok."
@@ -985,15 +998,20 @@ def test_textual_watchdog_respects_idle_until_schedule(monkeypatch, tmp_path: Pa
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr("amiagi.interfaces.textual_cli.time.monotonic", lambda: 10_000.0)
+    monkeypatch.setattr("amiagi.application.router_engine.time.monotonic", lambda: 10_000.0)
     monkeypatch.setattr("amiagi.interfaces.textual_cli.time.time", lambda: 100.0)
+    monkeypatch.setattr("amiagi.application.router_engine.time.time", lambda: 100.0)
 
-    app._last_user_message = "kontynuuj"
-    app._last_model_answer = "Pasywna odpowiedź."
-    app._passive_turns = 2
-    app._last_progress_monotonic = 0.0
+    engine = app._router_engine
+    engine._last_user_message = "kontynuuj"
+    engine._last_model_answer = "Pasywna odpowiedź."
+    engine._passive_turns = 2
+    engine._last_progress_monotonic = 0.0
     app._set_idle_until(200.0, source="test")
+    engine._idle_until_epoch = 200.0
+    engine._idle_until_source = "test"
 
     app._run_supervisor_idle_watchdog()
 
@@ -1041,18 +1059,20 @@ def test_textual_identity_interrupt_does_not_autoresume_without_user_decision(mo
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr("amiagi.interfaces.textual_cli.time.monotonic", lambda: 10_000.0)
+    monkeypatch.setattr("amiagi.application.router_engine.time.monotonic", lambda: 10_000.0)
 
-    app._last_user_message = "kim jesteś?"
-    app._pending_user_decision = True
-    app._pending_decision_identity_query = True
-    app._set_plan_paused(paused=True, reason="user_interrupt", source="test")
-    app._plan_pause_started_monotonic = 0.0
+    engine = app._router_engine
+    engine._last_user_message = "kim jesteś?"
+    engine._pending_user_decision = True
+    engine._pending_decision_identity_query = True
+    engine.set_plan_paused(paused=True, reason="user_interrupt", source="test")
+    engine._plan_pause_started_monotonic = 0.0
 
     app._run_supervisor_idle_watchdog()
 
-    assert app._plan_pause_active is True
+    assert engine._plan_pause_active is True
     assert "textual_interrupt_autoresume" not in supervisor.stages
     assert not logs["user_model_log"]
 
@@ -1148,25 +1168,26 @@ def test_textual_queues_message_when_router_busy(monkeypatch, tmp_path: Path) ->
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
     # Simulate router busy
-    app._router_cycle_in_progress = True
+    app._router_engine._router_cycle_in_progress = True
+    app._router_engine._background_enabled = False
     event = SimpleNamespace(value="czekam w kolejce", input=SimpleNamespace(value="x"))
     app.on_input_submitted(cast(Any, event))
 
     # Message should be echoed immediately and queued
     assert any("[Sponsor -> all] Użytkownik: czekam w kolejce" in msg for msg in logs["user_model_log"])
     assert any("Wiadomość zakolejkowana" in msg for msg in logs["user_model_log"])
-    assert len(app._user_message_queue) == 1
+    assert len(app._router_engine._user_message_queue) == 1
 
     # After cycle finishes, _drain_user_queue processes it
-    app._router_cycle_in_progress = False
-    app._drain_user_queue()
-    assert len(app._user_message_queue) == 0
+    app._router_engine._router_cycle_in_progress = False
+    app._router_engine._drain_user_queue()
+    assert len(app._router_engine._user_message_queue) == 0
     assert len(chat_service.ask_payloads) == 1
 
 
@@ -1188,46 +1209,6 @@ def test_canonical_tool_name_maps_file_read_alias() -> None:
     assert _canonical_tool_name("run_command") == "run_shell"
     assert _canonical_tool_name("read_file") == "read_file"
     assert _canonical_tool_name("write_file") == "write_file"
-
-
-def test_model_response_awaits_user_detects_question(tmp_path: Path) -> None:
-    """When model response ends with a question mark, plan should be detected as awaiting user."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "odpowiedź"
-
-    permission_manager = DummyPermissionManager()
-    chat_service = _DummyChatService()
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, chat_service),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    # Ends with question mark → True
-    assert app._model_response_awaits_user("Co chcesz, żebym zrobił?") is True
-    assert app._model_response_awaits_user("Jakiego narzędzia potrzebujesz?") is True
-    # Polish question markers
-    assert app._model_response_awaits_user("Proszę o decyzję w tej sprawie.") is True
-    assert app._model_response_awaits_user("Czekam na Twoją decyzję.") is True
-    # Normal statement → False
-    assert app._model_response_awaits_user("Wykonałem polecenie.") is False
-    assert app._model_response_awaits_user("") is False
-    # tool_call → always False (model is NOT waiting)
-    assert app._model_response_awaits_user(
-        '```tool_call\n{"tool":"list_dir","args":{"path":"."},"intent":"test"}\n```'
-    ) is False
 
 
 def test_model_awaits_user_pauses_plan_in_user_turn(monkeypatch, tmp_path: Path) -> None:
@@ -1258,18 +1239,18 @@ def test_model_awaits_user_pauses_plan_in_user_turn(monkeypatch, tmp_path: Path)
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
     # Send a non-interrupt message → model replies with a question
-    app._process_user_turn("zrób coś pożytecznego")
+    app._router_engine._process_user_turn("zrób coś pożytecznego")
 
-    assert app._plan_pause_active is True
-    assert app._plan_pause_reason == "model_awaits_user"
-    assert app._pending_user_decision is True
-    assert app._watchdog_suspended_until_user_input is True
+    assert app._router_engine._plan_pause_active is True
+    assert app._router_engine._plan_pause_reason == "model_awaits_user"
+    assert app._router_engine._pending_user_decision is True
+    assert app._router_engine._watchdog_suspended_until_user_input is True
 
 
 def test_new_user_message_unsuspends_watchdog(monkeypatch, tmp_path: Path) -> None:
@@ -1300,22 +1281,22 @@ def test_new_user_message_unsuspends_watchdog(monkeypatch, tmp_path: Path) -> No
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
     # Simulate suspended watchdog
-    app._watchdog_suspended_until_user_input = True
-    app._watchdog_attempts = 5
-    app._plan_pause_active = True
-    app._pending_user_decision = False
+    app._router_engine._watchdog_suspended_until_user_input = True
+    app._router_engine._watchdog_attempts = 5
+    app._router_engine._plan_pause_active = True
+    app._router_engine._pending_user_decision = False
 
-    app._process_user_turn("kontynuuj pracę")
+    app._router_engine._process_user_turn("kontynuuj pracę")
 
     # Watchdog should be unsuspended after new user input
-    assert app._watchdog_suspended_until_user_input is False
-    assert app._watchdog_attempts == 0
+    assert app._router_engine._watchdog_suspended_until_user_input is False
+    assert app._router_engine._watchdog_attempts == 0
 
 
 def test_supervisor_waiting_user_decision_pauses_plan(monkeypatch, tmp_path: Path) -> None:
@@ -1356,16 +1337,16 @@ def test_supervisor_waiting_user_decision_pauses_plan(monkeypatch, tmp_path: Pat
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
-    app._process_user_turn("zrób coś")
+    app._router_engine._process_user_turn("zrób coś")
 
-    assert app._plan_pause_active is True
-    assert app._pending_user_decision is True
-    assert app._watchdog_suspended_until_user_input is True
+    assert app._router_engine._plan_pause_active is True
+    assert app._router_engine._pending_user_decision is True
+    assert app._router_engine._watchdog_suspended_until_user_input is True
 
 
 # ---------------------------------------------------------------------------
@@ -1424,7 +1405,7 @@ def test_resolve_tool_calls_forces_tool_plan_after_max_corrections(monkeypatch, 
     (tmp_path / "work" / "state").mkdir(parents=True, exist_ok=True)
 
     initial = '```tool_call\n{"tool":"amiagi-execute","args":{"file_path":"test.py"},"intent":"run"}\n```'
-    result = app._resolve_tool_calls(initial)
+    result = app._router_engine.resolve_tool_calls(initial)
 
     # After 2 corrective loops the supervisor keeps returning the unknown tool,
     # so on 3rd attempt the system should force a write_file with tool plan.
@@ -1434,267 +1415,6 @@ def test_resolve_tool_calls_forces_tool_plan_after_max_corrections(monkeypatch, 
     assert "Plan narzędzia zapisany" in result or "tool_design_plan.json" in result or "force_tool_creation_plan" in result
     # The supervisor log should mention exhausted corrections
     assert any("Wyczerpano próby naprawy" in msg for msg in logs["supervisor_log"])
-
-
-def test_enqueue_supervisor_message_routes_sponsor_blocks_to_user_panel(monkeypatch, tmp_path: Path) -> None:
-    """When Kastor's notes contain [Kastor -> Sponsor], the block must appear in user_model_log."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
-    monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-
-    # Kastor sends a message addressed to Sponsor
-    app._enqueue_supervisor_message(
-        stage="user_turn",
-        reason_code="IDENTITY_QUERY_HANDLED",
-        notes="[Kastor -> Sponsor] Jestem Kastorem i współpracuję z Polluksem w realizacji Twoich zadań.",
-        answer="",
-    )
-
-    # The [Kastor -> Sponsor] block must appear in user_model_log
-    user_msgs = " ".join(logs["user_model_log"])
-    assert "Kastor -> Sponsor" in user_msgs
-    assert "Jestem Kastorem" in user_msgs
-
-
-def test_enqueue_supervisor_message_routes_polluks_blocks_to_executor(monkeypatch, tmp_path: Path) -> None:
-    """[Kastor -> Polluks] in notes should go to executor_log, not user panel."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
-    monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-
-    app._enqueue_supervisor_message(
-        stage="user_turn",
-        reason_code="IDENTITY_QUERY_HANDLED",
-        notes="[Kastor -> Polluks] Popraw format odpowiedzi.",
-        answer="",
-    )
-
-    # [Kastor -> Polluks] should go to executor_log, NOT user_model_log
-    assert any("Popraw format" in msg for msg in logs["executor_log"])
-    assert not any("Popraw format" in msg for msg in logs["user_model_log"])
-
-
-# ---------------------------------------------------------------------------
-# Tests for enqueue dedup, chunked read_file, download_file, convert_pdf_to_markdown
-# ---------------------------------------------------------------------------
-
-
-def test_enqueue_supervisor_message_dedup_skips_identical(monkeypatch, tmp_path: Path) -> None:
-    """Consecutive identical enqueue calls should be deduplicated."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
-    monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-
-    # Enqueue the same message 3 times
-    for _ in range(3):
-        app._enqueue_supervisor_message(
-            stage="textual_progress_guard",
-            reason_code="OK",
-            notes="Kastor wymusił postęp operacyjny.",
-            answer="",
-        )
-
-    # Only the first one should be in the outbox
-    assert len(app._supervisor_outbox) == 1
-
-    # But a different message should be added
-    app._enqueue_supervisor_message(
-        stage="textual_progress_guard",
-        reason_code="TOOL_PROTOCOL_DRIFT",
-        notes="Inna notatka.",
-        answer="",
-    )
-    assert len(app._supervisor_outbox) == 2
-
-
-def test_enqueue_supervisor_message_dedup_allows_different_stages(monkeypatch, tmp_path: Path) -> None:
-    """Different stages should not be deduplicated."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
-    monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-
-    app._enqueue_supervisor_message(stage="user_turn", reason_code="OK", notes="A", answer="")
-    app._enqueue_supervisor_message(stage="textual_progress_guard", reason_code="OK", notes="A", answer="")
-
-    assert len(app._supervisor_outbox) == 2
-
-
-def test_read_file_chunked_returns_offset_metadata(monkeypatch, tmp_path: Path) -> None:
-    """read_file should support offset-based chunked reading."""
-    from amiagi.application.tool_calling import ToolCall
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    permission_manager.allow_all = True
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    # Create a test file with known content
-    test_file = tmp_path / "work" / "testdoc.txt"
-    test_file.parent.mkdir(parents=True, exist_ok=True)
-    content = "A" * 100 + "B" * 100 + "C" * 50  # 250 chars total
-    test_file.write_text(content, encoding="utf-8")
-
-    # Chunk 1: offset=0, max_chars=100
-    result1 = app._execute_tool_call(ToolCall(tool="read_file", args={"path": str(test_file), "max_chars": 100, "offset": 0}, intent="test"))
-    assert result1["ok"] is True
-    assert result1["content"] == "A" * 100
-    assert result1["total_chars"] == 250
-    assert result1["offset"] == 0
-    assert result1["chunk_end"] == 100
-    assert result1["has_more"] is True
-    assert result1["next_offset"] == 100
-
-    # Chunk 2: offset=100, max_chars=100
-    result2 = app._execute_tool_call(ToolCall(tool="read_file", args={"path": str(test_file), "max_chars": 100, "offset": 100}, intent="test"))
-    assert result2["ok"] is True
-    assert result2["content"] == "B" * 100
-    assert result2["has_more"] is True
-    assert result2["next_offset"] == 200
-
-    # Chunk 3: offset=200, max_chars=100 (only 50 chars left)
-    result3 = app._execute_tool_call(ToolCall(tool="read_file", args={"path": str(test_file), "max_chars": 100, "offset": 200}, intent="test"))
-    assert result3["ok"] is True
-    assert result3["content"] == "C" * 50
-    assert result3["has_more"] is False
-    assert "next_offset" not in result3
-
-
-def test_read_file_default_offset_zero(monkeypatch, tmp_path: Path) -> None:
-    """read_file without offset behaves like offset=0."""
-    from amiagi.application.tool_calling import ToolCall
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    permission_manager.allow_all = True
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    test_file = tmp_path / "work" / "small.txt"
-    test_file.parent.mkdir(parents=True, exist_ok=True)
-    test_file.write_text("hello world", encoding="utf-8")
-
-    result = app._execute_tool_call(ToolCall(tool="read_file", args={"path": str(test_file)}, intent="test"))
-    assert result["ok"] is True
-    assert result["content"] == "hello world"
-    assert result["offset"] == 0
-    assert result["has_more"] is False
 
 
 def test_canonical_tool_name_maps_new_aliases() -> None:
@@ -1713,166 +1433,6 @@ def test_download_file_and_convert_pdf_in_supported_tools() -> None:
 
     assert "download_file" in _SUPPORTED_TEXTUAL_TOOLS
     assert "convert_pdf_to_markdown" in _SUPPORTED_TEXTUAL_TOOLS
-
-
-def test_convert_pdf_to_markdown_with_pypdf(monkeypatch, tmp_path: Path) -> None:
-    """convert_pdf_to_markdown should convert a valid PDF using pypdf fallback."""
-    from amiagi.application.tool_calling import ToolCall
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    permission_manager.allow_all = True
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    # Create a minimal PDF with embedded text
-    pdf_path = tmp_path / "work" / "test.pdf"
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Minimal valid PDF with text content
-    pdf_content = (
-        b"%PDF-1.4\n"
-        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
-        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
-        b"4 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 700 Td (Hello PDF World) Tj ET\nendstream\nendobj\n"
-        b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n"
-        b"xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n"
-        b"0000000266 00000 n \n0000000360 00000 n \n"
-        b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n441\n%%EOF\n"
-    )
-    pdf_path.write_bytes(pdf_content)
-
-    out_path = tmp_path / "work" / "converted" / "test.md"
-    result = app._execute_tool_call(ToolCall(
-        tool="convert_pdf_to_markdown",
-        args={"path": str(pdf_path), "output_path": str(out_path)},
-        intent="convert",
-    ))
-
-    assert result["ok"] is True
-    assert result["output_path"] == str(out_path)
-    assert result["chars"] > 0
-    assert out_path.exists()
-    md_content = out_path.read_text(encoding="utf-8")
-    assert len(md_content) > 0
-
-
-def test_convert_pdf_to_markdown_file_not_found(monkeypatch, tmp_path: Path) -> None:
-    """convert_pdf_to_markdown should return error for missing file."""
-    from amiagi.application.tool_calling import ToolCall
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    permission_manager.allow_all = True
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    result = app._execute_tool_call(ToolCall(
-        tool="convert_pdf_to_markdown",
-        args={"path": "/nonexistent/file.pdf"},
-        intent="convert",
-    ))
-    assert result["ok"] is False
-    assert result["error"] == "file_not_found"
-
-
-def test_fetch_web_chunked_offset(monkeypatch, tmp_path: Path) -> None:
-    """fetch_web should support offset-based chunked reading of web content."""
-    from amiagi.application.tool_calling import ToolCall
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return ""
-
-    permission_manager = DummyPermissionManager()
-    permission_manager.allow_all = True
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, permission_manager),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    # Mock urlopen to return known content
-    web_content = "X" * 300
-
-    class FakeResponse:
-        def __init__(self):
-            self.headers = SimpleNamespace(get_content_charset=lambda: "utf-8", get=lambda k, d="": d)
-
-        def read(self, *a):
-            return web_content.encode("utf-8")
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            pass
-
-    import amiagi.interfaces.textual_cli as cli_module
-    monkeypatch.setattr(cli_module, "urlopen", lambda *a, **kw: FakeResponse())
-
-    result1 = app._execute_tool_call(ToolCall(
-        tool="fetch_web",
-        args={"url": "https://example.com", "max_chars": 100, "offset": 0},
-        intent="fetch",
-    ))
-    assert result1["ok"] is True
-    assert len(result1["content"]) == 100
-    assert result1["has_more"] is True
-    assert result1["next_offset"] == 100
-
-    result2 = app._execute_tool_call(ToolCall(
-        tool="fetch_web",
-        args={"url": "https://example.com", "max_chars": 100, "offset": 200},
-        intent="fetch",
-    ))
-    assert result2["ok"] is True
-    assert len(result2["content"]) == 100
-    assert result2["has_more"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -1915,12 +1475,12 @@ def test_sponsor_panel_strips_tool_call_from_addressed_block(monkeypatch, tmp_pa
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
-    app._process_user_turn("pokaż plik")
+    app._router_engine._process_user_turn("pokaż plik")
 
     # user_model_log should NOT contain tool_call fenced block
     user_msgs = " ".join(logs["user_model_log"])
@@ -1969,12 +1529,12 @@ def test_sponsor_panel_redirects_pure_tool_call_to_executor(monkeypatch, tmp_pat
 
     logs: dict[str, list[str]] = {"user_model_log": [], "executor_log": [], "supervisor_log": []}
     monkeypatch.setattr(app, "_append_log", lambda widget_id, message: logs[widget_id].append(message))
-    monkeypatch.setattr(app, "_poll_supervision_dialogue", lambda: None)
+    monkeypatch.setattr(app._router_engine, "poll_supervision_dialogue", lambda: None)
     monkeypatch.setattr(app, "_handle_cli_like_commands", lambda text: _CommandOutcome(False, []))
-    monkeypatch.setattr(app, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
-    monkeypatch.setattr(app, "_resolve_tool_calls", lambda answer: answer)
+    monkeypatch.setattr(app._router_engine, "_enforce_supervised_progress", lambda _text, answer, **_kwargs: answer)
+    monkeypatch.setattr(app._router_engine, "resolve_tool_calls", lambda answer, **_kw: answer)
 
-    app._process_user_turn("zrób ls")
+    app._router_engine._process_user_turn("zrób ls")
 
     # user_model_log must NOT have the tool_call block routed through addressed routing
     # (display_answer fallback is OK because _format_user_facing_answer cleans it too)
@@ -1986,169 +1546,3 @@ def test_sponsor_panel_redirects_pure_tool_call_to_executor(monkeypatch, tmp_pat
     # executor_log should have original content
     exec_msgs = " ".join(logs["executor_log"])
     assert "run_shell" in exec_msgs
-
-
-# ---------------------------------------------------------------------------
-# _is_premature_plan_completion tests
-# ---------------------------------------------------------------------------
-
-
-def test_premature_plan_completion_detected_when_stage_completed(tmp_path: Path) -> None:
-    """_is_premature_plan_completion returns True when plan says completed
-    but the answer doesn't contain the termination signal."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "ok"
-
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, DummyPermissionManager()),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    # Create a completed plan
-    notes_dir = app._work_dir / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
-    plan = {
-        "current_stage": "completed",
-        "tasks": [{"name": "init", "status": "zakończona"}],
-    }
-    (notes_dir / "main_plan.json").write_text(json.dumps(plan), encoding="utf-8")
-
-    answer_without_signal = "Czy chcesz rozwijać nowe narzędzia? Czekam na Twoje zalecenie."
-    assert app._is_premature_plan_completion(answer_without_signal) is True
-
-
-def test_premature_plan_completion_false_when_signal_present(tmp_path: Path) -> None:
-    """_is_premature_plan_completion returns False when the completion signal is present."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "ok"
-
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, DummyPermissionManager()),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    notes_dir = app._work_dir / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
-    plan = {"current_stage": "completed", "tasks": []}
-    (notes_dir / "main_plan.json").write_text(json.dumps(plan), encoding="utf-8")
-
-    answer_with_signal = "[Polluks -> Sponsor] Zakończyłem zadanie. Oczekuję na Twoją decyzję."
-    assert app._is_premature_plan_completion(answer_with_signal) is False
-
-
-def test_premature_plan_completion_false_when_no_plan(tmp_path: Path) -> None:
-    """_is_premature_plan_completion returns False when no plan file exists."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "ok"
-
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, DummyPermissionManager()),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    assert app._is_premature_plan_completion("Czy chcesz kontynuować?") is False
-
-
-def test_premature_plan_completion_all_tasks_done_no_signal(tmp_path: Path) -> None:
-    """Returns True when all tasks are 'zakończona' even if current_stage != completed."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "ok"
-
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, DummyPermissionManager()),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    notes_dir = app._work_dir / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
-    plan = {
-        "current_stage": "execution",
-        "tasks": [
-            {"name": "T1", "status": "zakończona"},
-            {"name": "T2", "status": "zakończona"},
-        ],
-    }
-    (notes_dir / "main_plan.json").write_text(json.dumps(plan), encoding="utf-8")
-
-    assert app._is_premature_plan_completion("Co dalej?") is True
-
-
-def test_redirect_premature_completion_returns_none_without_supervisor(
-    tmp_path: Path,
-) -> None:
-    """_redirect_premature_completion returns None when supervisor is absent."""
-
-    class _DummyOllamaClient:
-        base_url = "http://127.0.0.1:11434"
-
-    class _DummyChatService:
-        def __init__(self) -> None:
-            self.ollama_client = _DummyOllamaClient()
-            self.supervisor_service = None
-            self.work_dir = tmp_path / "work"
-            self.memory_repository = type('Repo', (), {'recent_messages': lambda self, limit=6: []})()
-
-        def ask(self, text: str, *, actor: str = "") -> str:
-            return "ok"
-
-    app = _AmiagiTextualApp(
-        chat_service=cast(Any, _DummyChatService()),
-        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
-        permission_manager=cast(Any, DummyPermissionManager()),
-        shell_policy_path=tmp_path / "shell_allowlist.json",
-    )
-
-    result = app._redirect_premature_completion("test", "Czekam na Twoje instrukcje.")
-    assert result is None

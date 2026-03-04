@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from amiagi.interfaces.cli import _network_resource_for_model
+from amiagi.interfaces.shared_cli_helpers import _network_resource_for_model
 from amiagi.interfaces.permission_manager import PermissionManager
 
 

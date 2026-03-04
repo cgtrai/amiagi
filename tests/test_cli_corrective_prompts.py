@@ -2,20 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from amiagi.interfaces.cli import (
-    _build_plan_tracking_corrective_prompt,
+from amiagi.application.tool_helpers import (
+    resolve_tool_path as _resolve_tool_path,
+    is_path_within_work_dir as _is_path_within_work_dir,
+)
+from amiagi.application.router_engine import (
     _build_no_action_corrective_prompt,
     _build_pseudo_tool_corrective_prompt,
     _build_python_code_corrective_prompt,
     _build_unparsed_tool_call_corrective_prompt,
+    _build_unknown_tools_corrective_prompt,
+    _build_plan_tracking_corrective_prompt,
     _has_supported_tool_call,
     _has_unknown_tool_calls,
     _canonicalize_tool_calls,
     _is_non_action_placeholder,
     _looks_like_unparsed_tool_call,
-    _resolve_tool_path,
-    _build_unknown_tools_corrective_prompt,
-    _is_path_within_work_dir,
     _detect_preferred_microphone_device,
     _build_microphone_profiles,
 )
@@ -211,9 +213,9 @@ def test_detect_preferred_microphone_device_prefers_webcam(monkeypatch) -> None:
                 "card 2: C920 [HD Pro Webcam C920], device 0: USB Audio [USB Audio]\n"
             )
 
-    monkeypatch.setattr("amiagi.interfaces.cli.shutil.which", lambda name: "/usr/bin/arecord" if name == "arecord" else None)
+    monkeypatch.setattr("amiagi.application.router_engine.shutil.which", lambda name: "/usr/bin/arecord" if name == "arecord" else None)
     monkeypatch.setattr(
-        "amiagi.interfaces.cli.subprocess.run",
+        "amiagi.application.router_engine.subprocess.run",
         lambda *args, **kwargs: DummyCompleted(),
     )
 

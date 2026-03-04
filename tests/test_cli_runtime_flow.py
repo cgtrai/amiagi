@@ -6,10 +6,13 @@ import json
 
 from amiagi.application.chat_service import ChatService
 from amiagi.application.supervisor_service import SupervisionResult
+from amiagi.application import router_engine as engine_module
 from amiagi.interfaces import cli as cli_module
 
 
 class FakePermissionManager:
+    allow_all = True
+
     def request_local_network(self, reason: str) -> bool:
         _ = reason
         return True
@@ -120,7 +123,7 @@ class FakeChatService:
     def bootstrap_runtime_readiness(self) -> str:
         return "Gotowy."
 
-    def ask(self, user_message: str) -> str:
+    def ask(self, user_message: str, **kwargs: Any) -> str:
         _ = user_message
         self.ask_calls += 1
         if not self._responses:
@@ -823,6 +826,7 @@ def test_run_cli_reactivates_after_idle_timeout_without_new_user_message(tmp_pat
     ]
     chat_service = FakeChatService(work_dir=work_dir, responses=responses)
     monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+    monkeypatch.setattr(engine_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
 
     fake_tty = FakeTTYInput(["ok\n", "/exit\n"])
     monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)
@@ -860,6 +864,7 @@ def test_run_cli_does_not_reactivate_when_waiting_user_decision(tmp_path: Path, 
     chat_service = FakeChatService(work_dir=work_dir, responses=responses)
     chat_service.supervisor_service = WaitingDecisionSupervisor()
     monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+    monkeypatch.setattr(engine_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
 
     fake_tty = FakeTTYInput(["ok\n", "/exit\n"])
     monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)
@@ -898,6 +903,7 @@ def test_run_cli_caps_idle_reactivation_after_two_attempts(tmp_path: Path, monke
     ]
     chat_service = FakeChatService(work_dir=work_dir, responses=responses)
     monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+    monkeypatch.setattr(engine_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
 
     fake_tty = FakeTTYInput(["ok\n", "/exit\n"])
     monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)
@@ -939,6 +945,7 @@ def test_run_cli_idle_reactivation_resets_passive_turns_after_supervisor_repair(
     chat_service = FakeChatService(work_dir=work_dir, responses=responses)
     chat_service.supervisor_service = IdleRepairSupervisor()
     monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+    monkeypatch.setattr(engine_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
 
     fake_tty = FakeTTYInput(["ok\n", "/exit\n"])
     monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)
@@ -1385,8 +1392,8 @@ def test_run_cli_record_microphone_clip_auto_selects_device_and_profile(
     user_inputs = iter(["kontynuuj", "/exit"])
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(user_inputs))
     monkeypatch.setattr(cli_module, "PermissionManager", FakePermissionManager)
-    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
-    monkeypatch.setattr(cli_module.shutil, "which", fake_which)
+    monkeypatch.setattr(engine_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(engine_module.shutil, "which", fake_which)
 
     shell_policy_path = Path(__file__).resolve().parents[1] / "config" / "shell_allowlist.json"
     cli_module.run_cli(
@@ -1541,6 +1548,7 @@ def test_run_cli_reactivates_on_idle_when_actionable_plan_exists_even_without_pa
     ]
     chat_service = FakeChatService(work_dir=work_dir, responses=responses)
     monkeypatch.setattr(cli_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
+    monkeypatch.setattr(engine_module, "_IDLE_REACTIVATION_SECONDS", 0.0)
 
     fake_tty = FakeTTYInput(["/goal-status\n", "/exit\n"])
     monkeypatch.setattr(cli_module.sys, "stdin", fake_tty)

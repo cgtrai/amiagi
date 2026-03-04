@@ -3,15 +3,17 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 1045](https://img.shields.io/badge/tests-1045%20passed-brightgreen.svg)](tests/)
-[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blueviolet.svg)](pyproject.toml)
+[![Tests: 1177](https://img.shields.io/badge/tests-1177%20passed-brightgreen.svg)](tests/)
+[![Version: 1.0.3](https://img.shields.io/badge/version-1.0.3-blueviolet.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 Lokalny framework CLI do orkiestracji autonomicznych zespołów agentów LLM w kontrolowanym środowisku.
 
 `amiagi` to pełnoprawna platforma orkiestracji agentów: dynamiczny rejestr agentów, kolejka zadań, silnik workflow, budżetowanie, framework ewaluacyjny, REST API, web dashboard i kompozycja zespołów — wszystko z izolacją bezpieczeństwa per agent, pełnym audytem JSONL i obsługą wielu backendów (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Aktualna wersja: **v1.0.1** — wszystkie 11 faz roadmapy zrealizowanych, **1045 testów**.
+Aktualna wersja: **v1.0.3** — wszystkie 11 faz roadmapy zrealizowanych, **1177 testów**.
+
+v1.0.3 wprowadza współdzielony rdzeń orkiestracji `RouterEngine` + `EventBus` — zarówno Textual TUI jak i synchroniczne CLI są teraz cienkimi adapterami delegującymi routing, wykonywanie narzędzi, watchdog i nadzór do jednego silnika.
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 
@@ -55,6 +57,8 @@ Pełne warunki: [LICENSE](LICENSE).
 ### Architektura i runtime
 
 - Architektura warstwowa (`domain`, `application`, `infrastructure`, `interfaces`)
+- **`RouterEngine`** — współdzielony rdzeń orkiestracji (routing, tool execution, watchdog, supervision, plan tracking) z `EventBus`-em do komunikacji z adapterami
+- **`EventBus`** — typowany pub/sub z 5 zdarzeniami (`LogEvent`, `ActorStateEvent`, `CycleFinishedEvent`, `SupervisorMessageEvent`, `ErrorEvent`)
 - Protokół `ChatCompletionClient` — interfejs strukturalny, który muszą spełniać wszystkie backendy
 - Trwała pamięć w SQLite
 - Logi JSONL dla:
@@ -474,6 +478,6 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Najnowsze release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
-Patch notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md).
+Najnowsze release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md).
+Poprzednie wydania: [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
 Roadmapa: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).

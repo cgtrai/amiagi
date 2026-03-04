@@ -3,15 +3,17 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 1045](https://img.shields.io/badge/tests-1045%20passed-brightgreen.svg)](tests/)
-[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blueviolet.svg)](pyproject.toml)
+[![Tests: 1177](https://img.shields.io/badge/tests-1177%20passed-brightgreen.svg)](tests/)
+[![Version: 1.0.3](https://img.shields.io/badge/version-1.0.3-blueviolet.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 A local, CLI-first framework for orchestrating autonomous LLM agent teams in controlled environments.
 
 `amiagi` is a full-featured agent orchestration platform: dynamic agent registry, task queuing, workflow engine, budget governance, evaluation framework, REST API, web dashboard, and team composition — all with per-agent security isolation, JSONL audit logs, and multi-backend support (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Current version: **v1.0.1** — all 11 roadmap phases complete, **1045 tests**.
+Current version: **v1.0.3** — all 11 roadmap phases complete, **1177 tests**.
+
+v1.0.3 introduces a shared `RouterEngine` + `EventBus` orchestration core — both the Textual TUI and synchronous CLI are now thin adapters delegating all routing, tool execution, watchdog, and supervision logic to a single engine.
 
 ## Safety Disclaimer (Read First)
 
@@ -55,6 +57,8 @@ See [LICENSE](LICENSE) for full terms.
 ### Architecture & runtime
 
 - Layered architecture (`domain`, `application`, `infrastructure`, `interfaces`)
+- **`RouterEngine`** — shared orchestration core (routing, tool execution, watchdog, supervision, plan tracking) with `EventBus` for adapter communication
+- **`EventBus`** — typed pub/sub with 5 event types (`LogEvent`, `ActorStateEvent`, `CycleFinishedEvent`, `SupervisorMessageEvent`, `ErrorEvent`)
 - `ChatCompletionClient` protocol — structural interface all backends must satisfy
 - Persistent memory in SQLite
 - Full JSONL audit logs for:
@@ -321,6 +325,8 @@ src/amiagi/
     workflow_definition.py    # WorkflowDefinition, WorkflowNode
     permission_policy.py      # AgentPermissionPolicy
   application/        # use-cases, orchestration, protocols
+    router_engine.py          # RouterEngine (shared orchestration core)
+    event_bus.py              # EventBus (typed pub/sub for adapters)
     chat_service.py           # ChatService (main LLM conversation loop)
     tool_calling.py           # tool dispatch + alias resolution
     tool_registry.py          # ToolRegistry (dynamic tool registration)
@@ -358,12 +364,14 @@ src/amiagi/
     sandbox_manager.py        # SandboxManager (per-agent isolation)
     secret_vault.py           # SecretVault (per-agent credentials)
   interfaces/         # CLI and user interaction layer
-    textual_cli.py            # Textual TUI (main user interface)
+    textual_cli.py            # Textual TUI adapter (thin, delegates to RouterEngine)
+    cli.py                    # Synchronous CLI adapter (thin, delegates to RouterEngine)
+    shared_cli_helpers.py     # Shared helpers for both CLI adapters
     human_feedback.py         # HumanFeedbackCollector (JSONL)
     team_dashboard.py         # TeamDashboard (org chart + metrics)
     dashboard_static/         # HTML/CSS/JS for web dashboard
   sdk/                # AmiagiClient SDK package
-tests/                # pytest suite (1045 tests)
+tests/                # pytest suite (1177 tests)
 config/               # shell allowlist policy
 skills/               # per-role Markdown skill files
 data/                 # local persistent DB, history, model config
@@ -539,8 +547,8 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Latest release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
-Patch notes: [RELEASE_NOTES_v1.0.1.md](RELEASE_NOTES_v1.0.1.md).
+Latest release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md).
+Previous releases: [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
 Roadmap: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).
 
 ## Polish Documentation

@@ -1,8 +1,5 @@
 # amiagi (unreleased)
 
-Changes targeting v1.0.2:
+No unreleased changes — all pending work has been shipped in v1.0.3.
 
-## Planned: Internationalization (i18n)
-- Extract all UI strings to external JSON locale files (`pl.json`, `en.json`)
-- Language selection via `--lang` CLI parameter, `/lang` TUI command, `AMIAGI_LANG` env var
-- Default language: Polish (PL)
+See [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md) for the latest release.
