@@ -348,7 +348,16 @@ AMIAGI_SUPERVISOR_MODEL=cogito:14b
 
 ## Instalacja
 
-### Rekomendowana dla użytkownika GitHub (automatyczne utworzenie virtualenv)
+### Rekomendowana: jednoliniowa instalacja
+
+```bash
+bash install.sh
+```
+
+Installer sprawdza wymagania (Python 3.10+, GPU, Ollama), tworzy virtualenv,
+instaluje zależności, konfiguruje `.env` i opcjonalnie pobiera modele Ollama.
+
+### Minimalna (tylko venv, bez sprawdzeń)
 
 ```bash
 bash scripts/setup_venv.sh
