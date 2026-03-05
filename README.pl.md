@@ -441,11 +441,20 @@ conda activate <twoja_nazwa_env>  # conda
 | `amiagi --cold_start --auto` | Czysta karta + autonomia — najlepszy do nowego projektu |
 | `amiagi --ui textual` | Textual TUI (domyślny) — wielopanelowy interfejs ze statusem aktorów |
 | `amiagi --ui cli` | Klasyczne synchroniczne CLI — prosty stdin/stdout |
+| `amiagi --ui web` | Web GUI — dashboard w przeglądarce (wymaga `pip install -e ".[web]"`) |
 | `amiagi --lang en` | Interfejs po angielsku |
 | `amiagi --lang pl` | Interfejs po polsku (domyślny) |
 | `amiagi --vram-off` | Wyłącz monitoring VRAM — Ollama sam zarządza pamięcią GPU |
 
 ### Scenariusze użycia
+
+**Web GUI — dashboard w przeglądarce:**
+```bash
+pip install -e ".[web]"   # jednorazowo — instaluje Starlette, Uvicorn, Jinja2 …
+amiagi --ui web
+```
+Otwiera dashboard pod `http://localhost:8080`.
+Szczegóły: [WEB_INTERFACE.md](WEB_INTERFACE.md).
 
 **Pierwsze uruchomienie:**
 ```bash
@@ -567,6 +576,6 @@ Zasady współpracy znajdują się w pliku [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Checklista przed wydaniem znajduje się w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Aktualne zmiany (unreleased): [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Najnowsze release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md).
-Poprzednie wydania: [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
+Najnowsze release notes: [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md).
+Poprzednie wydania: [v1.0.3](RELEASE_NOTES_v1.0.3.md) · [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
 Roadmapa: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).

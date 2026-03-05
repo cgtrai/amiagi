@@ -511,11 +511,23 @@ conda activate <your_env_name>  # conda
 | `amiagi --cold_start --auto` | Clean slate + autonomous — best for starting a brand new project |
 | `amiagi --ui textual` | Textual TUI (default) — multi-panel interface with actor status |
 | `amiagi --ui cli` | Classic synchronous CLI — simple stdin/stdout loop |
+| `amiagi --ui web` | Web GUI — browser dashboard on `http://localhost:8080` (requires PostgreSQL) |
 | `amiagi --lang en` | English interface |
 | `amiagi --lang pl` | Polish interface (default) |
 | `amiagi --vram-off` | Disable VRAM monitoring — let Ollama manage GPU memory |
 
 ### Usage scenarios
+
+**Web GUI — browser-based dashboard:**
+```bash
+pip install -e ".[web]"   # first time only — installs Starlette, asyncpg, etc.
+amiagi --ui web
+```
+Opens the full Web GUI at `http://localhost:8080`.  
+Requirements: **PostgreSQL 13+** running and accessible (configure `AMIAGI_DB_*`
+variables in `.env`), plus **Ollama** for LLM inference.  
+See [WEB_INTERFACE.md](WEB_INTERFACE.md) for full documentation including OAuth2
+setup, RBAC, migrations, and available API endpoints.
 
 **First launch — getting started:**
 ```bash
@@ -637,8 +649,8 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Latest release notes: [RELEASE_NOTES_v1.0.3.md](RELEASE_NOTES_v1.0.3.md).
-Previous releases: [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
+Latest release notes: [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md).
+Previous releases: [v1.0.3](RELEASE_NOTES_v1.0.3.md) · [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
 Roadmap: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).
 
 ## Polish Documentation
