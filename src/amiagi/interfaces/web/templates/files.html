@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Files — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/files-page.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="files-layout">
+  <div class="files-header">
+    <h1>📁 Files</h1>
+    <span id="file-count" class="meta"></span>
+  </div>
+
+  <!-- Upload zone -->
+  <div class="upload-zone" id="upload-zone"
+       ondragover="event.preventDefault(); this.classList.add('dragover')"
+       ondragleave="this.classList.remove('dragover')"
+       ondrop="handleDrop(event)">
+    <p>Drag &amp; drop files here or <label for="file-input" class="file-browse-label">browse</label></p>
+    <input type="file" id="file-input" multiple hidden onchange="handleFiles(this.files)"/>
+  </div>
+  <div id="upload-status"></div>
+
+  <!-- File list -->
+  <ul class="file-list" id="file-list">
+    <li class="empty-state" id="empty-msg">Loading…</li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+
+  var workspace = new URLSearchParams(location.search).get('workspace') || 'default';
+
+  function loadFiles() {
+    fetch('/workspace/browse?workspace=' + encodeURIComponent(workspace))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderFiles(data.files || []); })
+      .catch(function() { document.getElementById('empty-msg').textContent = 'Failed to load files.'; });
+  }
+
+  function renderFiles(files) {
+    var list = document.getElementById('file-list');
+    var countEl = document.getElementById('file-count');
+    list.innerHTML = '';
+    countEl.textContent = files.length + ' file(s)';
+    if (files.length === 0) {
+      list.innerHTML = '<li class="empty-state">No files yet. Upload something!</li>';
+      return;
+    }
+    files.forEach(function(f) {
+      var name = typeof f === 'string' ? f : (f.name || f.path || f);
+      var li = document.createElement('li');
+      li.className = 'file-item';
+      li.innerHTML =
+        '<span class="icon">📄</span>' +
+        '<span class="name">' + _esc(name) + '</span>' +
+        '<span class="actions">' +
+          '<a href="/workspace/file?path=' + encodeURIComponent(name) + '&workspace=' + encodeURIComponent(workspace) + '" target="_blank">View</a>' +
+        '</span>';
+      list.appendChild(li);
+    });
+  }
+
+  function _esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  window.handleDrop = function(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.remove('dragover');
+    if (e.dataTransfer && e.dataTransfer.files) {
+      handleFiles(e.dataTransfer.files);
+    }
+  };
+
+  window.handleFiles = function(fileList) {
+    var status = document.getElementById('upload-status');
+    Array.from(fileList).forEach(function(file) {
+      var fd = new FormData();
+      fd.append('file', file);
+      status.textContent = 'Uploading ' + file.name + '…';
+      fetch('/files/upload', { method: 'POST', body: fd })
+        .then(function(r) {
+          if (r.ok) {
+            status.textContent = file.name + ' uploaded ✓';
+            loadFiles();
+          } else {
+            return r.json().then(function(d) { status.textContent = 'Error: ' + (d.error || r.statusText); });
+          }
+        })
+        .catch(function(err) { status.textContent = 'Upload failed: ' + err; });
+    });
+  };
+
+  loadFiles();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,154 @@
+<nav class="glass-nav app-nav">
+  <a href="/dashboard" class="nav-brand">Amiagi</a>
+
+  <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation"
+    onclick="toggleMobileMenu()">
+    <span></span><span></span><span></span>
+  </button>
+
+  <ul class="nav-links">
+    <li><a href="/dashboard">Dashboard</a></li>
+    <li><a href="/admin/users">Admin</a></li>
+
+    <!-- Bell notification -->
+    <li class="nav-bell-wrapper">
+      <button id="bell-btn" class="nav-bell-btn" aria-label="Notifications"
+        onclick="toggleNotificationDropdown()">
+        🔔
+        <span id="bell-badge" class="nav-bell-badge">0</span>
+      </button>
+      <div id="notif-dropdown" class="notif-dropdown">
+        <div class="notif-header">
+          <span>Notifications</span>
+          <button onclick="markAllRead()" class="notif-mark-all">Mark all read</button>
+        </div>
+        <ul id="notif-list" class="notif-list">
+          <li class="notif-empty">No notifications</li>
+        </ul>
+      </div>
+    </li>
+
+    <!-- Language switcher -->
+    <li class="lang-switcher">
+      <span>🌐</span>
+      <button class="lang-switcher-btn" onclick="switchLang('pl')" id="lang-pl">PL</button>
+      <button class="lang-switcher-btn" onclick="switchLang('en')" id="lang-en">EN</button>
+    </li>
+
+    <li><a href="/auth/logout">Wyloguj</a></li>
+  </ul>
+</nav>
+
+<!-- Overlay for sidebar (mobile/tablet) -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileMenu()"></div>
+
+<script>
+function toggleMobileMenu() {
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebar-overlay');
+  var btn = document.getElementById('hamburger-btn');
+  var isOpen = sidebar.classList.toggle('open');
+  overlay.classList.toggle('active', isOpen);
+  btn.classList.toggle('open', isOpen);
+}
+function closeMobileMenu() {
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebar-overlay');
+  var btn = document.getElementById('hamburger-btn');
+  sidebar.classList.remove('open');
+  overlay.classList.remove('active');
+  btn.classList.remove('open');
+}
+
+/* ---------- Notification bell ---------- */
+var _notifOpen = false;
+
+function toggleNotificationDropdown() {
+  _notifOpen = !_notifOpen;
+  document.getElementById('notif-dropdown').style.display = _notifOpen ? 'block' : 'none';
+  if (_notifOpen) fetchNotifications();
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+  if (_notifOpen && !e.target.closest('.nav-bell-wrapper')) {
+    _notifOpen = false;
+    document.getElementById('notif-dropdown').style.display = 'none';
+  }
+});
+
+function fetchNotifications() {
+  fetch('/api/notifications')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var items = data.notifications || [];
+      var list = document.getElementById('notif-list');
+      var badge = document.getElementById('bell-badge');
+      var unread = items.filter(function(n) { return !n.read; });
+      badge.textContent = unread.length;
+      badge.style.display = unread.length > 0 ? '' : 'none';
+      if (items.length === 0) {
+        list.innerHTML = '<li class="notif-empty">No notifications</li>';
+        return;
+      }
+      list.innerHTML = items.map(function(n) {
+        var cls = n.read ? 'notif-item' : 'notif-item notif-item--unread';
+        var dot = n.read ? '' : '<span class="notif-dot"></span>';
+        return '<li class="' + cls + '" onclick="readNotif(\'' + _esc(n.id) + '\')">'
+          + dot + '<span>' + _esc(n.message || n.title || '') + '</span>'
+          + '<div class="notif-meta">' + _esc(n.created_at || '') + '</div>'
+          + '</li>';
+      }).join('');
+    })
+    .catch(function() {});
+}
+
+function readNotif(id) {
+  fetch('/api/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' })
+    .then(function() { fetchNotifications(); })
+    .catch(function() {});
+}
+
+function markAllRead() {
+  fetch('/api/notifications/read-all', { method: 'POST' })
+    .then(function() { fetchNotifications(); })
+    .catch(function() {});
+}
+
+function _esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Poll badge count every 30s
+setInterval(function() {
+  fetch('/api/notifications?unread_count=1')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var c = data.unread_count || 0;
+      var badge = document.getElementById('bell-badge');
+      badge.textContent = c;
+      badge.style.display = c > 0 ? '' : 'none';
+    })
+    .catch(function() {});
+}, 30000);
+
+/* ---------- Language switcher ---------- */
+function switchLang(lang) {
+  window.location.href = '/lang/' + lang;
+}
+// Highlight current language
+(function() {
+  fetch('/api/lang')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cur = d.language || 'en';
+      var plBtn = document.getElementById('lang-pl');
+      var enBtn = document.getElementById('lang-en');
+      if (plBtn) plBtn.classList.toggle('active', cur === 'pl');
+      if (enBtn) enBtn.classList.toggle('active', cur === 'en');
+    })
+    .catch(function() {});
+})();
+</script>

@@ -1,0 +1,85 @@
+/* ================================================================
+   Workspace page styles
+   ================================================================ */
+
+.ws-layout {
+  display: flex;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+.ws-tree {
+  width: 260px;
+  min-width: 180px;
+  border-right: 1px solid var(--border-secondary, #334155);
+  overflow-y: auto;
+  padding: var(--space-3, .75rem);
+  background: var(--glass-bg, rgba(30,41,59,.6));
+}
+.ws-tree h3 {
+  font-size: .9rem;
+  margin: 0 0 var(--space-2, .5rem);
+  color: var(--text-secondary, #94a3b8);
+}
+.ws-tree ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ws-tree li {
+  padding: .3rem .5rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: .85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-tree li:hover,
+.ws-tree li.active {
+  background: rgba(99,102,241,.15);
+  color: var(--accent-primary, #6366f1);
+}
+
+.ws-preview {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4, 1rem);
+}
+.ws-preview .file-title {
+  font-size: 1.1rem;
+  margin: 0 0 var(--space-3, .75rem);
+  color: var(--text-primary, #f1f5f9);
+}
+.ws-preview pre {
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-3, .75rem);
+  background: var(--surface-2, #1e293b);
+  overflow-x: auto;
+  font-size: .85rem;
+  line-height: 1.5;
+}
+.ws-preview .binary-info {
+  color: var(--text-secondary, #94a3b8);
+  text-align: center;
+  padding: var(--space-6, 2rem);
+}
+
+.ws-empty {
+  color: var(--text-secondary, #94a3b8);
+  text-align: center;
+  padding: var(--space-6, 2rem);
+}
+
+.ws-actions {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: var(--space-3, .75rem);
+}
+.ws-actions a {
+  padding: .25rem .75rem;
+  font-size: .8rem;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+  text-decoration: none;
+}

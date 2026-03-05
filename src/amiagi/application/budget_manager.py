@@ -2,10 +2,53 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
+
+
+def _safe_float(v: float) -> float | None:
+    """Return *v* unless it is infinite or NaN (not JSON-serialisable)."""
+    if math.isinf(v) or math.isnan(v):
+        return None
+    return v
+
+
+# ── Model pricing (USD per 1 K tokens) ──────────────────────────
+
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Ollama / local — effectively free
+    "llama3.1:8b": {"input": 0.0, "output": 0.0},
+    "llama3.2:3b": {"input": 0.0, "output": 0.0},
+    "deepseek-r1:8b": {"input": 0.0, "output": 0.0},
+    "mistral:7b": {"input": 0.0, "output": 0.0},
+    "qwen2.5:7b": {"input": 0.0, "output": 0.0},
+    # OpenAI
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
+    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+    # Anthropic
+    "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
+    "claude-3-5-haiku-20241022": {"input": 0.0008, "output": 0.004},
+}
+
+
+def estimate_cost(
+    model: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+) -> float:
+    """Estimate cost in USD for a single LLM call.
+
+    Falls back to 0.0 if the model is not in :data:`MODEL_PRICING`.
+    """
+    pricing = MODEL_PRICING.get(model)
+    if pricing is None:
+        return 0.0
+    return (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
 
 
 @dataclass
@@ -208,7 +251,7 @@ class BudgetManager:
             result[aid] = {
                 "limit_usd": rec.limit_usd,
                 "spent_usd": rec.spent_usd,
-                "remaining_usd": rec.remaining_usd,
+                "remaining_usd": _safe_float(rec.remaining_usd),
                 "utilization_pct": rec.utilization_pct,
                 "tokens_used": rec.tokens_used,
                 "requests_count": rec.requests_count,
@@ -263,7 +306,7 @@ class BudgetManager:
             result[tid] = {
                 "limit_usd": tb.limit_usd,
                 "spent_usd": tb.spent_usd,
-                "remaining_usd": tb.remaining_usd,
+                "remaining_usd": _safe_float(tb.remaining_usd),
                 "utilization_pct": tb.utilization_pct,
                 "tokens_used": tb.tokens_used,
                 "requests_count": tb.requests_count,
@@ -308,7 +351,7 @@ class BudgetManager:
         return {
             "limit_usd": sb.limit_usd,
             "spent_usd": sb.spent_usd,
-            "remaining_usd": sb.remaining_usd,
+            "remaining_usd": _safe_float(sb.remaining_usd),
             "utilization_pct": sb.utilization_pct,
             "tokens_used": sb.tokens_used,
             "requests_count": sb.requests_count,

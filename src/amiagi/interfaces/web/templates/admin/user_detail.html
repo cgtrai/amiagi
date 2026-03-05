@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — {{ target_user.display_name }}{% endblock %}
+{% block content %}
+  <div class="container">
+    <h1>{{ target_user.display_name }}</h1>
+
+    <section class="glass-card mb-4">
+      <p><strong>Email:</strong> {{ target_user.email }}</p>
+      <p><strong>Provider:</strong> {{ target_user.provider }}</p>
+      <p><strong>Aktywny:</strong> {{ "Tak" if target_user.is_active else "Nie" }}</p>
+      <p><strong>Zablokowany:</strong> {{ "Tak" if target_user.is_blocked else "Nie" }}</p>
+    </section>
+
+    <section class="glass-card mb-4">
+      <h2>Role</h2>
+      <form id="roles-form">
+        {% for role in all_roles %}
+        <label class="flex gap-2 mb-4">
+          <input type="checkbox" name="role_ids" value="{{ role.id }}"
+                 {{ "checked" if role.name in (target_user.roles | map(attribute='name') | list) }}>
+          {{ role.name }} — {{ role.description }}
+        </label>
+        {% endfor %}
+        <button type="button" class="btn btn-sm" onclick="saveRoles()">Zapisz role</button>
+      </form>
+    </section>
+
+    <section>
+      {% if not target_user.is_blocked %}
+      <button class="btn btn-danger btn-sm" onclick="blockUser()">Zablokuj</button>
+      {% else %}
+      <button class="btn btn-success btn-sm" onclick="activateUser()">Aktywuj</button>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script>
+    async function saveRoles() {
+      const ids = [...document.querySelectorAll('#roles-form input[name=role_ids]:checked')].map(el => el.value);
+      await fetch('/admin/users/{{ target_user.id }}/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role_ids:ids})});
+      location.reload();
+    }
+    async function blockUser() {
+      await fetch('/admin/users/{{ target_user.id }}/block', {method:'POST'});
+      location.reload();
+    }
+    async function activateUser() {
+      await fetch('/admin/users/{{ target_user.id }}/activate', {method:'POST'});
+      location.reload();
+    }
+  </script>
+{% endblock %}

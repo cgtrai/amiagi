@@ -90,6 +90,16 @@ else
   warn "nvidia-smi not found — GPU detection skipped"
 fi
 
+# --- PostgreSQL (required for web interface) ---
+if command -v psql &>/dev/null; then
+  PG_VER=$(psql --version 2>/dev/null | grep -oP '\d+' | head -1)
+  info "PostgreSQL client found (v${PG_VER})"
+else
+  warn "PostgreSQL client (psql) not found — required for web interface (--ui web)"
+  warn "  Install: sudo apt install postgresql postgresql-client"
+  warn "  Then create DB: sudo -u postgres createdb amiagi"
+fi
+
 # ══════════════════════════════════════════════════════════════
 #  2. Virtual environment
 # ══════════════════════════════════════════════════════════════
@@ -115,6 +125,16 @@ python -m pip install --upgrade pip --quiet
 python -m pip install -r requirements.txt --quiet
 python -m pip install -e . --quiet
 info "Runtime dependencies installed"
+
+# --- web interface deps (optional, ask) ---
+read -rp "$(printf "${YELLOW}[?]${NC} Install web interface dependencies (PostgreSQL, Starlette)? [Y/n] ")" WEB_CHOICE
+WEB_CHOICE="${WEB_CHOICE:-Y}"
+if [[ "${WEB_CHOICE}" =~ ^[Yy] ]]; then
+  python -m pip install -e ".[web]" --quiet
+  info "Web interface dependencies installed"
+else
+  info "Skipped web dependencies (install later: pip install -e '.[web]')"
+fi
 
 # --- dev deps (optional, ask) ---
 if [[ -f requirements-dev.txt ]]; then

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Użytkownicy{% endblock %}
+{% block content %}
+  <div class="container">
+    <h1>Użytkownicy</h1>
+
+    <form method="get" action="/admin/users" class="search-bar">
+      <input type="text" name="q" value="{{ search }}" placeholder="Szukaj…" class="input"/>
+      <button type="submit" class="btn btn-sm">Szukaj</button>
+    </form>
+
+    <table class="table glass-card">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Nazwa</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td>{{ u.display_name }}</td>
+          <td>{{ u.roles | map(attribute='name') | join(', ') }}</td>
+          <td>
+            {% if u.is_blocked %}<span class="badge badge-danger">Zablokowany</span>
+            {% elif u.is_active %}<span class="badge badge-success">Aktywny</span>
+            {% else %}<span class="badge badge-muted">Nieaktywny</span>{% endif %}
+          </td>
+          <td>
+            <a href="/admin/users/{{ u.id }}" class="btn btn-xs">Szczegóły</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if page.has_prev %}
+      <a href="?page={{ page.page - 1 }}&q={{ search }}" class="btn btn-sm">← Poprzednia</a>
+    {% endif %}
+    {% if page.has_next %}
+      <a href="?page={{ page.page + 1 }}&q={{ search }}" class="btn btn-sm">Następna →</a>
+    {% endif %}
+  </div>
+{% endblock %}

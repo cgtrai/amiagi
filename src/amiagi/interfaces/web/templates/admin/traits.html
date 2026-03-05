@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Traits{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>Traits</h1>
+    <button class="btn btn-primary" onclick="openCreateTrait()">+ New Trait</button>
+  </div>
+
+  <div class="glass-card">
+    <table class="table" id="traits-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Category</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="traits-body">
+        <tr><td colspan="4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create modal -->
+<div class="modal-overlay" id="create-modal" hidden>
+  <div class="glass-card modal-card">
+    <h2>New Trait</h2>
+    <div class="field">
+      <label for="tr-name">Name</label>
+      <input id="tr-name" placeholder="e.g. creative-writing">
+    </div>
+    <div class="field">
+      <label for="tr-desc">Description</label>
+      <textarea id="tr-desc" rows="3" placeholder="What this trait provides"></textarea>
+    </div>
+    <div class="field">
+      <label for="tr-cat">Category</label>
+      <input id="tr-cat" placeholder="e.g. style, domain, tool">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createTrait()">Create</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  function load() {
+    fetch('/admin/traits')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var traits = data.traits || [];
+        var tbody = document.getElementById('traits-body');
+        if (traits.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4">No traits defined yet.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = traits.map(function(t) {
+          return '<tr>'
+            + '<td>' + esc(t.name) + '</td>'
+            + '<td>' + esc(t.description || '') + '</td>'
+            + '<td>' + esc(t.category || '') + '</td>'
+            + '<td>'
+            + '  <button class="btn btn-xs btn-danger" onclick="delTrait(\'' + t.id + '\')">Delete</button>'
+            + '</td>'
+            + '</tr>';
+        }).join('');
+      });
+  }
+
+  window.openCreateTrait = function() {
+    document.getElementById('create-modal').hidden = false;
+  };
+  window.closeCreateModal = function() {
+    document.getElementById('create-modal').hidden = true;
+  };
+
+  window.createTrait = function() {
+    var body = {
+      name: document.getElementById('tr-name').value,
+      description: document.getElementById('tr-desc').value,
+      category: document.getElementById('tr-cat').value || null,
+    };
+    fetch('/admin/traits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function(r) {
+      if (r.ok) { closeCreateModal(); load(); }
+    });
+  };
+
+  window.delTrait = function(id) {
+    if (!confirm('Delete this trait?')) return;
+    fetch('/admin/traits/' + id, { method: 'DELETE' })
+      .then(function() { load(); });
+  };
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

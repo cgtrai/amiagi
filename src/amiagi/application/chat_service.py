@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from amiagi.application.communication_protocol import (
     CommunicationRules,
@@ -198,9 +198,10 @@ class ChatService:
     work_dir: Path = Path("./amiagi-my-work")
     max_memory_item_chars: int = 1200
     max_tool_result_chars: int = 7000
-    supervisor_service: "SupervisorService | None" = None
+    supervisor_service: SupervisorService | None = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
     skills_loader: SkillsLoader | None = None
+    skill_provider: Callable[[str, str, list[str] | None], list[dict[str, str]]] | None = None
     energy_tracker: EnergyCostTracker | None = None
 
     # Backward-compat alias — legacy code may still use ollama_client.
@@ -643,7 +644,7 @@ class ChatService:
         memory_context = self._build_memory_context(user_message)
         plan_context = self._build_plan_context()
         comm_prompt = build_polluks_communication_prompt(self.comm_rules)
-        skills_section = self._build_skills_section("polluks")
+        skills_section = self._build_skills_section("polluks", user_message)
         lang_directive = get_language_directive()
         lang_block = f"{lang_directive}\n\n" if lang_directive else ""
         return (
@@ -661,19 +662,40 @@ class ChatService:
             f"{memory_context}"
         )
 
-    def _build_skills_section(self, role: str) -> str:
-        """Return skill prompts for *role* if using an API model; empty otherwise."""
+    def _build_skills_section(self, role: str, user_message: str = "") -> str:
+        """Return skill prompts for *role* if using an API model; empty otherwise.
+
+        Delegates to *skill_provider* (SkillSelector bridge) when available.
+        Falls back to legacy *SkillsLoader* when the provider returns no
+        results or is not configured.
+        """
         if not self.is_api_model():
             return ""
+
+        # C1: Delegate to SkillSelector via skill_provider
+        if self.skill_provider is not None:
+            try:
+                selected = self.skill_provider(role, user_message, None)
+                if selected:
+                    parts: list[str] = []
+                    for skill in selected:
+                        parts.append(
+                            f"\n## Skill: {skill['name']}\n{skill['content']}"
+                        )
+                    return "\n".join(parts) + "\n\n"
+            except Exception:  # noqa: BLE001
+                pass  # Fall through to legacy loader
+
+        # C2: Fallback to legacy SkillsLoader
         if self.skills_loader is None:
             return ""
         skills = self.skills_loader.load_for_role(role)
         if not skills:
             return ""
-        parts: list[str] = []
+        parts_legacy: list[str] = []
         for skill in skills:
-            parts.append(f"\n## Skill: {skill.name}\n{skill.content}")
-        return "\n".join(parts) + "\n\n"
+            parts_legacy.append(f"\n## Skill: {skill.name}\n{skill.content}")
+        return "\n".join(parts_legacy) + "\n\n"
 
     def _augment_user_message(self, user_message: str) -> str:
         normalized = user_message.strip().lower()

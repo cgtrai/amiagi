@@ -84,6 +84,21 @@ class Settings:
     rest_api_port: int = 8090
     rest_api_token: str = ""
     plugins_dir: Path = Path("./plugins")
+    # OAuth 2.0 — web interface authentication
+    oauth_client_id: str = ""
+    oauth_client_secret: str = ""
+    oauth_redirect_uri: str = "http://localhost:8080/auth/callback"
+    oauth_scopes: str = "openid email profile"
+    oauth_provider: str = "google"
+    # PostgreSQL — web GUI data store (schemat dbo)
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_name: str = "amiagi"
+    db_schema: str = "dbo"
+    db_user: str = ""
+    db_password: str = ""
+    db_min_pool: int = 2
+    db_max_pool: int = 10
     # v1.0 — team composition (Phase 11)
     teams_dir: Path = Path("./data/teams")
 
@@ -272,6 +287,33 @@ class Settings:
             rest_api_token=os.getenv("AMIAGI_REST_API_TOKEN", ""),
             plugins_dir=Path(
                 os.getenv("AMIAGI_PLUGINS_DIR", "./plugins")
+            ),
+            # OAuth 2.0
+            oauth_client_id=os.getenv("AMIAGI_OAUTH_CLIENT_ID", ""),
+            oauth_client_secret=os.getenv("AMIAGI_OAUTH_CLIENT_SECRET", ""),
+            oauth_redirect_uri=os.getenv(
+                "AMIAGI_OAUTH_REDIRECT_URI",
+                "http://localhost:8080/auth/callback",
+            ),
+            oauth_scopes=os.getenv("AMIAGI_OAUTH_SCOPES", "openid email profile"),
+            oauth_provider=os.getenv("AMIAGI_OAUTH_PROVIDER", "google"),
+            # PostgreSQL
+            db_host=os.getenv("AMIAGI_DB_HOST", "localhost"),
+            db_port=_as_int(
+                os.getenv("AMIAGI_DB_PORT", "5432"),
+                default=5432,
+            ),
+            db_name=os.getenv("AMIAGI_DB_NAME", "amiagi"),
+            db_schema=os.getenv("AMIAGI_DB_SCHEMA", "dbo"),
+            db_user=os.getenv("AMIAGI_DB_USER", ""),
+            db_password=os.getenv("AMIAGI_DB_PASSWORD", ""),
+            db_min_pool=_as_int(
+                os.getenv("AMIAGI_DB_MIN_POOL", "2"),
+                default=2,
+            ),
+            db_max_pool=_as_int(
+                os.getenv("AMIAGI_DB_MAX_POOL", "10"),
+                default=10,
             ),
             # Phase 11
             teams_dir=Path(

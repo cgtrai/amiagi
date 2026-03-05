@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Workspace — Amiagi{% endblock %}
+
+{% block head %}
+<!-- Highlight.js for syntax highlighting -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"/>
+<link rel="stylesheet" href="/static/css/workspace-page.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="ws-layout">
+  <!-- File tree -->
+  <div class="ws-tree">
+    <h3>📂 Workspace</h3>
+    <ul id="ws-tree-list">
+      <li class="ws-empty">Loading…</li>
+    </ul>
+  </div>
+
+  <!-- File preview -->
+  <div class="ws-preview" id="ws-preview">
+    <p class="ws-empty">Select a file to preview</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  var workspace = new URLSearchParams(location.search).get('workspace') || 'default';
+  var treeEl = document.getElementById('ws-tree-list');
+  var previewEl = document.getElementById('ws-preview');
+
+  function loadTree() {
+    fetch('/workspace/browse?workspace=' + encodeURIComponent(workspace))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderTree(data.files || []); })
+      .catch(function() { treeEl.innerHTML = '<li class="ws-empty">Failed to load workspace.</li>'; });
+  }
+
+  function renderTree(files) {
+    treeEl.innerHTML = '';
+    if (files.length === 0) {
+      treeEl.innerHTML = '<li class="ws-empty">Empty workspace</li>';
+      return;
+    }
+    files.forEach(function(f) {
+      var name = typeof f === 'string' ? f : (f.name || f.path || f);
+      var li = document.createElement('li');
+      li.textContent = name;
+      li.title = name;
+      li.addEventListener('click', function() {
+        treeEl.querySelectorAll('li').forEach(function(el) { el.classList.remove('active'); });
+        li.classList.add('active');
+        loadFile(name);
+      });
+      treeEl.appendChild(li);
+    });
+  }
+
+  function loadFile(path) {
+    previewEl.innerHTML = '<p class="ws-empty">Loading…</p>';
+    fetch('/workspace/file?path=' + encodeURIComponent(path) + '&workspace=' + encodeURIComponent(workspace))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          previewEl.innerHTML = '<p class="ws-empty">Error: ' + _esc(data.error) + '</p>';
+          return;
+        }
+        if (data.type === 'binary') {
+          previewEl.innerHTML =
+            '<p class="file-title">' + _esc(path) + '</p>' +
+            '<p class="binary-info">Binary file (' + (data.size || '?') + ' bytes). ' +
+            '<a href="/workspace/file?path=' + encodeURIComponent(path) + '&workspace=' + encodeURIComponent(workspace) + '">Download</a></p>';
+          return;
+        }
+        var ext = path.split('.').pop() || '';
+        var langClass = _langHint(ext);
+        previewEl.innerHTML =
+          '<p class="file-title">' + _esc(path) + '</p>' +
+          '<div class="ws-actions">' +
+            '<a href="/workspace/download-zip?workspace=' + encodeURIComponent(workspace) + '">📦 Download ZIP</a>' +
+          '</div>' +
+          '<pre><code class="' + langClass + '">' + _esc(data.content || '') + '</code></pre>';
+        // Apply syntax highlighting
+        var codeEl = previewEl.querySelector('code');
+        if (codeEl && window.hljs) {
+          hljs.highlightElement(codeEl);
+        }
+      })
+      .catch(function(err) {
+        previewEl.innerHTML = '<p class="ws-empty">Failed to load file.</p>';
+      });
+  }
+
+  function _esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function _langHint(ext) {
+    var map = {
+      py: 'language-python', js: 'language-javascript', ts: 'language-typescript',
+      yaml: 'language-yaml', yml: 'language-yaml', json: 'language-json',
+      html: 'language-html', css: 'language-css', sh: 'language-bash',
+      bash: 'language-bash', md: 'language-markdown', toml: 'language-toml',
+      xml: 'language-xml', sql: 'language-sql',
+    };
+    return map[ext] || '';
+  }
+
+  loadTree();
+})();
+</script>
+{% endblock %}

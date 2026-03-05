@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Amiagi{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/tokens.css"/>
+  <link rel="stylesheet" href="/static/css/components.css"/>
+  <link rel="stylesheet" href="/static/css/layout.css"/>
+  <link rel="stylesheet" href="/static/css/responsive.css"/>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+
+    {% include "partials/nav.html" %}
+    {% include "partials/sidebar.html" %}
+
+    <main class="app-main">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+
+  <!-- Web Components -->
+  <script src="/static/js/components/global-search.js" defer></script>
+  <script src="/static/js/components/session-timeline.js" defer></script>
+  <script src="/static/js/components/performance-chart.js" defer></script>
+  <global-search></global-search>
+
+  <!-- Service Worker registration (Web Push) -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js').catch(function(){});
+  }
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

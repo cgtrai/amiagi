@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Permissions Matrix{% endblock %}
+{% block content %}
+<div class="container">
+  <h1>Permissions Matrix</h1>
+  <p class="text-secondary">Roles × permissions overview. Toggle to modify.</p>
+
+  <div class="glass-card glass-card--scroll-x">
+    <table class="table" id="perm-matrix">
+      <thead>
+        <tr>
+          <th>Permission</th>
+          <!-- Role columns injected by JS -->
+        </tr>
+      </thead>
+      <tbody id="perm-body">
+        <tr><td colspan="99">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var roles = [];
+  var permissions = [];
+
+  function load() {
+    Promise.all([
+      fetch('/admin/roles').then(function(r) { return r.json(); }),
+      fetch('/admin/permissions').then(function(r) { return r.json(); }),
+    ]).then(function(results) {
+      roles = results[0].roles || [];
+      permissions = results[1].permissions || [];
+      render();
+    }).catch(function(err) {
+      document.getElementById('perm-body').innerHTML =
+        '<tr><td colspan="99">Error loading data</td></tr>';
+    });
+  }
+
+  function render() {
+    var thead = document.querySelector('#perm-matrix thead tr');
+    // Clear old role headers
+    while (thead.children.length > 1) thead.removeChild(thead.lastChild);
+    roles.forEach(function(role) {
+      var th = document.createElement('th');
+      th.textContent = role.name;
+      thead.appendChild(th);
+    });
+
+    var tbody = document.getElementById('perm-body');
+    tbody.innerHTML = '';
+    permissions.forEach(function(perm) {
+      var tr = document.createElement('tr');
+      var tdName = document.createElement('td');
+      tdName.innerHTML = '<strong>' + esc(perm.codename) + '</strong>'
+        + (perm.description ? '<br><small class="text-secondary">' + esc(perm.description) + '</small>' : '');
+      tr.appendChild(tdName);
+
+      roles.forEach(function(role) {
+        var td = document.createElement('td');
+        td.style.textAlign = 'center';
+        var has = (role.permissions || []).indexOf(perm.codename) !== -1;
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = has;
+        cb.disabled = role.is_system;
+        cb.addEventListener('change', function() {
+          togglePerm(role, perm.id, cb.checked);
+        });
+        td.appendChild(cb);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function togglePerm(role, permId, enabled) {
+    var permIds = (role.permissions || []).slice();
+    // We need to resolve permission codename → id
+    var allById = {};
+    permissions.forEach(function(p) { allById[p.codename] = p.id; });
+
+    var currentIds = permIds.map(function(cn) { return allById[cn]; }).filter(Boolean);
+    if (enabled) {
+      if (currentIds.indexOf(permId) === -1) currentIds.push(permId);
+    } else {
+      currentIds = currentIds.filter(function(id) { return id !== permId; });
+    }
+
+    fetch('/admin/roles/' + role.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permission_ids: currentIds }),
+    }).then(function() { load(); });
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

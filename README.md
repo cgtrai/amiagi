@@ -3,15 +3,15 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 1177](https://img.shields.io/badge/tests-1177%20passed-brightgreen.svg)](tests/)
-[![Version: 1.0.3](https://img.shields.io/badge/version-1.0.3-blueviolet.svg)](pyproject.toml)
+[![Tests: 1902](https://img.shields.io/badge/tests-1902%20passed-brightgreen.svg)](tests/)
+[![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-blueviolet.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 A local, CLI-first framework for orchestrating autonomous LLM agent teams in controlled environments.
 
 `amiagi` is a full-featured agent orchestration platform: dynamic agent registry, task queuing, workflow engine, budget governance, evaluation framework, REST API, web dashboard, and team composition — all with per-agent security isolation, JSONL audit logs, and multi-backend support (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Current version: **v1.0.3** — all 11 roadmap phases complete, **1177 tests**.
+Current version: **v1.1.0** — all 11 roadmap phases complete + web dashboard, **1902 tests**.
 
 v1.0.3 introduces a shared `RouterEngine` + `EventBus` orchestration core — both the Textual TUI and synchronous CLI are now thin adapters delegating all routing, tool execution, watchdog, and supervision logic to a single engine.
 

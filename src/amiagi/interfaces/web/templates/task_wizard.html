@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Task Wizard — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/wizard.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-layout">
+  <h1>🧙 New Task Wizard</h1>
+
+  <!-- Mode selector: template vs manual -->
+  <div class="wizard-mode-toggle">
+    <button class="glass-btn glass-btn--primary" id="mode-template" onclick="setWizardMode('template')">📋 From Template</button>
+    <button class="glass-btn glass-btn--ghost" id="mode-manual" onclick="setWizardMode('manual')">✏️ Manual</button>
+  </div>
+
+  <!-- ═══════ TEMPLATE MODE ═══════ -->
+  <div class="wizard-mode" id="wizard-template-mode">
+
+    <!-- Step indicators for template mode -->
+    <div class="wizard-steps" id="tpl-step-pills">
+      <span class="step-pill active" data-step="0">1. Template</span>
+      <span class="step-pill" data-step="1">2. Parameters</span>
+      <span class="step-pill" data-step="2">3. Preview</span>
+    </div>
+
+    <!-- Template Step 0: Select template -->
+    <div class="wizard-step tpl-step" data-step="0">
+      <div class="field">
+        <label for="tpl-select">Choose a template</label>
+        <select id="tpl-select" onchange="onTemplateSelected()">
+          <option value="">— Select template —</option>
+        </select>
+      </div>
+      <div id="tpl-description" class="tpl-description"></div>
+      <div id="tpl-tags" class="tpl-tags"></div>
+    </div>
+
+    <!-- Template Step 1: Fill parameters -->
+    <div class="wizard-step tpl-step wizard-step--hidden" data-step="1">
+      <p class="field-hint">Fill in the template parameters:</p>
+      <div id="tpl-params-form"></div>
+    </div>
+
+    <!-- Template Step 2: Preview rendered steps -->
+    <div class="wizard-step tpl-step wizard-step--hidden" data-step="2">
+      <h3>Rendered Workflow Steps</h3>
+      <div id="tpl-preview" class="wizard-review"></div>
+    </div>
+
+    <!-- Template navigation -->
+    <div class="wizard-nav">
+      <button type="button" class="btn-prev btn-prev--hidden" id="tpl-btn-prev" onclick="tplNav(-1)">← Back</button>
+      <button type="button" class="btn-next" id="tpl-btn-next" onclick="tplNav(1)">Next →</button>
+      <button type="button" class="btn-submit btn-submit--hidden" id="tpl-btn-submit" onclick="executeTpl()">🚀 Execute Workflow</button>
+    </div>
+  </div>
+
+  <!-- ═══════ MANUAL MODE ═══════ -->
+  <div class="wizard-mode wizard-mode--hidden" id="wizard-manual-mode">
+
+    <!-- Step indicators -->
+    <div class="wizard-steps" id="step-pills">
+      <span class="step-pill active" data-step="0">1. Basics</span>
+      <span class="step-pill" data-step="1">2. Details</span>
+      <span class="step-pill" data-step="2">3. Review</span>
+    </div>
+
+    <!-- Wizard form -->
+    <form class="wizard-form" id="wizard-form" onsubmit="return false;">
+
+      <!-- Step 0: Basics -->
+      <div class="wizard-step" data-step="0">
+        <div class="field">
+          <label for="task-title">Title *</label>
+          <input id="task-title" name="title" required placeholder="Short task title"/>
+        </div>
+        <div class="field">
+          <label for="task-desc">Description</label>
+          <textarea id="task-desc" name="description" placeholder="Describe what needs to be done"></textarea>
+        </div>
+      </div>
+
+      <!-- Step 1: Details -->
+      <div class="wizard-step wizard-step--hidden" data-step="1">
+        <div class="field">
+          <label for="task-priority">Priority</label>
+          <select id="task-priority" name="priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="task-origin">Origin</label>
+          <select id="task-origin" name="origin">
+            <option value="operator" selected>Operator</option>
+            <option value="system">System</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="task-agent">Assign Agent (optional)</label>
+          <select id="task-agent" name="assigned_agent_id">
+            <option value="">Auto-assign</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 2: Review -->
+      <div class="wizard-step wizard-step--hidden" data-step="2">
+        <div id="review-content" class="wizard-review"></div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="wizard-nav">
+        <button type="button" class="btn-prev btn-prev--hidden" id="btn-prev" onclick="wizardNav(-1)">← Back</button>
+        <button type="button" class="btn-next" id="btn-next" onclick="wizardNav(1)">Next →</button>
+        <button type="button" class="btn-submit btn-submit--hidden" id="btn-submit" onclick="submitTask()">✓ Create Task</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="wizard-result" id="wizard-result">
+    <p class="wizard-success-msg">✅ Task created successfully!</p>
+    <p><a href="/dashboard" class="wizard-link">Back to Dashboard</a></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+
+  // ── Shared state ──────────────────────────────────────────────
+  var templates = [];       // loaded from /templates (GET)
+  var selectedTpl = null;   // currently selected template object
+  var tplStep = 0;
+
+  // ── Mode switching ────────────────────────────────────────────
+
+  window.setWizardMode = function(mode) {
+    var tplMode = document.getElementById('wizard-template-mode');
+    var manualMode = document.getElementById('wizard-manual-mode');
+    var btnTpl = document.getElementById('mode-template');
+    var btnManual = document.getElementById('mode-manual');
+
+    if (mode === 'template') {
+      tplMode.classList.remove('wizard-mode--hidden');
+      manualMode.classList.add('wizard-mode--hidden');
+      btnTpl.classList.add('glass-btn--primary');
+      btnTpl.classList.remove('glass-btn--ghost');
+      btnManual.classList.remove('glass-btn--primary');
+      btnManual.classList.add('glass-btn--ghost');
+    } else {
+      tplMode.classList.add('wizard-mode--hidden');
+      manualMode.classList.remove('wizard-mode--hidden');
+      btnManual.classList.add('glass-btn--primary');
+      btnManual.classList.remove('glass-btn--ghost');
+      btnTpl.classList.remove('glass-btn--primary');
+      btnTpl.classList.add('glass-btn--ghost');
+    }
+  };
+
+  // ── Template mode: load templates ─────────────────────────────
+
+  async function loadTemplates() {
+    try {
+      var resp = await fetch('/templates');
+      templates = await resp.json();
+      var sel = document.getElementById('tpl-select');
+      templates.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.name + (t.tags && t.tags.length ? ' [' + t.tags.join(', ') + ']' : '');
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      // Templates not available — hide template mode
+      document.getElementById('mode-template').style.display = 'none';
+      setWizardMode('manual');
+    }
+  }
+
+  window.onTemplateSelected = function() {
+    var sel = document.getElementById('tpl-select');
+    var id = sel.value;
+    selectedTpl = templates.find(function(t) { return t.id === id; });
+    var descEl = document.getElementById('tpl-description');
+    var tagsEl = document.getElementById('tpl-tags');
+
+    if (selectedTpl) {
+      descEl.textContent = selectedTpl.description || '';
+      tagsEl.innerHTML = (selectedTpl.tags || []).map(function(tag) {
+        return '<span class="glass-badge">' + _esc(tag) + '</span>';
+      }).join(' ');
+    } else {
+      descEl.textContent = '';
+      tagsEl.innerHTML = '';
+    }
+  };
+
+  // ── Template mode: navigation ─────────────────────────────────
+
+  function showTplStep(idx) {
+    var steps = document.querySelectorAll('.tpl-step');
+    var pills = document.querySelectorAll('#tpl-step-pills .step-pill');
+    steps.forEach(function(s) { s.classList.add('wizard-step--hidden'); });
+    pills.forEach(function(p, i) {
+      p.classList.remove('active', 'done');
+      if (i < idx) p.classList.add('done');
+      if (i === idx) p.classList.add('active');
+    });
+    steps[idx].classList.remove('wizard-step--hidden');
+
+    document.getElementById('tpl-btn-prev').classList.toggle('btn-prev--hidden', idx === 0);
+    document.getElementById('tpl-btn-next').classList.toggle('btn-submit--hidden', idx >= 2);
+    document.getElementById('tpl-btn-submit').classList.toggle('btn-submit--hidden', idx !== 2);
+
+    if (idx === 1) buildParamsForm();
+    if (idx === 2) buildTplPreview();
+  }
+
+  window.tplNav = function(delta) {
+    var next = tplStep + delta;
+    if (next < 0 || next > 2) return;
+    if (next === 1 && !selectedTpl) {
+      alert('Please select a template first.');
+      return;
+    }
+    tplStep = next;
+    showTplStep(tplStep);
+  };
+
+  function buildParamsForm() {
+    var container = document.getElementById('tpl-params-form');
+    if (!selectedTpl) { container.innerHTML = ''; return; }
+
+    var params = selectedTpl.parameters || [];
+    if (params.length === 0) {
+      container.innerHTML = '<p class="field-hint">This template has no parameters.</p>';
+      return;
+    }
+
+    container.innerHTML = params.map(function(p) {
+      var name = typeof p === 'string' ? p : p.name;
+      var desc = typeof p === 'object' ? (p.description || '') : '';
+      return '<div class="field">' +
+        '<label for="tpl-param-' + _esc(name) + '">' + _esc(name) + '</label>' +
+        (desc ? '<small class="field-hint">' + _esc(desc) + '</small>' : '') +
+        '<input id="tpl-param-' + _esc(name) + '" name="' + _esc(name) + '" placeholder="' + _esc(name) + '"/>' +
+      '</div>';
+    }).join('');
+  }
+
+  function gatherParamValues() {
+    var params = selectedTpl.parameters || [];
+    var values = {};
+    params.forEach(function(p) {
+      var name = typeof p === 'string' ? p : p.name;
+      var el = document.getElementById('tpl-param-' + name);
+      if (el) values[name] = el.value;
+    });
+    return values;
+  }
+
+  async function buildTplPreview() {
+    var previewEl = document.getElementById('tpl-preview');
+    if (!selectedTpl) return;
+
+    var values = gatherParamValues();
+    try {
+      var resp = await fetch('/templates/' + selectedTpl.id + '/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: values }),
+      });
+      var data = await resp.json();
+      var steps = data.rendered_steps || [];
+      previewEl.innerHTML =
+        '<p><strong>Template:</strong> ' + _esc(data.name || selectedTpl.name) + '</p>' +
+        '<ol class="tpl-steps-preview">' +
+        steps.map(function(s) {
+          return '<li><strong>' + _esc(s.agent || 'agent') + ':</strong> ' + _esc(s.prompt || JSON.stringify(s)) + '</li>';
+        }).join('') +
+        '</ol>';
+    } catch (e) {
+      previewEl.innerHTML = '<p class="error">Failed to preview workflow.</p>';
+    }
+  }
+
+  window.executeTpl = function() {
+    // The preview already called /templates/{id}/execute which logged task.create
+    // Just show success
+    document.getElementById('wizard-template-mode').style.display = 'none';
+    document.getElementById('wizard-result').style.display = 'block';
+  };
+
+  // ── Manual mode (unchanged) ───────────────────────────────────
+
+  var currentStep = 0;
+  var totalSteps = 3;
+
+  function showStep(idx) {
+    var pills = document.querySelectorAll('#step-pills .step-pill');
+    var steps = document.querySelectorAll('#wizard-manual-mode .wizard-form .wizard-step');
+    steps.forEach(function(s) { s.classList.add('wizard-step--hidden'); });
+    pills.forEach(function(p, i) {
+      p.classList.remove('active', 'done');
+      if (i < idx) p.classList.add('done');
+      if (i === idx) p.classList.add('active');
+    });
+    steps[idx].classList.remove('wizard-step--hidden');
+    document.getElementById('btn-prev').classList.toggle('btn-prev--hidden', idx === 0);
+    document.getElementById('btn-next').classList.toggle('btn-submit--hidden', idx >= totalSteps - 1);
+    document.getElementById('btn-submit').classList.toggle('btn-submit--hidden', idx !== totalSteps - 1);
+
+    if (idx === 2) buildReview();
+  }
+
+  window.wizardNav = function(delta) {
+    var next = currentStep + delta;
+    if (next < 0 || next >= totalSteps) return;
+    currentStep = next;
+    showStep(currentStep);
+  };
+
+  function buildReview() {
+    var f = document.getElementById('wizard-form');
+    var title = f.title.value || '(untitled)';
+    var desc = f.description.value || '(none)';
+    var pri = f.priority.value;
+    var origin = f.origin.value;
+    var agent = f.assigned_agent_id.value || 'Auto-assign';
+    document.getElementById('review-content').innerHTML =
+      '<p><strong>Title:</strong> ' + _esc(title) + '</p>' +
+      '<p><strong>Description:</strong> ' + _esc(desc) + '</p>' +
+      '<p><strong>Priority:</strong> ' + _esc(pri) + '</p>' +
+      '<p><strong>Origin:</strong> ' + _esc(origin) + '</p>' +
+      '<p><strong>Agent:</strong> ' + _esc(agent) + '</p>';
+  }
+
+  window.submitTask = function() {
+    var f = document.getElementById('wizard-form');
+    var payload = {
+      title: f.title.value,
+      description: f.description.value,
+      priority: f.priority.value,
+      origin: f.origin.value,
+      assigned_agent_id: f.assigned_agent_id.value || null,
+    };
+
+    var event = new CustomEvent('prompt.submit', { detail: payload, bubbles: true });
+    document.dispatchEvent(event);
+
+    fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function() {
+      document.getElementById('wizard-manual-mode').style.display = 'none';
+      document.getElementById('wizard-result').style.display = 'block';
+    }).catch(function() {
+      document.getElementById('wizard-manual-mode').style.display = 'none';
+      document.getElementById('wizard-result').style.display = 'block';
+    });
+  };
+
+  function _esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // Load agents for dropdown
+  fetch('/api/agents')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var sel = document.getElementById('task-agent');
+      (data.agents || []).forEach(function(a) {
+        var opt = document.createElement('option');
+        opt.value = a.agent_id;
+        opt.textContent = a.name || a.agent_id;
+        sel.appendChild(opt);
+      });
+    }).catch(function() {});
+
+  // Init: load templates and show default mode
+  loadTemplates();
+  showStep(0);
+  showTplStep(0);
+})();
+</script>
+{% endblock %}

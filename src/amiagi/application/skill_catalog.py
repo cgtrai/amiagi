@@ -1,16 +1,25 @@
 """Phase 11 — Skill catalog (application).
 
 Centralised registry of known agent skills with metadata for
-automatic matching.
+automatic matching.  Optionally delegates CRUD to
+:class:`~amiagi.interfaces.web.skills.skill_repository.SkillRepository`
+when a ``db_pool`` (asyncpg pool) is provided.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import asyncpg
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,21 +62,100 @@ class SkillEntry:
 
 
 class SkillCatalog:
-    """Thread-safe central skill registry."""
+    """Thread-safe central skill registry.
 
-    def __init__(self) -> None:
+    When *db_pool* is provided, CRUD operations are mirrored to
+    PostgreSQL via :class:`SkillRepository`.  The in-memory dict
+    remains the primary read path for low-latency access; the DB
+    is a persistence layer that is hydrated at startup via
+    :meth:`sync_from_db`.
+    """
+
+    def __init__(self, db_pool: "asyncpg.Pool | None" = None) -> None:
         self._skills: dict[str, SkillEntry] = {}
         self._lock = threading.Lock()
+        self._db_pool = db_pool
+        self._repo: Any | None = None
+        if db_pool is not None:
+            from amiagi.interfaces.web.skills.skill_repository import SkillRepository
+            self._repo = SkillRepository(db_pool)
+
+    # ---- DB sync helpers ----
+
+    async def sync_from_db(self) -> int:
+        """Load all active skills from PG into in-memory dict.
+
+        Returns count of loaded skills.  No-op when no pool configured.
+        """
+        if self._repo is None:
+            return 0
+        records = await self._repo.list_skills(active_only=True)
+        count = 0
+        with self._lock:
+            for rec in records:
+                entry = SkillEntry(
+                    name=rec.name,
+                    description=rec.description,
+                    required_tools=rec.compatible_tools,
+                    tags=rec.trigger_keywords,
+                    metadata={"db_id": rec.id, "category": rec.category},
+                )
+                self._skills[entry.name] = entry
+                count += 1
+        logger.info("SkillCatalog: synced %d skills from DB", count)
+        return count
 
     # ---- CRUD ----
 
     def register(self, skill: SkillEntry) -> None:
         with self._lock:
             self._skills[skill.name] = skill
+        if self._repo is not None:
+            self._fire_and_forget(self._persist_register(skill))
 
     def unregister(self, name: str) -> bool:
         with self._lock:
-            return self._skills.pop(name, None) is not None
+            entry = self._skills.pop(name, None)
+        if entry is not None and self._repo is not None:
+            db_id = (entry.metadata or {}).get("db_id")
+            if db_id:
+                self._fire_and_forget(self._repo.delete_skill(db_id))
+        return entry is not None
+
+    async def _persist_register(self, skill: SkillEntry) -> None:
+        """Upsert skill to PG — called in fire-and-forget mode."""
+        repo = self._repo
+        if repo is None:
+            return
+        try:
+            existing = await repo.list_skills(active_only=False)
+            for rec in existing:
+                if rec.name == skill.name:
+                    await repo.update_skill(
+                        rec.id,
+                        description=skill.description,
+                        compatible_tools=skill.required_tools,
+                        trigger_keywords=skill.tags,
+                    )
+                    return
+            await repo.create_skill(
+                name=skill.name,
+                content=skill.description,
+                description=skill.description,
+                trigger_keywords=skill.tags,
+                compatible_tools=skill.required_tools,
+            )
+        except Exception:
+            logger.warning("SkillCatalog: failed to persist skill %s to DB", skill.name, exc_info=True)
+
+    @staticmethod
+    def _fire_and_forget(coro: Any) -> None:
+        """Schedule a coroutine if an event loop is running."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            pass  # no event loop — skip DB write
 
     def get(self, name: str) -> SkillEntry | None:
         with self._lock:
@@ -125,6 +213,27 @@ class SkillCatalog:
         path.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+    # ---- PostgreSQL bridge (Phase 10 integration) ----
+
+    def load_from_records(self, records: list[dict[str, Any]]) -> int:
+        """Bulk-load skills from repository record dicts (PG rows).
+
+        Each dict must contain at least ``name``; additional keys
+        are mapped via :meth:`SkillEntry.from_dict`.  Returns the
+        number of skills loaded.
+        """
+        count = 0
+        for rec in records:
+            entry = SkillEntry.from_dict(rec)
+            self.register(entry)
+            count += 1
+        return count
+
+    def export_all(self) -> list[dict[str, Any]]:
+        """Return all skills as plain dicts suitable for DB persistence."""
+        with self._lock:
+            return [s.to_dict() for s in self._skills.values()]
 
     @property
     def count(self) -> int:

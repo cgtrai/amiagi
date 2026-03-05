@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import is_dataclass, replace
 from pathlib import Path
 
@@ -66,6 +67,12 @@ from amiagi.i18n import _, set_language, available_languages
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=_("main.arg.description"))
+    sub = parser.add_subparsers(dest="command")
+
+    # ``amiagi skills …``
+    from amiagi.interfaces.skills_cli import build_skills_parser
+    build_skills_parser(parent_subparsers=sub)
+
     parser.add_argument(
         "-cs",
         "--cold_start",
@@ -91,7 +98,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--ui",
-        choices=("cli", "textual"),
+        choices=("cli", "textual", "web"),
         default="cli",
         help=_("main.arg.ui"),
     )
@@ -159,6 +166,14 @@ def _resolve_startup_dialogue_path(raw_path: str, work_dir: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+
+    # Handle ``amiagi skills …`` sub-command early.
+    if getattr(args, "command", None) == "skills":
+        from amiagi.interfaces.skills_cli import run_skills_cli
+        # Re-parse with skills-specific parser so --catalog etc. are handled.
+        run_skills_cli((argv or sys.argv[1:])[1:])
+        return
+
     if args.lang:
         set_language(args.lang)
     settings = Settings.from_env()
@@ -480,7 +495,40 @@ def main(argv: list[str] | None = None) -> None:
             "Uruchom `ollama serve` i upewnij się, że model jest dostępny."
         )
     try:
-        if args.ui == "textual":
+        if args.ui == "web":
+            from amiagi.interfaces.web.run import run_web
+            run_web(
+                settings=settings,
+                chat_service=chat_service,
+                activity_logger=activity_logger,
+                agent_registry=agent_registry,
+                agent_factory=agent_factory,
+                task_queue=task_queue,
+                work_assigner=work_assigner,
+                metrics_collector=metrics_collector,
+                alert_manager=alert_manager,
+                session_replay=session_replay,
+                shared_workspace=shared_workspace,
+                knowledge_base=knowledge_base,
+                cross_memory=cross_memory,
+                context_window_manager=context_window_mgr,
+                permission_enforcer=permission_enforcer,
+                sandbox_manager=sandbox_manager,
+                secret_vault=secret_vault,
+                audit_chain=audit_chain,
+                workflow_engine=workflow_engine,
+                workflow_checkpoint=workflow_checkpoint,
+                budget_manager=budget_manager,
+                quota_policy=quota_policy,
+                rate_limiter=rate_limiter,
+                vram_scheduler=vram_scheduler,
+                rest_server=rest_server,
+                webhook_dispatcher=webhook_dispatcher,
+                team_composer=team_composer,
+                skill_catalog=skill_catalog,
+                team_dashboard=team_dashboard,
+            )
+        elif args.ui == "textual":
             run_textual_cli(
                 chat_service=chat_service,
                 supervisor_dialogue_log_path=settings.supervisor_dialogue_log_path,

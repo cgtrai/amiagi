@@ -1,0 +1,99 @@
+/* ================================================================
+   Amiagi Design Tokens — Liquid Glass Theme
+   ================================================================ */
+
+:root {
+    /* ── Surface & glass ───────────────────── */
+    --glass-bg:            rgba(255, 255, 255, 0.06);
+    --glass-bg-hover:      rgba(255, 255, 255, 0.10);
+    --glass-bg-active:     rgba(255, 255, 255, 0.14);
+    --glass-border:        rgba(255, 255, 255, 0.12);
+    --glass-border-strong: rgba(255, 255, 255, 0.20);
+    --glass-shadow:        0 8px 32px rgba(0, 0, 0, 0.37);
+    --glass-shadow-sm:     0 4px 16px rgba(0, 0, 0, 0.25);
+    --glass-blur:          blur(20px) saturate(180%);
+    --glass-radius:        16px;
+    --glass-radius-sm:     10px;
+    --glass-radius-lg:     24px;
+    --glass-radius-full:   9999px;
+
+    /* ── Gradient backgrounds ──────────────── */
+    --bg-gradient:         linear-gradient(135deg, #0a0e27 0%, #1a1040 40%, #0d1f3c 100%);
+    --bg-mesh:             radial-gradient(ellipse at 20% 80%, rgba(78,161,255,0.15) 0%, transparent 50%),
+                           radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.12) 0%, transparent 50%);
+
+    /* ── Typography ────────────────────────── */
+    --font-primary:        'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+    --font-mono:           'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --font-size-xs:        0.75rem;
+    --font-size-sm:        0.875rem;
+    --font-size-base:      1rem;
+    --font-size-lg:        1.125rem;
+    --font-size-xl:        1.5rem;
+    --font-size-2xl:       2rem;
+    --font-size-3xl:       2.5rem;
+    --font-weight-normal:  400;
+    --font-weight-medium:  500;
+    --font-weight-semibold:600;
+    --font-weight-bold:    700;
+    --line-height-tight:   1.25;
+    --line-height-base:    1.5;
+    --line-height-relaxed: 1.75;
+
+    /* ── Text colors ───────────────────────── */
+    --text-primary:        #e6edf3;
+    --text-secondary:      #8b949e;
+    --text-muted:          #6b7280;
+    --text-inverse:        #0a0e27;
+    --text-link:           var(--accent-blue);
+
+    /* ── Accent palette ────────────────────── */
+    --accent-blue:         #4ea1ff;
+    --accent-purple:       #a855f7;
+    --accent-teal:         #2dd4bf;
+    --accent-amber:        #f59e0b;
+    --accent-rose:         #f43f5e;
+    --accent-green:        #22c55e;
+
+    /* ── State colors ──────────────────────── */
+    --state-idle:          var(--accent-green);
+    --state-working:       var(--accent-amber);
+    --state-paused:        var(--accent-purple);
+    --state-error:         var(--accent-rose);
+    --state-terminated:    #6b7280;
+
+    /* ── Semantic colors ───────────────────── */
+    --color-success:       var(--accent-green);
+    --color-warning:       var(--accent-amber);
+    --color-danger:        var(--accent-rose);
+    --color-info:          var(--accent-blue);
+
+    /* ── Spacing scale ─────────────────────── */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+
+    /* ── Transitions ───────────────────────── */
+    --transition-fast:     150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base:     250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow:     400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* ── Z-index scale ─────────────────────── */
+    --z-dropdown:  100;
+    --z-sticky:    200;
+    --z-modal:     300;
+    --z-popover:   400;
+    --z-toast:     500;
+
+    /* ── Sidebar / layout ──────────────────── */
+    --sidebar-width:       250px;
+    --nav-height:          56px;
+    --right-panel-width:   350px;
+}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Skills{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>Skills</h1>
+    <button class="btn btn-primary" onclick="openCreateSkill()">+ New Skill</button>
+  </div>
+
+  <div class="glass-card">
+    <table class="table" id="skills-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Display Name</th>
+          <th>Keywords</th>
+          <th>Token Cost</th>
+          <th>Priority</th>
+          <th>Active</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="skills-body">
+        <tr><td colspan="7">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create modal -->
+<div class="modal-overlay" id="create-modal" hidden>
+  <div class="glass-card modal-card">
+    <h2>New Skill</h2>
+    <div class="field">
+      <label for="sk-name">Name (slug)</label>
+      <input id="sk-name" placeholder="e.g. python-expert">
+    </div>
+    <div class="field">
+      <label for="sk-display">Display Name</label>
+      <input id="sk-display" placeholder="e.g. Python Expert">
+    </div>
+    <div class="field">
+      <label for="sk-content">Content</label>
+      <textarea id="sk-content" rows="6" placeholder="Skill prompt / description"></textarea>
+    </div>
+    <div class="field">
+      <label for="sk-keywords">Keywords (comma-separated)</label>
+      <input id="sk-keywords" placeholder="python, code, automation">
+    </div>
+    <div class="field">
+      <label for="sk-cost">Token Cost</label>
+      <input id="sk-cost" type="number" value="100">
+    </div>
+    <div class="field">
+      <label for="sk-priority">Priority</label>
+      <input id="sk-priority" type="number" value="50">
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createSkill()">Create</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  function load() {
+    fetch('/admin/skills')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var skills = data.skills || [];
+        var tbody = document.getElementById('skills-body');
+        if (skills.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7">No skills defined yet.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = skills.map(function(s) {
+          var kw = (s.trigger_keywords || []).join(', ');
+          return '<tr>'
+            + '<td>' + esc(s.name) + '</td>'
+            + '<td>' + esc(s.display_name) + '</td>'
+            + '<td>' + esc(kw) + '</td>'
+            + '<td>' + s.token_cost + '</td>'
+            + '<td>' + s.priority + '</td>'
+            + '<td>' + (s.is_active ? '✓' : '✗') + '</td>'
+            + '<td>'
+            + '  <a href="/admin/skills/' + s.id + '/edit" class="btn btn-xs">Edit</a> '
+            + '  <button class="btn btn-xs btn-danger" onclick="delSkill(\'' + s.id + '\')">Delete</button>'
+            + '</td>'
+            + '</tr>';
+        }).join('');
+      });
+  }
+
+  window.openCreateSkill = function() {
+    document.getElementById('create-modal').hidden = false;
+  };
+  window.closeCreateModal = function() {
+    document.getElementById('create-modal').hidden = true;
+  };
+
+  window.createSkill = function() {
+    var body = {
+      name: document.getElementById('sk-name').value,
+      display_name: document.getElementById('sk-display').value,
+      content: document.getElementById('sk-content').value,
+      trigger_keywords: document.getElementById('sk-keywords').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+      token_cost: parseInt(document.getElementById('sk-cost').value, 10) || 100,
+      priority: parseInt(document.getElementById('sk-priority').value, 10) || 50,
+    };
+    fetch('/admin/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function(r) {
+      if (r.ok) { closeCreateModal(); load(); }
+    });
+  };
+
+  window.delSkill = function(id) {
+    if (!confirm('Delete this skill?')) return;
+    fetch('/admin/skills/' + id, { method: 'DELETE' })
+      .then(function() { load(); });
+  };
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Role{% endblock %}
+{% block content %}
+  <div class="container">
+    <h1>Role</h1>
+
+    <table class="table glass-card">
+      <thead>
+        <tr>
+          <th>Nazwa</th>
+          <th>Opis</th>
+          <th>Systemowa</th>
+          <th>Uprawnienia</th>
+          <th>Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for role in roles %}
+        <tr>
+          <td>{{ role.name }}</td>
+          <td>{{ role.description }}</td>
+          <td>{{ "Tak" if role.is_system else "Nie" }}</td>
+          <td>{{ role.permissions | map(attribute='codename') | join(', ') }}</td>
+          <td>
+            {% if not role.is_system %}
+              <button class="btn btn-xs btn-danger" onclick="deleteRole('{{ role.id }}')">Usuń</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script>
+    async function deleteRole(id) {
+      if (!confirm('Usunąć tę rolę?')) return;
+      await fetch('/admin/roles/' + id, {method: 'DELETE'});
+      location.reload();
+    }
+  </script>
+{% endblock %}

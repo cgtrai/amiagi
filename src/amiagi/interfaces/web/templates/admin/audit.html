@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Logi aktywności{% endblock %}
+{% block content %}
+  <div class="container">
+    <h1>Logi aktywności</h1>
+
+    <table class="table glass-card">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Email</th>
+          <th>Akcja</th>
+          <th>Szczegóły</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at }}</td>
+          <td>{{ log.email or "–" }}</td>
+          <td>{{ log.action }}</td>
+          <td>{{ log.detail or "–" }}</td>
+          <td>{{ log.ip_address or "–" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

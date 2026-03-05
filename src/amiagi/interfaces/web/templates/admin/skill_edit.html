@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Edit Skill{% endblock %}
+{% block content %}
+<div class="container">
+  <h1>Edit Skill</h1>
+
+  <form class="glass-card" id="skill-form">
+    <div class="field">
+      <label for="sk-name">Name (slug)</label>
+      <input id="sk-name" readonly>
+    </div>
+    <div class="field">
+      <label for="sk-display">Display Name</label>
+      <input id="sk-display">
+    </div>
+    <div class="field">
+      <label for="sk-content">Content</label>
+      <textarea id="sk-content" rows="10"></textarea>
+    </div>
+    <div class="field">
+      <label for="sk-keywords">Keywords (comma-separated)</label>
+      <input id="sk-keywords">
+    </div>
+    <div class="field">
+      <label for="sk-tools">Compatible Tools (comma-separated)</label>
+      <input id="sk-tools">
+    </div>
+    <div class="field">
+      <label for="sk-roles">Compatible Roles (comma-separated)</label>
+      <input id="sk-roles">
+    </div>
+    <div class="field">
+      <label for="sk-cost">Token Cost</label>
+      <input id="sk-cost" type="number">
+    </div>
+    <div class="field">
+      <label for="sk-priority">Priority</label>
+      <input id="sk-priority" type="number">
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="sk-active"> Active
+      </label>
+    </div>
+    <div class="btn-row">
+      <a href="/admin/skills" class="btn">← Back</a>
+      <button type="button" class="btn btn-primary" onclick="saveSkill()">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var skillId = window.location.pathname.split('/')[3]; // /admin/skills/{id}/edit
+
+  function load() {
+    fetch('/admin/skills/' + skillId)
+      .then(function(r) { return r.json(); })
+      .then(function(s) {
+        document.getElementById('sk-name').value = s.name || '';
+        document.getElementById('sk-display').value = s.display_name || '';
+        document.getElementById('sk-content').value = s.content || '';
+        document.getElementById('sk-keywords').value = (s.trigger_keywords || []).join(', ');
+        document.getElementById('sk-tools').value = (s.compatible_tools || []).join(', ');
+        document.getElementById('sk-roles').value = (s.compatible_roles || []).join(', ');
+        document.getElementById('sk-cost').value = s.token_cost || 100;
+        document.getElementById('sk-priority').value = s.priority || 50;
+        document.getElementById('sk-active').checked = s.is_active !== false;
+      });
+  }
+
+  window.saveSkill = function() {
+    var body = {
+      display_name: document.getElementById('sk-display').value,
+      content: document.getElementById('sk-content').value,
+      trigger_keywords: document.getElementById('sk-keywords').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+      compatible_tools: document.getElementById('sk-tools').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+      compatible_roles: document.getElementById('sk-roles').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+      token_cost: parseInt(document.getElementById('sk-cost').value, 10) || 100,
+      priority: parseInt(document.getElementById('sk-priority').value, 10) || 50,
+      is_active: document.getElementById('sk-active').checked,
+    };
+    fetch('/admin/skills/' + skillId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function(r) {
+      if (r.ok) window.location.href = '/admin/skills';
+    });
+  };
+
+  load();
+})();
+</script>
+{% endblock %}

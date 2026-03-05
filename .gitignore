@@ -15,6 +15,7 @@ htmlcov/
 
 # Runtime artifacts — databases and data files
 data/
+data/workspaces/
 logs/
 *.sqlite
 

@@ -10,6 +10,8 @@ from typing import Any
 class TestScenario:
     """A single validation scenario for a freshly-created agent."""
 
+    __test__ = False  # prevent pytest from collecting this dataclass
+
     name: str
     prompt: str
     expected_keywords: list[str] = field(default_factory=list)

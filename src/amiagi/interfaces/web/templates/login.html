@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Amiagi — Logowanie</title>
+  <link rel="stylesheet" href="/static/css/tokens.css"/>
+  <link rel="stylesheet" href="/static/css/components.css"/>
+  <link rel="stylesheet" href="/static/css/layout.css"/>
+</head>
+<body class="login-page">
+  <div class="glass-card login-card">
+    <h1>Amiagi</h1>
+    <p class="text-muted text-sm mb-4">Zaloguj się, aby kontynuować</p>
+
+    <a class="glass-btn glass-btn--primary" href="{{ login_url }}">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+        <path d="M21.805 10.041h-9.58v3.918h5.544c-.24 1.26-1.44 3.696-5.544 3.696-3.336 0-6.06-2.76-6.06-6.155s2.724-6.155 6.06-6.155c1.896 0 3.168.81 3.894 1.506l2.652-2.556C16.887 2.595 14.769 1.5 12.225 1.5 6.81 1.5 2.4 5.91 2.4 11.5S6.81 21.5 12.225 21.5c5.64 0 9.39-3.96 9.39-9.54 0-.642-.072-1.134-.162-1.62l-.048-.299z" fill="currentColor"/>
+      </svg>
+      Zaloguj przez Google
+    </a>
+
+    {% if error_message %}
+    <div class="glass-badge badge-danger mt-4">{{ error_message }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>
