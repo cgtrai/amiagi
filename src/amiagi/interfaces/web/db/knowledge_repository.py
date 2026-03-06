@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 from uuid import uuid4
 
+# Well-known UUID for the built-in Global Knowledge Base.
+GLOBAL_BASE_UUID = "00000000-0000-0000-0000-000000000001"
+
 if TYPE_CHECKING:
     import asyncpg
 
@@ -181,7 +184,7 @@ class KnowledgeRepository:
         base = await self.create_base(
             name="Global Knowledge Base",
             description="Default TF-IDF knowledge base",
-            base_id="global",
+            base_id=GLOBAL_BASE_UUID,
         )
         return base["id"]
 

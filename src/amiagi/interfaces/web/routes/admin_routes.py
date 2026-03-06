@@ -29,8 +29,9 @@ async def admin_list_users(request: Request) -> Response:
 
     result = await repo.list_users(page=page, per_page=per_page, search=search)
 
+    accept = request.headers.get("accept", "")
     templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
+    if templates is not None and "text/html" in accept:
         return templates.TemplateResponse(
             request,
             "admin/users.html",
@@ -71,8 +72,9 @@ async def admin_user_detail(request: Request) -> Response:
 
     roles = await repo.list_roles()
 
+    accept = request.headers.get("accept", "")
     templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
+    if templates is not None and "text/html" in accept:
         return templates.TemplateResponse(
             request,
             "admin/user_detail.html",
@@ -158,8 +160,9 @@ async def admin_list_roles(request: Request) -> Response:
     repo = request.app.state.rbac_repo
     roles = await repo.list_roles()
 
+    accept = request.headers.get("accept", "")
     templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
+    if templates is not None and "text/html" in accept:
         return templates.TemplateResponse(
             request,
             "admin/roles.html",
@@ -248,6 +251,17 @@ async def admin_delete_role(request: Request) -> Response:
 @require_permission("admin.roles")
 async def admin_list_permissions(request: Request) -> Response:
     """GET /admin/permissions — full permission catalogue."""
+    # Browser navigation → render HTML template
+    accept = request.headers.get("accept", "")
+    templates = getattr(request.app.state, "templates", None)
+    if templates is not None and "text/html" in accept:
+        return templates.TemplateResponse(
+            request,
+            "admin/permissions.html",
+            {"user": request.state.user},
+        )
+
+    # JS fetch / API → return JSON
     repo = request.app.state.rbac_repo
     perms = await repo.list_permissions()
     return JSONResponse({
@@ -298,8 +312,9 @@ async def _audit_via_logger(request: Request, activity_logger) -> Response:
         action=filter_kw.get("action"),
     )
 
+    accept = request.headers.get("accept", "")
     templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
+    if templates is not None and "text/html" in accept:
         return templates.TemplateResponse(
             request,
             "admin/audit.html",
@@ -345,8 +360,9 @@ async def _audit_fallback(request: Request) -> Response:
             offset,
         )
 
+    accept = request.headers.get("accept", "")
     templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
+    if templates is not None and "text/html" in accept:
         return templates.TemplateResponse(
             request,
             "admin/audit.html",

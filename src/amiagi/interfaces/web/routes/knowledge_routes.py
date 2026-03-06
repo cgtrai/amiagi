@@ -26,7 +26,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from amiagi.interfaces.web.db.knowledge_repository import KnowledgeRepository
+from amiagi.interfaces.web.db.knowledge_repository import (
+    KnowledgeRepository,
+    GLOBAL_BASE_UUID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,18 @@ def _get_kb_repo(request: Request) -> KnowledgeRepository:
 
 def _no_kb() -> JSONResponse:
     return JSONResponse({"error": "knowledge_base unavailable"}, status_code=503)
+
+
+def _resolve_base_id(raw_id: str) -> str:
+    """Map the friendly alias 'global' to its well-known UUID."""
+    if raw_id == "global":
+        return GLOBAL_BASE_UUID
+    return raw_id
+
+
+def _is_global(base_id: str) -> bool:
+    """Check whether *base_id* refers to the Global Knowledge Base."""
+    return base_id in ("global", GLOBAL_BASE_UUID)
 
 
 # ── Page view ────────────────────────────────────────────────
@@ -72,7 +87,7 @@ async def list_bases(request: Request) -> JSONResponse:
     for base in bases:
         entry = dict(base)
         # Enrich global base with live stats
-        if base["id"] == "global" and kb is not None:
+        if base["name"] == "Global Knowledge Base" and kb is not None:
             try:
                 entry["chunks_count"] = kb.count()
             except Exception:
@@ -121,14 +136,15 @@ async def create_base(request: Request) -> JSONResponse:
 
 async def get_base(request: Request) -> JSONResponse:
     """GET /api/knowledge/bases/{id} (from DB)."""
-    base_id = request.path_params["id"]
+    raw_id = request.path_params["id"]
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
         return JSONResponse({"error": "knowledge base not found"}, status_code=404)
 
     entry = dict(base)
-    if base_id == "global":
+    if _is_global(raw_id):
         kb = _get_knowledge_base(request)
         if kb:
             try:
@@ -144,7 +160,7 @@ async def get_base(request: Request) -> JSONResponse:
 
 async def update_base(request: Request) -> JSONResponse:
     """PUT /api/knowledge/bases/{id} (persisted in DB)."""
-    base_id = request.path_params["id"]
+    base_id = _resolve_base_id(request.path_params["id"])
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -166,10 +182,11 @@ async def update_base(request: Request) -> JSONResponse:
 
 async def delete_base(request: Request) -> JSONResponse:
     """DELETE /api/knowledge/bases/{id} (from DB)."""
-    base_id = request.path_params["id"]
-    if base_id == "global":
+    raw_id = request.path_params["id"]
+    if _is_global(raw_id):
         return JSONResponse({"error": "cannot delete the global knowledge base"}, status_code=400)
 
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -187,7 +204,8 @@ async def delete_base(request: Request) -> JSONResponse:
 
 async def add_source(request: Request) -> JSONResponse:
     """POST /api/knowledge/bases/{id}/sources (persisted in DB)."""
-    base_id = request.path_params["id"]
+    raw_id = request.path_params["id"]
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -208,7 +226,7 @@ async def add_source(request: Request) -> JSONResponse:
     source["chunks_count"] = 0
 
     # If this is the global base, ingest content into KnowledgeBase
-    if base_id == "global":
+    if _is_global(raw_id):
         kb = _get_knowledge_base(request)
         if kb is not None:
             try:
@@ -242,7 +260,7 @@ async def add_source(request: Request) -> JSONResponse:
 
 async def remove_source(request: Request) -> JSONResponse:
     """DELETE /api/knowledge/bases/{id}/sources/{sid} (from DB)."""
-    base_id = request.path_params["id"]
+    base_id = _resolve_base_id(request.path_params["id"])
     sid = request.path_params["sid"]
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
@@ -312,7 +330,8 @@ async def _reindex_background(repo: KnowledgeRepository, kb, base_id: str, *, hu
 
 async def search_base(request: Request) -> JSONResponse:
     """GET /api/knowledge/bases/{id}/search?q=...&top=5"""
-    base_id = request.path_params["id"]
+    raw_id = request.path_params["id"]
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -323,7 +342,7 @@ async def search_base(request: Request) -> JSONResponse:
     if not query:
         return JSONResponse({"error": "query parameter 'q' is required"}, status_code=400)
 
-    if base_id == "global":
+    if _is_global(raw_id):
         kb = _get_knowledge_base(request)
         if kb is None:
             return _no_kb()
@@ -348,7 +367,8 @@ async def search_base(request: Request) -> JSONResponse:
 
 async def reindex_base(request: Request) -> JSONResponse:
     """POST /api/knowledge/bases/{id}/reindex"""
-    base_id = request.path_params["id"]
+    raw_id = request.path_params["id"]
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -356,7 +376,7 @@ async def reindex_base(request: Request) -> JSONResponse:
 
     # For the global base, re-ingest all sources
     kb = None
-    if base_id == "global":
+    if _is_global(raw_id):
         kb = _get_knowledge_base(request)
         if kb is None:
             return _no_kb()
@@ -366,7 +386,7 @@ async def reindex_base(request: Request) -> JSONResponse:
         hub.broadcast("knowledge.reindex.started", {"base_id": base_id})
 
     # Launch actual reindexing in background
-    if base_id == "global" and kb is not None:
+    if _is_global(raw_id) and kb is not None:
         asyncio.create_task(
             _reindex_background(repo, kb, base_id, hub=hub)
         )
@@ -379,7 +399,8 @@ async def reindex_base(request: Request) -> JSONResponse:
 
 async def base_stats(request: Request) -> JSONResponse:
     """GET /api/knowledge/bases/{id}/stats (from DB)."""
-    base_id = request.path_params["id"]
+    raw_id = request.path_params["id"]
+    base_id = _resolve_base_id(raw_id)
     repo = _get_kb_repo(request)
     base = await repo.get_base(base_id)
     if base is None:
@@ -394,7 +415,7 @@ async def base_stats(request: Request) -> JSONResponse:
         "chunks_count": 0,
     }
 
-    if base_id == "global":
+    if _is_global(raw_id):
         kb = _get_knowledge_base(request)
         if kb:
             try:

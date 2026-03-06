@@ -47,11 +47,16 @@
     }
     valueInput.value = "";
     formStatus.textContent = "";
+    overlay.removeAttribute("hidden");
+    overlay.style.display = "flex";
     overlay.classList.add("--visible");
   }
 
   function closeModal() {
     overlay.classList.remove("--visible");
+    overlay.style.display = "none";
+    overlay.setAttribute("hidden", "");
+    form.reset();
     agentSelect.disabled = false;
     keyInput.readOnly = false;
     formStatus.textContent = "";
@@ -260,9 +265,18 @@
   if (addBtn) addBtn.addEventListener("click", function () {
     openModal("Add Secret");
   });
-  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+  });
   if (overlay) overlay.addEventListener("click", function (e) {
     if (e.target === overlay) closeModal();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && overlay.classList.contains("--visible")) {
+      closeModal();
+    }
   });
   if (form) form.addEventListener("submit", saveSecret);
   if (refreshBtn) refreshBtn.addEventListener("click", load);

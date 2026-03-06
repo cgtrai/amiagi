@@ -215,3 +215,66 @@
   padding: var(--space-6) var(--space-4);
   font-size: 0.9rem;
 }
+
+/* ── Template-specific aliases ────────────────────────────────── */
+.memory-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+.agent-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.agent-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2);
+  border-radius: var(--glass-radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.agent-btn:hover { background: var(--glass-bg-hover); }
+.agent-btn.active {
+  background: var(--glass-bg-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.memory-tab { }
+.memory-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sidebar-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.knowledge-search-bar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.knowledge-search-bar input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  outline: none;
+}
+.knowledge-search-bar input:focus {
+  border-color: var(--color-accent, #0ea5e9);
+}

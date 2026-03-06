@@ -31,7 +31,7 @@ printf "${BOLD}"
 cat << 'BANNER'
 
    ╔══════════════════════════════════════╗
-   ║        amiagi — installer            ║
+   ║        amiagi v1.2.0 — installer     ║
    ║   LLM Agent Orchestration Framework  ║
    ╚══════════════════════════════════════╝
 
@@ -41,7 +41,7 @@ printf "${NC}"
 # ══════════════════════════════════════════════════════════════
 #  1. Prerequisites
 # ══════════════════════════════════════════════════════════════
-step "1/6  Checking prerequisites"
+step "1/7  Checking prerequisites"
 
 # --- Python ---
 if ! command -v "${REQUIRED_PYTHON}" &>/dev/null; then
@@ -103,7 +103,7 @@ fi
 # ══════════════════════════════════════════════════════════════
 #  2. Virtual environment
 # ══════════════════════════════════════════════════════════════
-step "2/6  Setting up virtual environment"
+step "2/7  Setting up virtual environment"
 
 if [[ -d "${VENV_DIR}" ]]; then
   info "Existing .venv found — reusing"
@@ -119,7 +119,7 @@ info "Activated .venv ($(python --version))"
 # ══════════════════════════════════════════════════════════════
 #  3. Dependencies
 # ══════════════════════════════════════════════════════════════
-step "3/6  Installing dependencies"
+step "3/7  Installing dependencies"
 
 python -m pip install --upgrade pip --quiet
 python -m pip install -r requirements.txt --quiet
@@ -151,7 +151,7 @@ fi
 # ══════════════════════════════════════════════════════════════
 #  4. Environment configuration (.env)
 # ══════════════════════════════════════════════════════════════
-step "4/6  Environment configuration"
+step "4/7  Environment configuration"
 
 if [[ -f .env ]]; then
   info ".env already exists — keeping current configuration"
@@ -164,16 +164,111 @@ else
   fi
 fi
 
+# --- Database credentials (if web interface selected) ---
+if [[ "${WEB_CHOICE}" =~ ^[Yy] ]] && [[ -f .env ]]; then
+  # Check if DB_USER is already configured
+  EXISTING_DB_USER=$(grep -oP '(?<=^AMIAGI_DB_USER=).+' .env 2>/dev/null || true)
+
+  if [[ -z "${EXISTING_DB_USER}" ]]; then
+    printf "\n"
+    printf "  ${BOLD}Database configuration${NC}\n"
+    printf "  The web interface needs a database.\n"
+    printf "  You can use PostgreSQL (recommended) or SQLite (zero-config).\n\n"
+
+    read -rp "$(printf "${YELLOW}[?]${NC} Use PostgreSQL? [Y/n] (n = SQLite fallback) ")" PG_CHOICE
+    PG_CHOICE="${PG_CHOICE:-Y}"
+
+    if [[ "${PG_CHOICE}" =~ ^[Yy] ]]; then
+      printf "\n"
+
+      read -rp "$(printf "  ${CYAN}DB host${NC} [localhost]: ")" INPUT_DB_HOST
+      INPUT_DB_HOST="${INPUT_DB_HOST:-localhost}"
+
+      read -rp "$(printf "  ${CYAN}DB port${NC} [5432]: ")" INPUT_DB_PORT
+      INPUT_DB_PORT="${INPUT_DB_PORT:-5432}"
+
+      read -rp "$(printf "  ${CYAN}DB name${NC} [amiagi]: ")" INPUT_DB_NAME
+      INPUT_DB_NAME="${INPUT_DB_NAME:-amiagi}"
+
+      read -rp "$(printf "  ${CYAN}DB schema${NC} [dbo]: ")" INPUT_DB_SCHEMA
+      INPUT_DB_SCHEMA="${INPUT_DB_SCHEMA:-dbo}"
+
+      read -rp "$(printf "  ${CYAN}DB user${NC}: ")" INPUT_DB_USER
+      if [[ -z "${INPUT_DB_USER}" ]]; then
+        error "DB user is required for PostgreSQL. Falling back to SQLite."
+      else
+        read -srp "$(printf "  ${CYAN}DB password${NC}: ")" INPUT_DB_PASSWORD
+        printf "\n"
+
+        # Write credentials to .env
+        sed -i "s|^AMIAGI_DB_HOST=.*|AMIAGI_DB_HOST=${INPUT_DB_HOST}|" .env
+        sed -i "s|^AMIAGI_DB_PORT=.*|AMIAGI_DB_PORT=${INPUT_DB_PORT}|" .env
+        sed -i "s|^AMIAGI_DB_NAME=.*|AMIAGI_DB_NAME=${INPUT_DB_NAME}|" .env
+        sed -i "s|^AMIAGI_DB_SCHEMA=.*|AMIAGI_DB_SCHEMA=${INPUT_DB_SCHEMA}|" .env
+        sed -i "s|^AMIAGI_DB_USER=.*|AMIAGI_DB_USER=${INPUT_DB_USER}|" .env
+        sed -i "s|^AMIAGI_DB_PASSWORD=.*|AMIAGI_DB_PASSWORD=${INPUT_DB_PASSWORD}|" .env
+
+        info "PostgreSQL credentials saved to .env"
+        info "  ${INPUT_DB_USER}@${INPUT_DB_HOST}:${INPUT_DB_PORT}/${INPUT_DB_NAME} (schema: ${INPUT_DB_SCHEMA})"
+      fi
+    else
+      info "Using SQLite fallback (data/web.db) — no credentials needed"
+    fi
+  else
+    info "PostgreSQL already configured (user=${EXISTING_DB_USER})"
+  fi
+fi
+
 # --- required directories ---
-for DIR in logs data data/sandboxes data/shared_workspace data/teams data/workflows data/workflow_checkpoints config; do
+for DIR in logs data data/sandboxes data/shared_workspace data/teams data/workflows data/workflow_checkpoints data/workspaces config; do
   mkdir -p "${DIR}"
 done
 info "Data directories verified"
 
 # ══════════════════════════════════════════════════════════════
-#  5. Ollama models (optional)
+#  5. Database initialisation
 # ══════════════════════════════════════════════════════════════
-step "5/6  Ollama models"
+step "5/7  Database initialisation"
+
+if [[ "${WEB_CHOICE}" =~ ^[Yy] ]]; then
+  # Check if PostgreSQL is configured in .env
+  DB_USER=""
+  if [[ -f .env ]]; then
+    DB_USER=$(grep -oP '(?<=^AMIAGI_DB_USER=).+' .env 2>/dev/null || true)
+  fi
+
+  if [[ -n "${DB_USER}" ]]; then
+    info "PostgreSQL configured (user=${DB_USER})"
+    info "Migrations will run automatically on first 'amiagi --ui web'"
+  else
+    info "No AMIAGI_DB_USER set — using SQLite fallback (data/web.db)"
+    info "No external database required — zero configuration!"
+  fi
+
+  # Run DB initialisation + migrations via Python
+  if python -c "
+import asyncio
+from amiagi.config import Settings
+from amiagi.interfaces.web.db.pool import create_pool, run_migrations, close_pool
+async def init():
+    s = Settings.from_env()
+    pool = await create_pool(s)
+    await run_migrations(pool, schema=s.db_schema)
+    await close_pool(pool)
+asyncio.run(init())
+" 2>/dev/null; then
+    info "Database initialised and all 13 migrations applied"
+  else
+    warn "DB initialisation skipped (will run on first 'amiagi --ui web')"
+  fi
+else
+  info "Web deps not installed — database setup skipped"
+fi
+
+# ══════════════════════════════════════════════════════════════
+#  6. Ollama models (optional)
+# ══════════════════════════════════════════════════════════════
+step "6/7  Ollama models"
 
 EXECUTOR_MODEL="hf.co/TeichAI/Qwen3-14B-Claude-4.5-Opus-High-Reasoning-Distill-GGUF:Q4_K_M"
 SUPERVISOR_MODEL="cogito:14b"
@@ -226,9 +321,9 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════
-#  6. Verification
+#  7. Verification
 # ══════════════════════════════════════════════════════════════
-step "6/6  Verification"
+step "7/7  Verification"
 
 # Quick import test
 if python -c "import amiagi; print(f'amiagi {amiagi.__version__}')" 2>/dev/null; then
@@ -267,9 +362,12 @@ printf "${NC}\n"
 printf "  ${BOLD}Quick start:${NC}\n"
 printf "    source .venv/bin/activate\n"
 printf "    amiagi\n\n"
+printf "  ${BOLD}Web Management Console:${NC}\n"
+printf "    amiagi --admin            # first-run: register admin account\n"
+printf "    amiagi --auto --ui web    # launch web interface\n\n"
 printf "  ${BOLD}With options:${NC}\n"
 printf "    amiagi --cold_start       # fresh session\n"
-printf "    amiagi --auto             # autonomous mode\n"
+printf "    amiagi --auto             # autonomous mode (TUI)\n"
 printf "    amiagi --lang en          # English interface\n\n"
 printf "  ${BOLD}Run tests:${NC}\n"
 printf "    pytest\n\n"

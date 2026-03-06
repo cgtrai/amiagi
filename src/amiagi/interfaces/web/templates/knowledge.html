@@ -8,20 +8,20 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>📚 {{ _("knowledge.title") }}</h1>
+  <h1><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg> {{ _("knowledge.title") }}</h1>
   <div class="page-actions">
     <button class="btn btn-primary" id="btn-new-base">+ {{ _("knowledge.new_base") }}</button>
-    <button class="btn btn-outline" id="btn-import">⬆ {{ _("knowledge.import") }}</button>
+    <button class="btn btn-outline" id="btn-import"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> {{ _("knowledge.import") }}</button>
   </div>
 </div>
 
 <!-- Section tabs -->
 <div class="section-tabs">
-  <button class="tab-btn active" data-tab="overview">📊 {{ _("knowledge.tab_overview") }}</button>
-  <button class="tab-btn" data-tab="sources">📁 {{ _("knowledge.tab_sources") }}</button>
-  <button class="tab-btn" data-tab="explore">🔍 {{ _("knowledge.tab_explore") }}</button>
-  <button class="tab-btn" data-tab="pipeline">⚙️ {{ _("knowledge.tab_pipeline") }}</button>
-  <button class="tab-btn" data-tab="stats">📈 {{ _("knowledge.tab_stats") }}</button>
+  <button class="tab-btn active" data-tab="overview"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg> {{ _("knowledge.tab_overview") }}</button>
+  <button class="tab-btn" data-tab="sources"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg> {{ _("knowledge.tab_sources") }}</button>
+  <button class="tab-btn" data-tab="explore"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {{ _("knowledge.tab_explore") }}</button>
+  <button class="tab-btn" data-tab="pipeline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> {{ _("knowledge.tab_pipeline") }}</button>
+  <button class="tab-btn" data-tab="stats"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 12-4-4v3H3v2h15v3z"/></svg> {{ _("knowledge.tab_stats") }}</button>
 </div>
 
 <!-- Overview -->
@@ -131,9 +131,9 @@
     </label>
     <label>{{ _("knowledge.source_type") }}
       <select name="type">
-        <option value="file">📄 {{ _("knowledge.type_file") }}</option>
-        <option value="dir">📁 {{ _("knowledge.type_dir") }}</option>
-        <option value="url">🌐 {{ _("knowledge.type_url") }}</option>
+        <option value="file">{{ _("knowledge.type_file") }}</option>
+        <option value="dir">{{ _("knowledge.type_dir") }}</option>
+        <option value="url">{{ _("knowledge.type_url") }}</option>
       </select>
     </label>
     <label>{{ _("knowledge.path") }}

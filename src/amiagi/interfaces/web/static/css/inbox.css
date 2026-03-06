@@ -209,12 +209,15 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal, 1100);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.5);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
+}
+.inbox-modal-overlay.open {
+  display: flex;
 }
 
 .inbox-modal {

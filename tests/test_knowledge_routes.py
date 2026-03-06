@@ -9,6 +9,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from amiagi.interfaces.web.routes.knowledge_routes import knowledge_routes
+from amiagi.interfaces.web.db.knowledge_repository import GLOBAL_BASE_UUID
 
 
 # ── Helpers ─────────────────────────────────────────────────
@@ -122,7 +123,7 @@ class _FakeKnowledgeRepo:
         base = await self.create_base(
             name="Global Knowledge Base",
             description="Default TF-IDF knowledge base",
-            base_id="global",
+            base_id=GLOBAL_BASE_UUID,
         )
         return base["id"]
 
@@ -145,7 +146,7 @@ class TestListBases:
         assert r.status_code == 200
         bases = r.json()["bases"]
         # The global base is always seeded in DB
-        assert any(b["id"] == "global" for b in bases)
+        assert any(b["id"] == GLOBAL_BASE_UUID for b in bases)
 
     def test_global_base_seeded(self) -> None:
         kb = _FakeKB()
@@ -153,7 +154,7 @@ class TestListBases:
         client = TestClient(_make_app(kb))
         r = client.get("/api/knowledge/bases")
         bases = r.json()["bases"]
-        assert any(b["id"] == "global" for b in bases)
+        assert any(b["id"] == GLOBAL_BASE_UUID for b in bases)
 
 
 class TestCreateBase:

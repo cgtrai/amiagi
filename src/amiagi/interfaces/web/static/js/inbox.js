@@ -121,6 +121,11 @@
 
   /* Click on <approval-card> itself -> open modal */
   listEl.addEventListener('click', function (e) {
+    // Skip if click originated from a button inside the shadow DOM
+    var path = e.composedPath ? e.composedPath() : [];
+    for (var i = 0; i < path.length && path[i] !== e.currentTarget; i++) {
+      if (path[i].tagName === 'BUTTON' || path[i].tagName === 'TEXTAREA') return;
+    }
     var card = e.target.closest('approval-card');
     if (card) {
       openModal(card.getAttribute('item-id'));
@@ -139,8 +144,12 @@
       if (d.ok) {
         load();
         closeModal();
+      } else {
+        alert(d.error || 'Action failed');
       }
-    } catch { /* */ }
+    } catch (err) {
+      alert('Network error: ' + err.message);
+    }
   }
 
   /* ── Modal ──────────────────────────────────────────────── */
@@ -170,18 +179,29 @@
     var isQuestion = currentItem.item_type === 'ask_human';
     modalReply.hidden = !(isPending && isQuestion);
 
+    overlay.classList.add('open');
+    overlay.style.display = 'flex';
     overlay.hidden = false;
   }
 
   function closeModal() {
+    overlay.classList.remove('open');
+    overlay.style.display = 'none';
     overlay.hidden = true;
     currentItem = null;
     if (replyText) replyText.value = '';
   }
 
-  btnClose.addEventListener('click', closeModal);
+  btnClose.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
+  });
   overlay.addEventListener('click', function (e) {
     if (e.target === overlay) closeModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) closeModal();
   });
 
   btnApprove.addEventListener('click', function () {

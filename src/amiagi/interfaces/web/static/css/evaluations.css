@@ -272,3 +272,44 @@ dialog.eval-dialog select {
   padding: var(--space-6) var(--space-4);
   font-size: 0.9rem;
 }
+
+/* ── Template-specific aliases ────────────────────────────────── */
+.eval-tab { }
+.eval-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.eval-summary-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  text-align: center;
+}
+.eval-metric {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.eval-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.eval-table-wrap {
+  overflow-x: auto;
+}
+.ab-campaigns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+.suites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+}

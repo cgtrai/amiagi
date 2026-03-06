@@ -55,6 +55,17 @@ def _parse_import_payload(body: bytes, content_type: str) -> list[dict]:
 
 @require_permission("admin.settings")
 async def admin_list_skills(request: Request) -> Response:
+    # Browser navigation → render HTML template
+    accept = request.headers.get("accept", "")
+    templates = getattr(request.app.state, "templates", None)
+    if templates is not None and "text/html" in accept:
+        return templates.TemplateResponse(
+            request,
+            "admin/skills.html",
+            {"user": request.state.user},
+        )
+
+    # JS fetch / API → return JSON
     repo = _get_skill_repo(request)
     if repo is None:
         return JSONResponse({"error": "skill_repository_not_available"}, status_code=503)
@@ -132,6 +143,17 @@ async def admin_skill_stats(request: Request) -> Response:
 
 @require_permission("admin.settings")
 async def admin_list_traits(request: Request) -> Response:
+    # Browser navigation → render HTML template
+    accept = request.headers.get("accept", "")
+    templates = getattr(request.app.state, "templates", None)
+    if templates is not None and "text/html" in accept:
+        return templates.TemplateResponse(
+            request,
+            "admin/traits.html",
+            {"user": request.state.user},
+        )
+
+    # JS fetch / API → return JSON
     repo = _get_skill_repo(request)
     if repo is None:
         return JSONResponse({"error": "skill_repository_not_available"}, status_code=503)

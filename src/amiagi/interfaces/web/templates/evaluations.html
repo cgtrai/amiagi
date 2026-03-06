@@ -8,20 +8,20 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>🧪 {{ _("eval.title") }}</h1>
+  <h1><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2 5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6l-4-4Z"/><path d="M9 2v4h6V2"/><path d="m9 14 2 2 4-4"/></svg> {{ _("eval.title") }}</h1>
   <div class="page-actions">
-    <button class="btn btn-primary" id="btn-new-eval">▶ {{ _("eval.new_eval") }}</button>
-    <button class="btn btn-outline" id="btn-new-ab">⚡ {{ _("eval.new_ab") }}</button>
+    <button class="btn btn-primary" id="btn-new-eval"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg> {{ _("eval.new_eval") }}</button>
+    <button class="btn btn-outline" id="btn-new-ab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> {{ _("eval.new_ab") }}</button>
   </div>
 </div>
 
 <!-- Section tabs -->
 <div class="section-tabs">
-  <button class="tab-btn active" data-tab="dashboard">📊 {{ _("eval.tab_dashboard") }}</button>
-  <button class="tab-btn" data-tab="history">📋 {{ _("eval.tab_history") }}</button>
-  <button class="tab-btn" data-tab="ab-tests">🔬 {{ _("eval.tab_ab") }}</button>
-  <button class="tab-btn" data-tab="baselines">📏 {{ _("eval.tab_baselines") }}</button>
-  <button class="tab-btn" data-tab="suites">📦 {{ _("eval.tab_suites") }}</button>
+  <button class="tab-btn active" data-tab="dashboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg> {{ _("eval.tab_dashboard") }}</button>
+  <button class="tab-btn" data-tab="history"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg> {{ _("eval.tab_history") }}</button>
+  <button class="tab-btn" data-tab="ab-tests"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg> {{ _("eval.tab_ab") }}</button>
+  <button class="tab-btn" data-tab="baselines"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"/><path d="M6 8v8"/><path d="M10 4v16"/><path d="M14 6v12"/><path d="M18 8v8"/></svg> {{ _("eval.tab_baselines") }}</button>
+  <button class="tab-btn" data-tab="suites"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg> {{ _("eval.tab_suites") }}</button>
 </div>
 
 <!-- Dashboard -->
@@ -150,7 +150,7 @@
     </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
-      <button type="submit" class="btn btn-primary">▶ {{ _("eval.run") }}</button>
+      <button type="submit" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg> {{ _("eval.run") }}</button>
     </div>
   </form>
 </dialog>
@@ -173,7 +173,7 @@
     </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
-      <button type="submit" class="btn btn-primary">⚡ {{ _("eval.start_ab") }}</button>
+      <button type="submit" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> {{ _("eval.start_ab") }}</button>
     </div>
   </form>
 </dialog>

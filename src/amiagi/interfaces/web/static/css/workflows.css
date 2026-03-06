@@ -203,3 +203,35 @@ dialog.workflow-dialog textarea {
   padding: var(--space-6) var(--space-4);
   font-size: 0.9rem;
 }
+
+/* ── Template-specific aliases ────────────────────────────────── */
+.workflow-tab          { }
+.workflow-runs-list    { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); }
+.workflow-definitions-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+.workflow-detail-panel {
+  padding: var(--space-4);
+  border-radius: var(--glass-radius);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.detail-body { }
+.run-meta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.run-controls {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}

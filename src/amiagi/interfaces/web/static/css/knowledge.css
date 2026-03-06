@@ -292,9 +292,56 @@ dialog.knowledge-dialog textarea {
   font-size: 0.9rem;
 }
 
-.error-state {
-  text-align: center;
-  color: #f87171;
-  padding: var(--space-4);
+/* ── Template-specific aliases ────────────────────────────────── */
+.knowledge-tab { }
+.explore-search-bar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.explore-search-bar input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
   font-size: 0.85rem;
+  outline: none;
+}
+.explore-search-bar input:focus {
+  border-color: var(--color-accent, #0ea5e9);
+}
+.explore-search-bar select {
+  padding: var(--space-2);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+.pipeline-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.pipeline-config-grid label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.pipeline-config-grid select {
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  margin-top: var(--space-1);
+}
+.pipeline-status {
+  margin-top: var(--space-3);
 }

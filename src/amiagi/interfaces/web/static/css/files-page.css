@@ -1,81 +1,159 @@
 /* ================================================================
-   Files page styles
+   Files page styles — Liquid Glass v2
    ================================================================ */
 
 .files-layout {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4, 1rem);
-  padding: var(--space-4, 1rem);
+  gap: var(--space-5);
   max-width: 960px;
-  margin: 0 auto;
 }
 .files-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-.files-header h1 { font-size: 1.5rem; margin: 0; }
+.files-header h1 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+.files-header .meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
 
+/* ── Upload zone ─────────────────────────────────────────────── */
 .upload-zone {
-  border: 2px dashed var(--border-secondary, #475569);
-  border-radius: var(--radius-lg, 12px);
-  padding: var(--space-6, 2rem);
+  position: relative;
+  border: 2px dashed var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-8);
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  background: var(--glass-bg, rgba(30,41,59,.6));
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  transition: border-color var(--transition-base), background var(--transition-base);
+  overflow: hidden;
+}
+.upload-zone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--shimmer-gradient), transparent;
+  background-size: 200% 100%, 100% 100%;
+  animation: glass-shimmer var(--shimmer-duration) ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0.4;
 }
 .upload-zone.dragover {
-  border-color: var(--accent-primary, #6366f1);
-  background: rgba(99,102,241,.1);
+  border-color: var(--accent-blue);
+  background: rgba(78, 161, 255, 0.08);
 }
-.upload-zone p { margin: 0; color: var(--text-secondary, #94a3b8); }
+.upload-zone p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  position: relative;
+  z-index: 1;
+}
 
+/* ── File list ───────────────────────────────────────────────── */
 .file-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, .5rem);
+  gap: var(--space-2);
 }
 .file-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3, .75rem);
-  padding: var(--space-3, .75rem);
-  background: var(--glass-bg, rgba(30,41,59,.6));
-  border-radius: var(--radius-md, 8px);
-  border: 1px solid var(--border-secondary, #334155);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border-radius: var(--glass-radius-sm);
+  border: 1px solid var(--glass-border);
+  transition: border-color var(--transition-fast),
+              box-shadow var(--transition-fast);
+  overflow: hidden;
 }
-.file-item .icon { font-size: 1.25rem; }
-.file-item .name { flex: 1; font-weight: 500; }
-.file-item .meta { color: var(--text-secondary, #94a3b8); font-size: .85rem; }
-.file-item .actions { display: flex; gap: .5rem; }
+.file-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--shimmer-gradient), transparent;
+  background-size: 200% 100%, 100% 100%;
+  animation: glass-shimmer var(--shimmer-duration) ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0.35;
+}
+.file-item:hover {
+  border-color: var(--glass-border-strong);
+}
+.file-item .icon { font-size: 1.25rem; position: relative; z-index: 1; }
+.file-item .name {
+  flex: 1;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  position: relative;
+  z-index: 1;
+}
+.file-item .meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  position: relative;
+  z-index: 1;
+}
+.file-item .actions {
+  display: flex;
+  gap: var(--space-2);
+  position: relative;
+  z-index: 1;
+}
 .file-item .actions a,
 .file-item .actions button {
-  padding: .25rem .5rem;
-  font-size: .8rem;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--accent-primary, #6366f1);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-xs);
+  border-radius: var(--glass-radius-sm);
+  background: var(--accent-blue);
   color: #fff;
   border: none;
   cursor: pointer;
   text-decoration: none;
+  transition: background var(--transition-fast);
+}
+.file-item .actions a:hover,
+.file-item .actions button:hover {
+  background: #5aadff;
 }
 .file-item .actions button.danger {
-  background: var(--status-error, #ef4444);
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid var(--accent-rose);
+  color: var(--accent-rose);
+}
+.file-item .actions button.danger:hover {
+  background: rgba(244, 63, 94, 0.25);
 }
 
-.empty-state {
+/* ── Empty state ─────────────────────────────────────────────── */
+.files-layout .empty-state {
   text-align: center;
-  color: var(--text-secondary, #94a3b8);
-  padding: var(--space-6, 2rem);
+  color: var(--text-muted);
+  padding: var(--space-6) var(--space-4);
+  font-size: var(--font-size-sm);
 }
 
+/* ── Upload status ───────────────────────────────────────────── */
 #upload-status {
-  margin-top: .5rem;
-  font-size: .85rem;
-  color: var(--text-secondary, #94a3b8);
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }

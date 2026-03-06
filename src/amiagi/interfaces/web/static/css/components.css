@@ -19,8 +19,7 @@
 }
 
 /* ── Specular top-edge on glass panels ───────────────────────── */
-.glass-panel::before,
-.glass-card::before {
+.glass-panel::before {
     content: '';
     position: absolute;
     top: 0;
@@ -34,10 +33,22 @@
     border-radius: 1px;
 }
 .glass-panel { position: relative; }
-.glass-card  { position: relative; }
-.glass-panel:hover::before,
-.glass-card:hover::before {
+.glass-card  { position: relative; overflow: hidden; }
+.glass-panel:hover::before {
     opacity: 0.6;
+}
+
+/* ── Shimmer sweep on glass-card ─────────────────────────────── */
+.glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--shimmer-gradient), transparent;
+    background-size: 200% 100%, 100% 100%;
+    animation: glass-shimmer var(--shimmer-duration) ease-in-out infinite;
+    pointer-events: none;
+    opacity: 0.5;
+    z-index: 0;
 }
 
 /* ── Shimmer sweep on nav bar ────────────────────────────────── */
@@ -82,13 +93,18 @@
 }
 
 .glass-card {
-    background: var(--glass-bg);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
+    background: var(--glass-card-bg);
+    -webkit-backdrop-filter: var(--glass-card-filter);
+    backdrop-filter: var(--glass-card-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--glass-radius);
     box-shadow: var(--glass-shadow-sm);
     padding: var(--space-6);
+    transition: border-color var(--transition-base),
+                box-shadow var(--transition-base);
+}
+.glass-card:hover {
+    border-color: var(--glass-border-strong);
 }
 
 /* ── Navigation Bar ──────────────────────────────────────────── */
@@ -1077,6 +1093,9 @@
     overflow-x: auto;
 }
 .admin-subnav-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
     padding: var(--space-3) var(--space-5);
     color: var(--text-secondary);
     text-decoration: none;
@@ -1084,6 +1103,9 @@
     border-bottom: 2px solid transparent;
     white-space: nowrap;
     transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.admin-subnav-item svg {
+    flex-shrink: 0;
 }
 .admin-subnav-item:hover { color: var(--text-primary); }
 .admin-subnav-item.active {
@@ -1211,6 +1233,361 @@
 }
 
 /* ── Chromatic Glass Accents ─────────────────────────────────── */
+
+/* ── Generic aliases ─────────────────────────────────────────── *
+ * Many templates use Bootstrap-like class names (.btn, .table,
+ * .badge, etc.).  The definitions below map them to the existing
+ * Glass Design System so every page looks consistent.
+ * ──────────────────────────────────────────────────────────── */
+
+/* ── Page header ─────────────────────────────────────────────── */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+}
+.page-header h1 {
+    margin: 0;
+    font-size: var(--font-size-xl, 1.25rem);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.page-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ── Section header ──────────────────────────────────────────── */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+.section-header h2,
+.section-header h3 {
+    margin: 0;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+/* ── Section tabs (evaluations, knowledge) ───────────────────── */
+.section-tabs {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--glass-border);
+    margin-bottom: var(--space-4);
+    overflow-x: auto;
+}
+.tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tab-btn:hover {
+    color: var(--text-primary);
+}
+.tab-btn.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+}
+
+/* ── Generic button aliases → glass-btn ──────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--glass-radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.btn:hover {
+    background: var(--glass-bg-hover);
+    border-color: var(--glass-border-strong);
+}
+.btn-primary {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #fff;
+}
+.btn-primary:hover {
+    background: #5aadff;
+}
+.btn-outline {
+    background: transparent;
+    border-color: var(--glass-border);
+    color: var(--text-secondary);
+}
+.btn-outline:hover {
+    background: var(--glass-bg-hover);
+    color: var(--text-primary);
+}
+.btn-outline.active {
+    background: var(--glass-bg-active);
+    border-color: var(--glass-border-strong);
+    color: var(--text-primary);
+}
+.btn-danger {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: var(--accent-rose);
+    color: var(--accent-rose);
+}
+.btn-danger:hover {
+    background: rgba(244, 63, 94, 0.25);
+}
+.btn-sm {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-xs);
+}
+.btn-xs {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-xs);
+}
+.btn-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--glass-radius-sm);
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.btn-close:hover {
+    background: var(--glass-bg-hover);
+    color: var(--text-primary);
+}
+
+/* ── glass-btn--ghost (used by inbox, health) ────────────────── */
+.glass-btn--ghost {
+    background: transparent;
+    border-color: transparent;
+}
+.glass-btn--ghost:hover {
+    background: var(--glass-bg-hover);
+    border-color: var(--glass-border);
+}
+
+/* ── glass-btn--pill (rounded) ───────────────────────────────── */
+.glass-btn--pill {
+    border-radius: var(--glass-radius-full);
+}
+
+/* ── Generic table alias → glass-table ───────────────────────── */
+.table,
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+.table thead th,
+.data-table thead th {
+    text-align: left;
+    padding: var(--space-3) var(--space-4);
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--glass-border);
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.table tbody td,
+.data-table tbody td {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text-primary);
+}
+.table tbody tr:hover,
+.data-table tbody tr:hover {
+    background: var(--glass-bg-hover);
+}
+
+/* ── Generic badge alias ─────────────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--glass-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 1;
+    white-space: nowrap;
+    background: rgba(107,114,128,0.15);
+    color: var(--text-muted);
+}
+
+/* ── Generic input alias ─────────────────────────────────────── */
+.input {
+    padding: var(--space-3) var(--space-4);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--glass-radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: var(--font-size-sm);
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.input:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(78, 161, 255, 0.15);
+}
+.input::placeholder {
+    color: var(--text-muted);
+}
+
+/* ── Container ───────────────────────────────────────────────── */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--space-4);
+}
+
+/* ── Search / filter bars ────────────────────────────────────── */
+.search-bar,
+.search-box,
+.filter-bar {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-bottom: var(--space-3);
+}
+.search-bar .input,
+.search-box input,
+.filter-bar select {
+    flex: 1;
+}
+.filter-bar select {
+    padding: var(--space-2) var(--space-3);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--glass-radius-sm);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+/* ── Glass dialog (<dialog> element) ─────────────────────────── */
+.glass-dialog {
+    max-width: 520px;
+    width: 90vw;
+    padding: var(--space-6);
+    border-radius: var(--glass-radius);
+    background: linear-gradient(160deg, rgba(18,22,35,0.95), rgba(12,16,28,0.98));
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    box-shadow: var(--glass-shadow);
+}
+.glass-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+.glass-dialog h3 {
+    margin: 0 0 var(--space-4) 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+}
+.glass-dialog label {
+    display: block;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+}
+.glass-dialog input,
+.glass-dialog select,
+.glass-dialog textarea {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--glass-radius-sm);
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-3);
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+.glass-dialog input:focus,
+.glass-dialog select:focus,
+.glass-dialog textarea:focus {
+    border-color: var(--accent-blue);
+}
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--glass-border);
+}
+
+/* ── Code textarea ───────────────────────────────────────────── */
+.code-textarea {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: var(--font-size-xs);
+    line-height: 1.5;
+    tab-size: 2;
+}
+
+/* ── Glass pill (global) ─────────────────────────────────────── */
+.glass-pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-muted);
+    background: var(--glass-pill-bg, rgba(255,255,255,0.06));
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--glass-radius-full);
+}
+
+/* ── Empty state (global) ────────────────────────────────────── */
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: var(--space-6) var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+/* ── Text utility helpers ────────────────────────────────────── */
+.text-muted { color: var(--text-muted); }
+
+/* ── End generic aliases ─────────────────────────────────────── */
 
 .glass-chromatic {
     position: relative;
