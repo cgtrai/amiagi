@@ -108,6 +108,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=_("main.arg.lang"),
     )
+    parser.add_argument(
+        "--admin",
+        action="store_true",
+        help="Uruchom kreator pierwszego konta administratora (wymaga bazy danych).",
+    )
     return parser.parse_args(argv)
 
 
@@ -177,6 +182,13 @@ def main(argv: list[str] | None = None) -> None:
     if args.lang:
         set_language(args.lang)
     settings = Settings.from_env()
+
+    # Handle ``amiagi --admin`` — admin bootstrap wizard.
+    if getattr(args, "admin", False):
+        from amiagi.interfaces.web.auth.admin_bootstrap import run_admin_bootstrap
+        run_admin_bootstrap(settings)
+        return
+
     if args.auto:
         if is_dataclass(settings):
             settings = replace(settings, autonomous_mode=True)
@@ -527,6 +539,9 @@ def main(argv: list[str] | None = None) -> None:
                 team_composer=team_composer,
                 skill_catalog=skill_catalog,
                 team_dashboard=team_dashboard,
+                eval_runner=eval_runner,
+                benchmark_suite=benchmark_suite,
+                regression_detector=regression_detector,
             )
         elif args.ui == "textual":
             run_textual_cli(

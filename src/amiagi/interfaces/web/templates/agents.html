@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("agents.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.agents-page { padding: var(--space-6); }
+.agents-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-6);
+}
+.agents-header h2 { margin: 0; color: var(--text-primary); }
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-5);
+}
+.agent-detail-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+  cursor: pointer; text-decoration: none; display: block; color: inherit;
+}
+.agent-detail-card:hover {
+  border-color: var(--accent-blue); transform: translateY(-2px);
+}
+.agent-card-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.agents-header-actions { display: flex; align-items: center; gap: var(--space-3); }
+.modal-card--sm { max-width: 520px; }
+.btn-row { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.agent-role-icon {
+  width: 40px; height: 40px; border-radius: var(--glass-radius-sm);
+  display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+  background: var(--glass-bg-hover);
+}
+.agent-card-header h3 { margin: 0; font-size: var(--font-size-lg); color: var(--text-primary); }
+.agent-card-header .agent-role-label { font-size: var(--font-size-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.agent-card-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); }
+.agent-card-meta .meta-tag {
+  font-size: var(--font-size-xs); padding: var(--space-1) var(--space-3);
+  background: var(--glass-bg-hover); border-radius: var(--glass-radius-pill); color: var(--text-secondary);
+}
+.agent-card-skills { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.agent-card-skills .skill-tag {
+  font-size: var(--font-size-xs); padding: 2px var(--space-2);
+  background: rgba(99,102,241,0.15); border-radius: var(--glass-radius-pill); color: var(--accent-purple);
+}
+.agent-card-model { margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-muted); }
+.agent-card-header .glass-badge { margin-left: auto; }
+.empty-agents { text-align: center; padding: var(--space-10); color: var(--text-muted); font-size: var(--font-size-lg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agents-page">
+  <div class="agents-header">
+    <h2>🤖 {{ _("agents.title") }}</h2>
+    <div class="agents-header-actions">
+      <div id="agent-count" class="text-muted"></div>
+      <button class="glass-btn glass-btn--primary" onclick="openCreateAgent()">+ {{ _("agents.create") }}</button>
+    </div>
+  </div>
+  <div class="agents-grid" id="agents-grid">
+    <div class="empty-agents">{{ _("agents.loading") }}</div>
+  </div>
+</div>
+
+<!-- Create Agent modal -->
+<div class="modal-overlay" id="create-agent-modal" hidden>
+  <div class="glass-card modal-card modal-card--sm">
+    <h2>{{ _("agents.create") }}</h2>
+    <div class="field">
+      <label for="ag-name">{{ _("admin.name") }}</label>
+      <input id="ag-name" class="glass-input" placeholder="e.g. ResearchBot"/>
+    </div>
+    <div class="field">
+      <label for="ag-role">{{ _("agent.role") }}</label>
+      <select id="ag-role" class="glass-input">
+        <option value="executor">Executor</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="researcher">Researcher</option>
+        <option value="planner">Planner</option>
+        <option value="reviewer">Reviewer</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="ag-model">{{ _("agent.model") }}</label>
+      <select id="ag-model" class="glass-input" aria-label="Agent model">
+        <option value="">{{ _("settings.select_model") }}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="ag-backend">{{ _("agent.backend") }}</label>
+      <select id="ag-backend" class="glass-input" onchange="populateAgentModelSelect()">
+        <option value="ollama">Ollama</option>
+        <option value="openai">OpenAI</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="ag-skills">{{ _("agent.skills") }} (comma-separated)</label>
+      <input id="ag-skills" class="glass-input" placeholder="python, research"/>
+    </div>
+    <div class="field">
+      <label for="ag-persona">{{ _("agent.persona") }}</label>
+      <textarea id="ag-persona" class="glass-input" rows="3" placeholder="System prompt / persona…"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="glass-btn" onclick="closeCreateAgent()">{{ _("common.cancel") }}</button>
+      <button class="glass-btn glass-btn--primary" onclick="submitCreateAgent()">{{ _("common.save") }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const ROLE_ICONS = {executor:'⚙️', supervisor:'👁️', researcher:'🔬', planner:'📐', reviewer:'🔍'};
+
+  /* ── Ollama model list for create-agent modal ── */
+  let _agentOllamaModels = [];
+  async function fetchAgentOllamaModels() {
+    try {
+      const res = await fetch('/models/ollama/status');
+      const data = await res.json();
+      _agentOllamaModels = (data.models || []).map(m => typeof m === 'string' ? m : m.name || String(m));
+    } catch(e) { _agentOllamaModels = []; }
+  }
+  window.populateAgentModelSelect = function() {
+    const sel = document.getElementById('ag-model');
+    const src = document.getElementById('ag-backend').value;
+    const cur = sel.value;
+    sel.innerHTML = '';
+    if (src === 'ollama' && _agentOllamaModels.length) {
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = '— {{ _("settings.select_model") }} —';
+      sel.appendChild(ph);
+      _agentOllamaModels.forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        if (m === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    } else if (src === 'ollama') {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = '{{ _("settings.no_models") }}';
+      sel.appendChild(o);
+    } else {
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = '— {{ _("settings.select_model") }} —';
+      sel.appendChild(ph);
+      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'].forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        if (m === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+  };
+  fetchAgentOllamaModels().then(() => populateAgentModelSelect());
+
+  function stateClass(s) {
+    const m = {idle:'muted',working:'success',paused:'idle',error:'error',terminated:'danger'};
+    return m[s] || 'muted';
+  }
+
+  async function loadAgents() {
+    try {
+      const res = await fetch('/api/agents');
+      const data = await res.json();
+      const agents = data.agents || data || [];
+      const grid = document.getElementById('agents-grid');
+      const count = document.getElementById('agent-count');
+      count.textContent = agents.length + ' {{ _("agents.count") }}';
+
+      if (!agents.length) { grid.innerHTML = '<div class="empty-agents">{{ _("agents.empty") }}</div>'; return; }
+
+      grid.innerHTML = agents.map(a => {
+        const icon = ROLE_ICONS[a.role] || '🤖';
+        const skills = (a.skills||[]).slice(0,5).map(s => '<span class="skill-tag">'+s+'</span>').join('');
+        const tools = (a.tools||[]).length;
+        return `<a href="/agents/${a.agent_id}" class="agent-detail-card">
+          <div class="agent-card-header">
+            <div class="agent-role-icon">${icon}</div>
+            <div>
+              <h3>${a.name||a.agent_id}</h3>
+              <div class="agent-role-label">${a.role}</div>
+            </div>
+            <span class="glass-badge glass-badge--${stateClass(a.state)}">${a.state}</span>
+          </div>
+          <div class="agent-card-model">Model: <strong>${a.model_name||'—'}</strong> (${a.model_backend||'—'})</div>
+          <div class="agent-card-meta">
+            <span class="meta-tag">${(a.skills||[]).length} skills</span>
+            <span class="meta-tag">${tools} tools</span>
+            ${a.created_at ? '<span class="meta-tag">'+new Date(a.created_at).toLocaleDateString()+'</span>' : ''}
+          </div>
+          ${skills ? '<div class="agent-card-skills">'+skills+'</div>' : ''}
+        </a>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('agents-grid').innerHTML = '<div class="empty-agents">{{ _("agents.error") }}</div>';
+    }
+  }
+
+  loadAgents();
+
+  window.openCreateAgent = function() {
+    document.getElementById('create-agent-modal').hidden = false;
+  };
+  window.closeCreateAgent = function() {
+    document.getElementById('create-agent-modal').hidden = true;
+  };
+  window.submitCreateAgent = async function() {
+    var body = {
+      name: document.getElementById('ag-name').value.trim() || undefined,
+      role: document.getElementById('ag-role').value,
+      model_name: document.getElementById('ag-model').value.trim(),
+      model_backend: document.getElementById('ag-backend').value,
+      skills: document.getElementById('ag-skills').value.split(',').map(function(s){return s.trim();}).filter(Boolean),
+      persona_prompt: document.getElementById('ag-persona').value.trim(),
+    };
+    try {
+      var res = await fetch('/api/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      if (res.ok) {
+        closeCreateAgent();
+        if (typeof showToast === 'function') showToast('Agent created ✓', 'success');
+        loadAgents();
+      } else {
+        var err = await res.json();
+        if (typeof showToast === 'function') showToast(err.error || 'Error', 'error');
+      }
+    } catch(e) {
+      if (typeof showToast === 'function') showToast('Network error', 'error');
+    }
+  };
+})();
+</script>
+{% endblock %}

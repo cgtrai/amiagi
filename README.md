@@ -3,17 +3,17 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 1902](https://img.shields.io/badge/tests-1902%20passed-brightgreen.svg)](tests/)
-[![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-blueviolet.svg)](pyproject.toml)
+[![Tests: 2543](https://img.shields.io/badge/tests-2543%20passed-brightgreen.svg)](tests/)
+[![Version: 1.2.0](https://img.shields.io/badge/version-1.2.0-blueviolet.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 A local, CLI-first framework for orchestrating autonomous LLM agent teams in controlled environments.
 
 `amiagi` is a full-featured agent orchestration platform: dynamic agent registry, task queuing, workflow engine, budget governance, evaluation framework, REST API, web dashboard, and team composition — all with per-agent security isolation, JSONL audit logs, and multi-backend support (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Current version: **v1.1.0** — all 11 roadmap phases complete + web dashboard, **1902 tests**.
+Current version: **v1.2.0** — all 11 roadmap phases complete + full web dashboard with 5 UI sprints, **2543 tests**.
 
-v1.0.3 introduces a shared `RouterEngine` + `EventBus` orchestration core — both the Textual TUI and synchronous CLI are now thin adapters delegating all routing, tool execution, watchdog, and supervision logic to a single engine.
+v1.2.0 completes the Web Management Console: 5 sprints delivering 11 new screens, 19 Web Components, 12 DB migrations, 100+ API endpoints, 490+ i18n keys, and Liquid Glass v2 design system.
 
 ## Safety Disclaimer (Read First)
 
@@ -93,6 +93,8 @@ See [LICENSE](LICENSE) for full terms.
 - **Alert manager** — configurable rules with severity-based alerting
 - **Session replay** — event-based session reconstruction from JSONL logs
 - **Web dashboard** — real-time browser UI with agents, tasks, metrics, events (see [WEB_INTERFACE.md](WEB_INTERFACE.md))
+- **Health dashboard** — system health cards, VRAM monitoring, connection status, auto-refresh
+- **Sandbox management** — per-agent sandbox admin with shell policy editor Web Component
 
 ### Shared context & memory (Phase 5)
 
@@ -112,7 +114,7 @@ See [LICENSE](LICENSE) for full terms.
 - **Per-agent permission policies** — allowed tools, paths, network/shell access per agent
 - **Permission enforcer** — middleware that checks policy before every tool call
 - **Sandbox manager** — isolated working directory per agent
-- **Secret vault** — per-agent credential store with cross-agent isolation
+- **Secret vault** — per-agent credential store with Fernet encryption, DB persistence, and access audit log
 - **Audit chain** — full responsibility chain: who ordered, approved, and executed each action
 
 ### Resource & cost governance (Phase 8)
@@ -371,7 +373,7 @@ src/amiagi/
     team_dashboard.py         # TeamDashboard (org chart + metrics)
     dashboard_static/         # HTML/CSS/JS for web dashboard
   sdk/                # AmiagiClient SDK package
-tests/                # pytest suite (1177 tests)
+tests/                # pytest suite (2543 tests)
 config/               # shell allowlist policy
 skills/               # per-role Markdown skill files
 data/                 # local persistent DB, history, model config
@@ -649,8 +651,8 @@ Contribution guidelines are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pre-release checklist is available in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 Current unreleased changes: [RELEASE_NOTES_UNRELEASED.md](RELEASE_NOTES_UNRELEASED.md).
-Latest release notes: [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md).
-Previous releases: [v1.0.3](RELEASE_NOTES_v1.0.3.md) · [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
+Latest release notes: [RELEASE_NOTES_v1.2.0.md](RELEASE_NOTES_v1.2.0.md).
+Previous releases: [v1.1.0](RELEASE_NOTES_v1.1.0.md) · [v1.0.3](RELEASE_NOTES_v1.0.3.md) · [v1.0.2](RELEASE_NOTES_v1.0.2.md) · [v1.0.1](RELEASE_NOTES_v1.0.1.md) · [v1.0.0](RELEASE_NOTES_v1.0.0.md).
 Roadmap: [ROADMAP_v1.0.md](ROADMAP_v1.0.md).
 
 ## Polish Documentation

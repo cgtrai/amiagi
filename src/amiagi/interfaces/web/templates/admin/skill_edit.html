@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Edit Skill{% endblock %}
+{% block title %}Amiagi — {{ _("common.edit") }}{% endblock %}
 {% block content %}
 <div class="container">
-  <h1>Edit Skill</h1>
+  {% include "partials/admin_nav.html" %}
+  <h1>{{ _("common.edit") }} Skill</h1>
 
   <form class="glass-card" id="skill-form">
     <div class="field">
@@ -43,8 +44,8 @@
       </label>
     </div>
     <div class="btn-row">
-      <a href="/admin/skills" class="btn">← Back</a>
-      <button type="button" class="btn btn-primary" onclick="saveSkill()">Save</button>
+      <a href="/admin/skills" class="btn">← {{ _("common.back") }}</a>
+      <button type="button" class="btn btn-primary" onclick="saveSkill()">{{ _("common.save") }}</button>
     </div>
   </form>
 </div>

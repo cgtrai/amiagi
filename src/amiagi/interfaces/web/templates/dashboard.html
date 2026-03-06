@@ -1,40 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard — amiagi{% endblock %}
+{% block title %}{{ _("dashboard.title") }} — amiagi{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/dashboard.css"/>
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-layout">
-  <!-- Agent sidebar -->
-  <div class="agent-sidebar-panel glass-panel">
-    <h3>Agents</h3>
-    <div id="agent-list">
-      <div class="sidebar-empty">Loading agents…</div>
-    </div>
-  </div>
-
-  <!-- Main dashboard area -->
-  <div class="dashboard-main">
-    <!-- Section navigation tabs -->
-    <div class="section-tabs">
-      <button class="section-tab active" data-section="monitoring" onclick="switchSection('monitoring')">Monitoring</button>
-      <button class="section-tab" data-section="teams" onclick="switchSection('teams')">Teams</button>
-      <button class="section-tab" data-section="prompts" onclick="switchSection('prompts')">Prompts</button>
-      <button class="section-tab" data-section="models" onclick="switchSection('models')">Models</button>
-      <button class="section-tab" data-section="memory" onclick="switchSection('memory')">Memory</button>
-      <button class="section-tab" data-section="scheduled" onclick="switchSection('scheduled')">Scheduled</button>
-    </div>
-
-    <!-- ═══════ SECTION: Monitoring ═══════ -->
-    <div class="section-content active" id="section-monitoring">
+<div class="dashboard-main">
     <!-- Toolbar -->
     <div class="dash-toolbar">
-      <h2>Dashboard</h2>
-      <button class="glass-btn glass-btn--ghost" id="btn-debug-grid" title="Toggle 2×2 debug grid">
-        Open in New Pane
+      <h2>{{ _("dashboard.title") }}</h2>
+      <button class="glass-btn glass-btn--ghost" id="btn-agent-drawer"
+              title="{{ _('dashboard.agents') }}"
+              onclick="openDetailDrawer(this.title, document.getElementById('_agent-drawer-tpl').innerHTML)">
+        {# lucide: bot #}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 17h6"/></svg>
+        {{ _("dashboard.agents") }}
       </button>
       <div id="panel-selector" class="panel-selector-wrap"></div>
     </div>
@@ -42,156 +24,47 @@
     <!-- Dashboard panels -->
     <div class="panels-grid">
       <div class="dash-panel" id="panel-agents-overview">
-        <h3>Agents Overview</h3>
+        <h3>{{ _("dashboard.agents_panel") }}</h3>
         <div id="agents-overview-content"></div>
       </div>
       <div class="dash-panel dash-panel--wide" id="panel-task-board">
-        <h3>Task Board</h3>
+        <h3>{{ _("dashboard.task_board") }}</h3>
         <task-board></task-board>
       </div>
       <div class="dash-panel" id="panel-metrics">
-        <h3>Metrics</h3>
+        <h3>{{ _("dashboard.metrics") }}</h3>
         <div class="metrics-grid" id="metrics-cards"></div>
       </div>
       <div class="dash-panel" id="panel-event-log">
-        <h3>Event Log</h3>
+        <h3>{{ _("dashboard.event_log") }}</h3>
         <event-ticker max-items="200"></event-ticker>
       </div>
       <div class="dash-panel" id="panel-costs">
-        <h3>Costs</h3>
+        <h3>{{ _("dashboard.costs") }}</h3>
         <div class="metrics-grid" id="budget-cards"></div>
         <div id="task-costs-breakdown" class="task-costs-breakdown"></div>
       </div>
       <div class="dash-panel" id="panel-system-health">
-        <h3>System Health</h3>
+        <h3>{{ _("dashboard.system_health") }}</h3>
         <div class="metrics-grid" id="health-cards"></div>
       </div>
     </div>
 
-    <!-- Agent tabs -->
-    <div class="tab-bar" id="agent-tab-bar"></div>
-    <div class="agent-tab-content" id="agent-tab-content"></div>
-    </div><!-- /section-monitoring -->
+</div><!-- /dashboard-main -->
 
-    <!-- ═══════ SECTION: Teams ═══════ -->
-    <div class="section-content" id="section-teams">
-      <h2 class="section-heading">Teams</h2>
-      <div class="teams-grid" id="teams-grid">
-        <div class="sidebar-empty">Loading teams…</div>
-      </div>
+{# Hidden template for agent drawer content (injected via openDetailDrawer) #}
+<template id="_agent-drawer-tpl">
+  <div id="agent-list" class="live-stream">
+    <div class="live-stream-entry live-stream-entry--info">
+      <span class="entry-text">{{ _("dashboard.loading_agents") }}</span>
     </div>
-
-    <!-- ═══════ SECTION: Prompts ═══════ -->
-    <div class="section-content" id="section-prompts">
-      <h2 class="section-heading">Shared Prompts</h2>
-      <div class="prompts-layout">
-        <!-- Prompt list -->
-        <div class="dash-panel prompts-list-panel">
-          <div class="prompts-toolbar">
-            <input type="text" id="prompt-search" placeholder="Filter prompts…" oninput="filterPrompts()"/>
-          </div>
-          <div id="prompts-list" class="prompts-list">
-            <div class="sidebar-empty">Loading prompts…</div>
-          </div>
-        </div>
-        <!-- Prompt detail / parameter form -->
-        <div class="dash-panel prompts-detail-panel">
-          <div id="prompt-detail" class="prompt-detail">
-            <p class="sidebar-empty">Select a prompt from the list.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════ SECTION: Models ═══════ -->
-    <div class="section-content" id="section-models">
-      <h2 class="section-heading">Model Configuration</h2>
-
-      <!-- Ollama status -->
-      <div class="ollama-status" id="ollama-status">
-        <span class="ollama-dot" id="ollama-dot"></span>
-        <span id="ollama-status-text">Checking Ollama…</span>
-      </div>
-
-      <!-- Model config form -->
-      <div class="dash-panel dash-panel--narrow">
-        <h3>Agent Model Assignments</h3>
-        <div class="model-config-form" id="model-config-form">
-          <label for="cfg-polluks-model">Polluks Model</label>
-          <input id="cfg-polluks-model" placeholder="e.g. llama3.1:8b">
-          <label for="cfg-polluks-source">Polluks Source</label>
-          <select id="cfg-polluks-source"><option value="ollama">Ollama</option><option value="openai">OpenAI</option></select>
-          <label for="cfg-kastor-model">Kastor Model</label>
-          <input id="cfg-kastor-model" placeholder="e.g. deepseek-r1:8b">
-          <label for="cfg-kastor-source">Kastor Source</label>
-          <select id="cfg-kastor-source"><option value="ollama">Ollama</option><option value="openai">OpenAI</option></select>
-        </div>
-        <div class="model-config-actions">
-          <button class="glass-btn" onclick="saveModelConfig()">Save Configuration</button>
-          <span id="model-save-status" class="model-save-status"></span>
-        </div>
-      </div>
-
-      <!-- Available models -->
-      <div class="dash-panel dash-panel--narrow dash-panel--spaced">
-        <h3>Available Ollama Models</h3>
-        <div id="ollama-models-list" class="ollama-models-list">Loading…</div>
-      </div>
-    </div><!-- /section-models -->
-
-    <!-- ═══════ SECTION: Memory ═══════ -->
-    <div class="section-content" id="section-memory">
-      <h2 class="section-heading">Cross-Agent Memory</h2>
-      <div class="dash-toolbar">
-        <input type="text" id="memory-filter" placeholder="Filter by agent, task or tag…" oninput="filterMemory()"/>
-        <button class="glass-btn glass-btn--ghost" onclick="clearAllMemory()">Clear All</button>
-      </div>
-      <div class="dash-panel">
-        <div id="memory-list" class="memory-list">
-          <div class="sidebar-empty">Loading memory items…</div>
-        </div>
-        <div id="memory-total" class="memory-total"></div>
-      </div>
-    </div>
-
-    <!-- ═══════ SECTION: Scheduled ═══════ -->
-    <div class="section-content" id="section-scheduled">
-      <h2 class="section-heading">Scheduled Tasks (Cron)</h2>
-      <div class="dash-toolbar">
-        <button class="glass-btn" id="btn-new-cron" onclick="showCronForm()">+ New Job</button>
-      </div>
-      <div class="dash-panel">
-        <div id="cron-jobs-list" class="cron-jobs-list">
-          <div class="sidebar-empty">Loading scheduled jobs…</div>
-        </div>
-      </div>
-      <!-- Cron form (hidden by default) -->
-      <div class="dash-panel cron-form-panel--hidden" id="cron-form-panel">
-        <h3>New Scheduled Job</h3>
-        <div class="cron-form">
-          <label for="cron-name">Name</label>
-          <input id="cron-name" placeholder="e.g. Daily cleanup"/>
-          <label for="cron-expr">Cron Expression</label>
-          <input id="cron-expr" placeholder="0 2 * * *"/>
-          <label for="cron-task-title">Task Title</label>
-          <input id="cron-task-title" placeholder="Automated cleanup"/>
-          <label for="cron-task-desc">Task Description</label>
-          <textarea id="cron-task-desc" rows="3" placeholder="Describe what the task should do…"></textarea>
-        </div>
-        <div class="cron-form-actions">
-          <button class="glass-btn glass-btn--primary" onclick="saveCronJob()">Save</button>
-          <button class="glass-btn glass-btn--ghost" onclick="hideCronForm()">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /dashboard-main -->
-</div>
+  </div>
+</template>
 
 <!-- Mobile bottom input bar (sticky chat input for mobile) -->
 <div class="mobile-input-bar" id="mobile-input-bar">
   <div class="mobile-input-row">
-    <input type="text" id="mobile-chat-input" placeholder="Ask agent…"
+    <input type="text" id="mobile-chat-input" placeholder="{{ _("dashboard.ask_agent") }}"
            aria-label="Chat input" autocomplete="off"/>
     <button class="glass-btn" id="mobile-send-btn" aria-label="Send">▶</button>
   </div>
@@ -199,14 +72,11 @@
 
 <!-- Web Components -->
 <script src="/static/js/components/agent-card.js"></script>
-<script src="/static/js/components/chat-stream.js"></script>
 <script src="/static/js/components/task-board.js"></script>
 <script src="/static/js/components/event-ticker.js"></script>
 <script src="/static/js/components/metric-card.js"></script>
 <!-- Dashboard controller -->
 <script src="/static/js/dashboard.js"></script>
-<!-- Section navigation + Teams + Models -->
-<script src="/static/js/sections.js"></script>
 <!-- Keybindings & Command Palette -->
 <script src="/static/js/keybindings.js"></script>
 {% endblock %}

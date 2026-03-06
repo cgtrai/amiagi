@@ -8,7 +8,9 @@ Routes:
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
@@ -16,6 +18,25 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
+
+_MODEL_CONFIG_PATH = Path("data/model_config.json")
+
+
+def _persist_model_config(agent_id: str, model_name: str, model_backend: str) -> None:
+    """Write agent model changes to model_config.json for persistence."""
+    try:
+        config: dict = {}
+        if _MODEL_CONFIG_PATH.exists():
+            config = json.loads(_MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+        config[f"{agent_id}_model"] = model_name
+        config[f"{agent_id}_source"] = model_backend or "ollama"
+        _MODEL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _MODEL_CONFIG_PATH.write_text(
+            json.dumps(config, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist model config: %s", exc)
 
 
 async def get_agent_config(request: Request) -> Response:
@@ -66,7 +87,13 @@ async def update_agent_config(request: Request) -> Response:
 
     if "model_name" in body:
         model_backend = body.get("model_backend", agent.model_backend)
-        registry.update_model(agent_id, body["model_name"], model_backend=model_backend)
+        try:
+            registry.update_model(agent_id, body["model_name"], model_backend=model_backend)
+        except Exception as exc:
+            logger.exception("registry.update_model failed for %s", agent_id)
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        # Persist to model_config.json so change survives restart
+        _persist_model_config(agent_id, body["model_name"], model_backend)
         changed.append("model")
 
     if not changed:
@@ -75,9 +102,9 @@ async def update_agent_config(request: Request) -> Response:
     # Log activity
     activity_logger = getattr(request.app.state, "activity_logger", None)
     if activity_logger is not None:
-        user = getattr(request.state, "user", None)
-        user_id = str(user.id) if user else "anonymous"
         try:
+            user = getattr(request.state, "user", None)
+            user_id = str(user.user_id) if user else "anonymous"
             await activity_logger.log(
                 user_id=user_id,
                 action="agent.config_updated",

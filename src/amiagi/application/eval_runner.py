@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import threading
 from dataclasses import dataclass, field
@@ -227,3 +228,16 @@ class EvalRunner:
     def clear_history(self) -> None:
         with self._lock:
             self._history.clear()
+
+    async def run_async(
+        self,
+        agent_id: str,
+        agent_fn: AgentCallable,
+        scenarios: list[EvalScenario],
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalRunResult:
+        """Async wrapper — offloads blocking ``run()`` to a thread."""
+        return await asyncio.to_thread(
+            self.run, agent_id, agent_fn, scenarios, metadata=metadata
+        )

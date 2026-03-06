@@ -1,0 +1,340 @@
+/* ================================================================
+   Settings page — extracted + new tabs (Liquid Glass v2)
+   ================================================================ */
+
+/* ── Page layout ─────────────────────────────────────────────── */
+.settings-page {
+  padding: var(--space-6);
+}
+.settings-page > h2 {
+  margin: 0 0 var(--space-6);
+  color: var(--text-primary);
+}
+
+/* ── Tabs bar ────────────────────────────────────────────────── */
+.settings-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: 0;
+  overflow-x: auto;
+}
+.settings-tab {
+  padding: var(--space-3) var(--space-5);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+.settings-tab:hover {
+  color: var(--text-primary);
+}
+.settings-tab.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+/* ── Sections show/hide ──────────────────────────────────────── */
+.settings-section {
+  display: none;
+}
+.settings-section.active {
+  display: block;
+}
+
+/* ── Panel card ──────────────────────────────────────────────── */
+.settings-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.settings-panel h3 {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+}
+
+/* ── Form elements ───────────────────────────────────────────── */
+.form-group {
+  margin-bottom: var(--space-4);
+}
+.form-group label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+.form-group--compact {
+  margin-bottom: 0;
+}
+
+/* ── Lists ───────────────────────────────────────────────────── */
+.key-list,
+.hook-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.key-list li,
+.hook-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+}
+.key-list li:last-child,
+.hook-list li:last-child {
+  border-bottom: none;
+}
+.key-prefix {
+  font-family: var(--font-mono);
+  color: var(--accent-teal);
+}
+
+/* ── Memory items ────────────────────────────────────────────── */
+.memory-item {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.memory-item .mem-content {
+  flex: 1;
+  color: var(--text-primary);
+}
+.memory-item .mem-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* ── Cron items ──────────────────────────────────────────────── */
+.cron-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+}
+.cron-item .cron-name {
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+.cron-item .cron-expr {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--accent-teal);
+}
+
+/* ── Status, inputs, rows ────────────────────────────────────── */
+.settings-muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+}
+.empty-msg {
+  color: var(--text-muted);
+  padding: var(--space-4);
+  text-align: center;
+}
+.settings-save-status {
+  margin-left: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+.settings-sub-panel {
+  margin-top: var(--space-3);
+}
+.settings-add-row {
+  margin-top: var(--space-4);
+}
+.settings-add-row--flex {
+  margin-top: var(--space-4);
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.settings-add-row--flex-end {
+  margin-top: var(--space-4);
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: end;
+}
+.settings-filter-row {
+  margin-bottom: var(--space-4);
+  display: flex;
+  gap: var(--space-3);
+}
+.settings-input--sm {
+  max-width: 300px;
+}
+.settings-input--md {
+  max-width: 400px;
+}
+.settings-input--narrow {
+  width: 140px;
+}
+.settings-input--inline {
+  max-width: 300px;
+  display: inline-block;
+}
+.settings-badge-inline {
+  margin: 2px;
+}
+.settings-list-item {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+}
+
+/* ── General tab — preferences grid ──────────────────────────── */
+.settings-prefs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+.settings-pref-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--glass-pill-bg);
+  border-radius: var(--glass-radius-sm);
+}
+.settings-pref-item label {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* ── System tab — info rows ──────────────────────────────────── */
+.settings-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+.settings-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--glass-pill-bg);
+  border-radius: var(--glass-radius-sm);
+}
+.settings-info-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settings-info-value {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* ── Security tab — session list ─────────────────────────────── */
+.settings-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.settings-session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+}
+.settings-session-item:last-child {
+  border-bottom: none;
+}
+
+/* ── Execution tab — read-only sandbox list ──────────────────── */
+.settings-sandbox-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+}
+.settings-sandbox-row:last-child {
+  border-bottom: none;
+}
+
+/* ── Advanced tab — policy viewer ────────────────────────────── */
+.settings-policy-pre {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .settings-page {
+    padding: var(--space-4);
+  }
+  .settings-tabs {
+    gap: 0;
+    flex-wrap: wrap;
+  }
+  .settings-tab {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-xs);
+  }
+  .settings-prefs-grid,
+  .settings-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-page {
+    padding: var(--space-3);
+  }
+  .settings-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -ms-overflow-style: none;        /* Edge (legacy) */
+  }
+  .settings-tabs::-webkit-scrollbar { display: none; }  /* Chrome / Safari */
+}
+@supports (scrollbar-width: none) {
+  @media (max-width: 480px) {
+    .settings-tabs { scrollbar-width: none; }            /* Firefox 64+ */
+  }
+  .settings-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: var(--space-2);
+    font-size: 0.65rem;
+  }
+  .settings-section h3 {
+    font-size: var(--font-size-sm);
+  }
+  .settings-policy-pre {
+    font-size: 0.7rem;
+    max-height: 200px;
+  }
+}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("vault.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/vault.css"/>
+<script defer src="/static/js/components/secret-field.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="vault-main">
+
+  {# ── Toolbar ────────────────────────────────────────────── #}
+  <div class="vault-toolbar">
+    <h2>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      {{ _("vault.title") }}
+    </h2>
+    <div class="vault-toolbar-actions">
+      <button class="glass-btn glass-btn--primary" id="btn-add-secret">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        {{ _("vault.add_secret") }}
+      </button>
+      <button class="glass-btn glass-btn--ghost" id="btn-refresh-vault">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        {{ _("vault.refresh") }}
+      </button>
+    </div>
+  </div>
+
+  {# ── Add secret modal ──────────────────────────────────── #}
+  <div class="vault-modal-overlay" id="vault-modal-overlay" hidden>
+    <div class="glass-card vault-modal">
+      <h3 id="vault-modal-title">{{ _("vault.add_secret") }}</h3>
+      <form id="vault-secret-form" class="vault-form">
+        <div class="vault-form-row">
+          <label for="vault-agent-id">{{ _("vault.agent_id") }}</label>
+          <select id="vault-agent-id" class="vault-input" required>
+            <option value="">{{ _("vault.select_agent") }}</option>
+          </select>
+        </div>
+        <div class="vault-form-row">
+          <label for="vault-key">{{ _("vault.key") }}</label>
+          <input type="text" id="vault-key" class="vault-input" required placeholder="API_KEY" />
+        </div>
+        <div class="vault-form-row">
+          <label for="vault-value">{{ _("vault.value") }}</label>
+          <input type="password" id="vault-value" class="vault-input" required placeholder="••••••••" />
+        </div>
+        <div class="vault-form-actions">
+          <button type="submit" class="glass-btn glass-btn--primary">{{ _("vault.save") }}</button>
+          <button type="button" class="glass-btn glass-btn--ghost" id="btn-cancel-secret">{{ _("vault.cancel") }}</button>
+        </div>
+        <div class="vault-form-status" id="vault-form-status"></div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Secrets list ───────────────────────────────────────── #}
+  <div class="vault-section">
+    <div class="vault-secret-list" id="vault-secret-list">
+      <div class="vault-empty" id="vault-empty">{{ _("vault.empty") }}</div>
+    </div>
+  </div>
+
+  {# ── Access log ─────────────────────────────────────────── #}
+  <div class="vault-section">
+    <h3>{{ _("vault.access_log") }}</h3>
+    <div class="vault-log" id="vault-access-log">
+      <div class="vault-empty">{{ _("vault.no_logs") }}</div>
+    </div>
+  </div>
+
+</div>
+
+{% block scripts %}
+<script src="/static/js/vault.js"></script>
+{% endblock %}
+{% endblock %}

@@ -15,8 +15,6 @@ from starlette.templating import Jinja2Templates
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 if TYPE_CHECKING:
-    import asyncpg
-
     from amiagi.config import Settings
     from amiagi.interfaces.web.web_adapter import WebAdapter
 
@@ -37,7 +35,12 @@ async def _ws_events(websocket: WebSocket) -> None:
     Unauthenticated connections are closed with code 4001.
     """
     # --- JWT auth ---
-    token = websocket.query_params.get("token")
+    # Prefer query-param token; fall back to HttpOnly session cookie
+    # (the cookie is httponly so JS cannot read it, but the browser
+    # sends it along with the WebSocket handshake request).
+    token = websocket.query_params.get("token") or ""
+    if not token:
+        token = websocket.cookies.get("amiagi_session", "")
     if not token:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -111,6 +114,15 @@ def create_app(
     from amiagi.interfaces.web.routes.i18n_routes import i18n_routes
     from amiagi.interfaces.web.routes.memory_routes import memory_routes
     from amiagi.interfaces.web.routes.cron_routes import cron_routes
+    from amiagi.interfaces.web.routes.inbox_routes import inbox_routes
+    from amiagi.interfaces.web.routes.system_routes import system_routes
+    from amiagi.interfaces.web.routes.model_hub_routes import model_hub_routes
+    from amiagi.interfaces.web.routes.budget_routes import budget_routes
+    from amiagi.interfaces.web.routes.vault_routes import vault_routes
+    from amiagi.interfaces.web.routes.workflow_routes import workflow_routes
+    from amiagi.interfaces.web.routes.eval_routes import eval_routes
+    from amiagi.interfaces.web.routes.knowledge_routes import knowledge_routes
+    from amiagi.interfaces.web.routes.sandbox_routes import sandbox_routes
     from amiagi.interfaces.web.ws.agent_stream import ws_agent_stream
     from amiagi.interfaces.web.ws.event_hub import EventHub
 
@@ -134,6 +146,15 @@ def create_app(
         *i18n_routes,
         *memory_routes,
         *cron_routes,
+        *inbox_routes,
+        *system_routes,
+        *model_hub_routes,
+        *budget_routes,
+        *vault_routes,
+        *workflow_routes,
+        *eval_routes,
+        *knowledge_routes,
+        *sandbox_routes,
         WebSocketRoute("/ws/events", _ws_events),
         WebSocketRoute("/ws/agent/{agent_id}", ws_agent_stream),
     ]
@@ -150,8 +171,8 @@ def create_app(
         # 0. Record startup time for uptime tracking
         app.state._startup_time = time.time()
 
-        # 1. Database pool
-        pool: asyncpg.Pool = await create_pool(settings)
+        # 1. Database pool (PostgreSQL or SQLite fallback)
+        pool = await create_pool(settings)
         app.state.db_pool = pool
         await run_migrations(pool, schema=settings.db_schema)
 
@@ -212,10 +233,59 @@ def create_app(
         app.state.api_key_manager = ApiKeyManager(pool)
         app.state.webhook_manager = WebhookManager(pool)
 
+        # 3g-ii. Inbox (Human-in-the-Loop)
+        from amiagi.interfaces.web.monitoring.inbox_service import InboxService
+
+        app.state.inbox_service = InboxService(pool)
+
+        # 3g-iii. Wire WorkflowEngine → InboxService (gate → inbox item)
+        _wf_engine = extra.get("workflow_engine")
+        if _wf_engine is not None:
+            app.state.workflow_engine = _wf_engine
+            _inbox_svc: InboxService = app.state.inbox_service
+            _wf_loop = asyncio.get_running_loop()
+
+            def _gate_to_inbox(node, run) -> None:
+                """on_gate_waiting callback: create inbox item for gate."""
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        _inbox_svc.create(
+                            item_type="gate_approval",
+                            title=f"Gate: {node.node_id}",
+                            body=f"Workflow '{run.workflow.name}' is waiting "
+                                 f"for approval at gate '{node.node_id}'.",
+                            source_type="workflow",
+                            source_id=run.run_id,
+                            node_id=node.node_id,
+                            priority=5,
+                            metadata={"workflow_name": run.workflow.name},
+                        ),
+                        _wf_loop,
+                    )
+                    # Broadcast so inbox UI updates in real-time
+                    _hub = getattr(app.state, "event_hub", None)
+                    if _hub is not None:
+                        _hub.broadcast("inbox.new", {
+                            "node_id": node.node_id,
+                            "run_id": run.run_id,
+                        })
+                except Exception:
+                    logger.debug("Failed to create inbox item for gate %s", node.node_id, exc_info=True)
+
+            _wf_engine._on_gate_waiting = _gate_to_inbox
+            logger.info("WorkflowEngine.on_gate_waiting wired to InboxService")
+
         # 3h. Task templates
         from amiagi.interfaces.web.task_templates.template_repository import TaskTemplateRepository
 
         app.state.template_repository = TaskTemplateRepository(pool)
+
+        # 3i. Eval + Knowledge repositories (DB-backed persistence)
+        from amiagi.interfaces.web.db.eval_repository import EvalRepository
+        from amiagi.interfaces.web.db.knowledge_repository import KnowledgeRepository
+
+        app.state.eval_repo = EvalRepository(pool)
+        app.state.knowledge_repo = KnowledgeRepository(pool)
 
         # 3. EventHub (WebSocket broadcast)
         hub = EventHub()
@@ -235,6 +305,35 @@ def create_app(
         web_adapter.set_event_hub(hub)
         web_adapter.set_loop(loop)
         web_adapter.start()
+
+        # 4a. Wire HumanInteractionBridge (AskHumanTool + ReviewRequestTool)
+        from amiagi.application.human_tools import HumanInteractionBridge
+
+        _human_bridge = HumanInteractionBridge(
+            inbox_service=app.state.inbox_service,
+            event_hub=hub,
+            loop=loop,
+        )
+        app.state.human_bridge = _human_bridge
+
+        # Inject into RouterEngine if available
+        _router_engine = extra.get("router_engine")
+        if _router_engine is not None:
+            _router_engine._human_bridge = _human_bridge
+            logger.info("HumanInteractionBridge wired to RouterEngine")
+
+        # 4a-ii. SandboxMonitor (resource tracking + execution logging)
+        _sandbox_mgr = extra.get("sandbox_manager")
+        if _sandbox_mgr is not None:
+            from amiagi.interfaces.web.monitoring.sandbox_monitor import SandboxMonitor
+
+            _sandbox_monitor = SandboxMonitor(
+                _sandbox_mgr, pool, scan_interval=300,  # scan every 5 min
+            )
+            _sandbox_monitor.start(loop)
+            app.state.sandbox_monitor = _sandbox_monitor
+            app.state.sandbox_manager = _sandbox_mgr
+            logger.info("SandboxMonitor started (scan interval: 300s)")
 
         # 4b. Wire PerformanceTracker to EventBus CycleFinishedEvent
         from amiagi.interfaces.web.monitoring.performance_tracker import PerformanceTracker as _PT  # noqa: F811
@@ -273,8 +372,109 @@ def create_app(
         for _evt_cls in (_LE, _ASE, _CFE, _EE):
             _event_bus.on(_evt_cls, _session_buf.on_event)
 
-        # 5. Jinja2 templates
-        templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+        # 5. Jinja2 templates with i18n context injection
+        from amiagi.interfaces.web.i18n_web import make_translator
+
+        _base_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+        class _I18nTemplates:
+            """Thin wrapper that injects ``_()`` and ``lang`` into every
+            TemplateResponse context so Jinja2 templates can use
+            ``{{ _("key") }}`` for translations.
+
+            Also populates status-bar variables from live services so that
+            the initial HTML render shows real data (not just defaults).
+            """
+
+            def __init__(self, base: Jinja2Templates) -> None:
+                self._base = base
+
+            @property
+            def env(self):  # type: ignore[override]
+                return self._base.env
+
+            def _status_bar_context(self, request) -> dict:
+                """Collect live status-bar variables from app.state services."""
+                ctx: dict = {}
+                state = request.app.state
+
+                # ── Model name & config ──
+                try:
+                    settings = getattr(state, "settings", None)
+                    model_cfg_path = Path("data/model_config.json")
+                    if model_cfg_path.exists():
+                        import json as _json
+                        with open(model_cfg_path) as f:
+                            mcfg = _json.load(f)
+                        ctx["model_name"] = mcfg.get("polluks_model") or mcfg.get("kastor_model") or "—"
+                    else:
+                        ctx["model_name"] = "—"
+                except Exception:
+                    ctx["model_name"] = "—"
+
+                # ── Budget (session-level) ──
+                budget_mgr = getattr(state, "budget_manager", None)
+                if budget_mgr is not None:
+                    try:
+                        sb = budget_mgr.session_budget
+                        ctx["budget_pct"] = round(sb.utilization_pct, 1)
+                        ctx["budget_used"] = f"{sb.spent_usd:.2f}"
+                        lim = sb.limit_usd
+                        ctx["budget_limit"] = f"{lim:.2f}" if lim > 0 else "∞"
+                        ctx["token_count"] = sb.tokens_used
+                    except Exception:
+                        pass
+
+                # ── Active tasks ──
+                task_queue = getattr(state, "task_queue", None)
+                if task_queue is not None:
+                    try:
+                        ctx["active_tasks"] = task_queue.pending_count()
+                    except Exception:
+                        ctx["active_tasks"] = 0
+
+                # ── Inbox pending (notifications) ──
+                notif_svc = getattr(state, "notification_service", None)
+                if notif_svc is not None:
+                    try:
+                        import asyncio as _aio
+                        loop = _aio.get_event_loop()
+                        if loop.is_running():
+                            ctx["inbox_pending"] = "…"
+                        else:
+                            ctx["inbox_pending"] = 0
+                    except Exception:
+                        ctx["inbox_pending"] = 0
+                else:
+                    ctx["inbox_pending"] = 0
+
+                # ── Uptime ──
+                startup_ts = getattr(state, "_startup_time", None)
+                if startup_ts is not None:
+                    elapsed = int(time.time() - startup_ts)
+                    if elapsed < 60:
+                        ctx["uptime"] = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        ctx["uptime"] = f"{elapsed // 60}m"
+                    else:
+                        h, m = divmod(elapsed // 60, 60)
+                        ctx["uptime"] = f"{h}h {m}m"
+                else:
+                    ctx["uptime"] = "0m"
+
+                return ctx
+
+            def TemplateResponse(self, request, name, context=None, **kwargs):
+                ctx = dict(context) if context else {}
+                translator, lang = make_translator(request)
+                ctx.setdefault("_", translator)
+                ctx.setdefault("lang", lang)
+                # Inject status-bar data (can be overridden by route-level ctx)
+                for k, v in self._status_bar_context(request).items():
+                    ctx.setdefault(k, v)
+                return self._base.TemplateResponse(request, name, ctx, **kwargs)
+
+        templates = _I18nTemplates(_base_templates)
         app.state.templates = templates
 
         # 6. Store references on app state
@@ -283,9 +483,18 @@ def create_app(
         for key, value in extra.items():
             setattr(app.state, key, value)
 
-        # 7. Wire AuthMiddleware now that SessionManager exists
-        from amiagi.interfaces.web.auth.middleware import AuthMiddleware
-        app.add_middleware(AuthMiddleware, session_manager=session_mgr)
+        # 7. Wire SecretVault → database persistence (if vault + pool available)
+        _vault = getattr(app.state, "secret_vault", None)
+        if _vault is not None and pool is not None:
+            _vault.attach_db(pool)
+            # Migrate any existing file-based secrets into DB, then sync back
+            try:
+                migrated = await _vault.migrate_file_to_db()
+                if migrated:
+                    logger.info("Vault: migrated %d file-based secrets → DB", migrated)
+                await _vault.sync_from_db()
+            except Exception:
+                logger.warning("Vault: DB sync failed — falling back to file-based", exc_info=True)
 
         logger.info(
             "amiagi web server started — port %s, schema %s",
@@ -311,8 +520,12 @@ def create_app(
         logger.info("amiagi web server stopped.")
 
     # -- Build Starlette app ----------------------------------------------
+    from starlette.middleware import Middleware
+    from amiagi.interfaces.web.auth.middleware import AuthMiddleware
+
     app = Starlette(
         routes=routes,
+        middleware=[Middleware(AuthMiddleware)],
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
         debug=False,

@@ -7,9 +7,6 @@
   </button>
 
   <ul class="nav-links">
-    <li><a href="/dashboard">Dashboard</a></li>
-    <li><a href="/admin/users">Admin</a></li>
-
     <!-- Bell notification -->
     <li class="nav-bell-wrapper">
       <button id="bell-btn" class="nav-bell-btn" aria-label="Notifications"
@@ -19,11 +16,11 @@
       </button>
       <div id="notif-dropdown" class="notif-dropdown">
         <div class="notif-header">
-          <span>Notifications</span>
-          <button onclick="markAllRead()" class="notif-mark-all">Mark all read</button>
+          <span>{{ _("notifications.title") }}</span>
+          <button onclick="markAllRead()" class="notif-mark-all">{{ _("notifications.mark_all_read") }}</button>
         </div>
         <ul id="notif-list" class="notif-list">
-          <li class="notif-empty">No notifications</li>
+          <li class="notif-empty">{{ _("notifications.empty") }}</li>
         </ul>
       </div>
     </li>
@@ -35,29 +32,31 @@
       <button class="lang-switcher-btn" onclick="switchLang('en')" id="lang-en">EN</button>
     </li>
 
-    <li><a href="/auth/logout">Wyloguj</a></li>
+    <li><a href="/auth/logout">{{ _("nav.logout") }}</a></li>
   </ul>
 </nav>
 
-<!-- Overlay for sidebar (mobile/tablet) -->
+<!-- Overlay for mobile navigation -->
+<div class="rail-overlay" id="rail-overlay" onclick="closeMobileMenu()"></div>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileMenu()"></div>
 
 <script>
 function toggleMobileMenu() {
-  var sidebar = document.getElementById('sidebar');
-  var overlay = document.getElementById('sidebar-overlay');
+  var rail = document.getElementById('command-rail') || document.getElementById('sidebar');
+  var overlay = document.getElementById('rail-overlay') || document.getElementById('sidebar-overlay');
   var btn = document.getElementById('hamburger-btn');
-  var isOpen = sidebar.classList.toggle('open');
-  overlay.classList.toggle('active', isOpen);
+  if (!rail) return;
+  var isOpen = rail.classList.toggle('open');
+  if (overlay) overlay.classList.toggle('active', isOpen);
   btn.classList.toggle('open', isOpen);
 }
 function closeMobileMenu() {
-  var sidebar = document.getElementById('sidebar');
-  var overlay = document.getElementById('sidebar-overlay');
+  var rail = document.getElementById('command-rail') || document.getElementById('sidebar');
+  var overlay = document.getElementById('rail-overlay') || document.getElementById('sidebar-overlay');
   var btn = document.getElementById('hamburger-btn');
-  sidebar.classList.remove('open');
-  overlay.classList.remove('active');
-  btn.classList.remove('open');
+  if (rail) rail.classList.remove('open');
+  if (overlay) overlay.classList.remove('active');
+  if (btn) btn.classList.remove('open');
 }
 
 /* ---------- Notification bell ---------- */
@@ -143,7 +142,7 @@ function switchLang(lang) {
   fetch('/api/lang')
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      var cur = d.language || 'en';
+      var cur = d.lang || 'pl';
       var plBtn = document.getElementById('lang-pl');
       var enBtn = document.getElementById('lang-en');
       if (plBtn) plBtn.classList.toggle('active', cur === 'pl');

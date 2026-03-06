@@ -1,9 +1,41 @@
 /* ================================================================
-   Amiagi Design Tokens — Liquid Glass Theme
+   Amiagi Design Tokens — Liquid Glass Theme v2 (Command Center)
+   ================================================================
+   3-tier depth system: Dense → Card → Pill
+   Chromatic dispersion, shimmer sweep, specular highlights
    ================================================================ */
 
 :root {
-    /* ── Surface & glass ───────────────────── */
+    /* ── Tier 1: Dense Glass (nav, rail, status bar, overlays) ── */
+    --glass-dense-bg-start:   rgba(18, 22, 35, 0.48);
+    --glass-dense-bg-end:     rgba(12, 16, 28, 0.42);
+    --glass-dense-bg:         linear-gradient(160deg,
+                                var(--glass-dense-bg-start) 0%,
+                                var(--glass-dense-bg-end) 100%);
+    --glass-dense-blur:       26px;
+    --glass-dense-saturation: 1.7;
+    --glass-dense-brightness:  1.08;
+    --glass-dense-filter:     blur(var(--glass-dense-blur))
+                              saturate(var(--glass-dense-saturation))
+                              brightness(var(--glass-dense-brightness));
+
+    /* ── Tier 2: Card Glass (cards, panels, drawers) ─────────── */
+    --glass-card-bg:          linear-gradient(160deg,
+                                rgba(255,255,255,0.06) 0%,
+                                rgba(15,18,30,0.52) 100%);
+    --glass-card-blur:        20px;
+    --glass-card-saturation:  1.5;
+    --glass-card-filter:      blur(var(--glass-card-blur))
+                              saturate(var(--glass-card-saturation));
+
+    /* ── Tier 3: Pill Glass (badges, tags, small elements) ───── */
+    --glass-pill-bg:          rgba(255,255,255,0.05);
+    --glass-pill-blur:        8px;
+    --glass-pill-saturation:  1.3;
+    --glass-pill-filter:      blur(var(--glass-pill-blur))
+                              saturate(var(--glass-pill-saturation));
+
+    /* ── Surface & glass (legacy compat – mapped to card tier) ─ */
     --glass-bg:            rgba(255, 255, 255, 0.06);
     --glass-bg-hover:      rgba(255, 255, 255, 0.10);
     --glass-bg-active:     rgba(255, 255, 255, 0.14);
@@ -17,12 +49,34 @@
     --glass-radius-lg:     24px;
     --glass-radius-full:   9999px;
 
-    /* ── Gradient backgrounds ──────────────── */
-    --bg-gradient:         linear-gradient(135deg, #0a0e27 0%, #1a1040 40%, #0d1f3c 100%);
-    --bg-mesh:             radial-gradient(ellipse at 20% 80%, rgba(78,161,255,0.15) 0%, transparent 50%),
-                           radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.12) 0%, transparent 50%);
+    /* ── Chromatic Dispersion ─────────────────────────────────── */
+    --chromatic-blue:    rgba(0, 180, 255, 0.045);
+    --chromatic-violet:  rgba(120, 80, 255, 0.04);
+    --chromatic-pink:    rgba(255, 100, 200, 0.035);
+    --chromatic-green:   rgba(100, 255, 180, 0.025);
 
-    /* ── Typography ────────────────────────── */
+    /* ── Shimmer & Specular ──────────────────────────────────── */
+    --shimmer-duration:   7s;
+    --specular-duration:  5s;
+    --shimmer-gradient:   linear-gradient(105deg,
+                            transparent 40%,
+                            rgba(255,255,255,0.06) 50%,
+                            transparent 60%);
+    --specular-gradient:  linear-gradient(180deg,
+                            rgba(255,255,255,0.07) 0%,
+                            transparent 45%);
+    --specular-line:      linear-gradient(90deg,
+                            transparent 8%,
+                            rgba(255,255,255,0.55) 50%,
+                            transparent 92%);
+
+    /* ── Gradient backgrounds ──────────────────────────────────── */
+    --bg-gradient:         linear-gradient(135deg, #0a0e27 0%, #1a1040 40%, #0d1f3c 100%);
+    --bg-mesh:             radial-gradient(ellipse at 20% 80%, rgba(78,161,255,0.12) 0%, transparent 50%),
+                           radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.10) 0%, transparent 50%),
+                           radial-gradient(ellipse at 60% 60%, rgba(45,212,191,0.06) 0%, transparent 40%);
+
+    /* ── Typography ────────────────────────────────────────────── */
     --font-primary:        'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
     --font-mono:           'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
     --font-size-xs:        0.75rem;
@@ -40,14 +94,14 @@
     --line-height-base:    1.5;
     --line-height-relaxed: 1.75;
 
-    /* ── Text colors ───────────────────────── */
+    /* ── Text colors ───────────────────────────────────────────── */
     --text-primary:        #e6edf3;
     --text-secondary:      #8b949e;
     --text-muted:          #6b7280;
     --text-inverse:        #0a0e27;
     --text-link:           var(--accent-blue);
 
-    /* ── Accent palette ────────────────────── */
+    /* ── Accent palette ────────────────────────────────────────── */
     --accent-blue:         #4ea1ff;
     --accent-purple:       #a855f7;
     --accent-teal:         #2dd4bf;
@@ -55,20 +109,20 @@
     --accent-rose:         #f43f5e;
     --accent-green:        #22c55e;
 
-    /* ── State colors ──────────────────────── */
+    /* ── State colors ──────────────────────────────────────────── */
     --state-idle:          var(--accent-green);
     --state-working:       var(--accent-amber);
     --state-paused:        var(--accent-purple);
     --state-error:         var(--accent-rose);
     --state-terminated:    #6b7280;
 
-    /* ── Semantic colors ───────────────────── */
+    /* ── Semantic colors ───────────────────────────────────────── */
     --color-success:       var(--accent-green);
     --color-warning:       var(--accent-amber);
     --color-danger:        var(--accent-rose);
     --color-info:          var(--accent-blue);
 
-    /* ── Spacing scale ─────────────────────── */
+    /* ── Spacing scale ─────────────────────────────────────────── */
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
@@ -80,20 +134,62 @@
     --space-12: 3rem;
     --space-16: 4rem;
 
-    /* ── Transitions ───────────────────────── */
+    /* ── Transitions ───────────────────────────────────────────── */
     --transition-fast:     150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-base:     250ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow:     400ms cubic-bezier(0.4, 0, 0.2, 1);
 
-    /* ── Z-index scale ─────────────────────── */
+    /* ── Z-index scale ─────────────────────────────────────────── */
+    --z-rail:      50;
     --z-dropdown:  100;
     --z-sticky:    200;
+    --z-drawer:    250;
     --z-modal:     300;
     --z-popover:   400;
     --z-toast:     500;
 
-    /* ── Sidebar / layout ──────────────────── */
-    --sidebar-width:       250px;
+    /* ── Command Center Layout ─────────────────────────────────── */
+    --rail-width:          64px;
     --nav-height:          56px;
-    --right-panel-width:   350px;
+    --status-bar-height:   36px;
+    --drawer-width:        400px;
+    --drawer-overlay:      rgba(0, 0, 0, 0.40);
+
+    /* ── Legacy compat (deprecated — use --rail-width) ─────────── */
+    --sidebar-width:       var(--rail-width);
+    --right-panel-width:   var(--drawer-width);
+}
+
+/* ================================================================
+   Keyframes — Liquid Glass Effects
+   ================================================================ */
+
+@keyframes glass-shimmer {
+    0%   { background-position: -200% 0, 0 0; }
+    100% { background-position:  200% 0, 0 0; }
+}
+
+@keyframes specular-breathe {
+    0%, 100% { opacity: 0.6; }
+    50%      { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(78,161,255,0); }
+    50%      { box-shadow: 0 0 12px 2px rgba(78,161,255,0.15); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+
+@keyframes slide-out-right {
+    from { transform: translateX(0); }
+    to   { transform: translateX(100%); }
 }

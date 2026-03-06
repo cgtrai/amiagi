@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("health.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/health.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="health-page">
+
+  {# ── Toolbar ─────────────────────────────────────────── #}
+  <div class="health-toolbar">
+    <h2>{{ _("health.title") }}</h2>
+    <div class="health-toolbar-actions">
+      <span class="health-auto-refresh-label" id="auto-refresh-label">
+        {{ _("health.auto_refresh") }}
+      </span>
+      <button class="glass-btn glass-btn--pill" id="btn-refresh-now"
+              title="{{ _('health.refresh_now') }}">
+        {# lucide: refresh-cw #}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M3 21v-5h5"/>
+        </svg>
+        {{ _("health.refresh_now") }}
+      </button>
+      <button class="glass-btn glass-btn--ghost" id="btn-export-health"
+              title="{{ _('health.export_report') }}">
+        {# lucide: clipboard-copy #}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+          <path d="M12 11h4"/><path d="M12 16h4"/>
+          <line x1="8" y1="11" x2="8.01" y2="11"/>
+          <line x1="8" y1="16" x2="8.01" y2="16"/>
+        </svg>
+        {{ _("health.export_report") }}
+      </button>
+    </div>
+  </div>
+
+  {# ── Service status cards ────────────────────────────── #}
+  <section class="health-status-cards" id="health-status-cards">
+    <div class="health-card health-card--loading" data-service="ollama">
+      <div class="health-card-indicator"></div>
+      <div class="health-card-body">
+        <span class="health-card-name">Ollama</span>
+        <span class="health-card-value">—</span>
+        <span class="health-card-detail">—</span>
+      </div>
+    </div>
+    <div class="health-card health-card--loading" data-service="database">
+      <div class="health-card-indicator"></div>
+      <div class="health-card-body">
+        <span class="health-card-name">PostgreSQL</span>
+        <span class="health-card-value">—</span>
+        <span class="health-card-detail">—</span>
+      </div>
+    </div>
+    <div class="health-card health-card--loading" data-service="gpu">
+      <div class="health-card-indicator"></div>
+      <div class="health-card-body">
+        <span class="health-card-name">GPU</span>
+        <span class="health-card-value">—</span>
+        <span class="health-card-detail">—</span>
+      </div>
+    </div>
+    <div class="health-card health-card--loading" data-service="disk">
+      <div class="health-card-indicator"></div>
+      <div class="health-card-body">
+        <span class="health-card-name">{{ _("health.disk") }}</span>
+        <span class="health-card-value">—</span>
+        <span class="health-card-detail">—</span>
+      </div>
+    </div>
+  </section>
+
+  {# ── System metrics panel ────────────────────────────── #}
+  <section class="health-panel health-panel--wide" id="panel-system-metrics">
+    <h3>{{ _("health.system_metrics") }}</h3>
+    <div class="health-metrics-grid" id="system-metrics-grid">
+      <div class="health-metric" id="metric-cpu">
+        <span class="health-metric-label">CPU</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-ram">
+        <span class="health-metric-label">RAM</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-uptime">
+        <span class="health-metric-label">{{ _("health.uptime") }}</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-version">
+        <span class="health-metric-label">{{ _("health.version") }}</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-agents">
+        <span class="health-metric-label">{{ _("health.agents") }}</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-db-pool">
+        <span class="health-metric-label">{{ _("health.db_connections") }}</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-ws-clients">
+        <span class="health-metric-label">WebSocket</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-rate-limiter">
+        <span class="health-metric-label">{{ _("health.rate_limiter") }}</span>
+        <span class="health-metric-value">—</span>
+      </div>
+    </div>
+  </section>
+
+  {# ── VRAM / loaded models panel ──────────────────────── #}
+  <section class="health-panel" id="panel-vram">
+    <h3>{{ _("health.loaded_models") }}</h3>
+    <div class="health-vram-list" id="vram-list">
+      <p class="health-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+
+  {# ── Connections panel ───────────────────────────────── #}
+  <section class="health-panel" id="panel-connections">
+    <h3>{{ _("health.connections") }}</h3>
+    <div class="health-connections-grid" id="connections-grid">
+      <p class="health-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+
+</div><!-- /health-page -->
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/health.js" defer></script>
+{% endblock %}

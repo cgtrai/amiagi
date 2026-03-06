@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -107,3 +108,16 @@ class ABTestRunner:
 
     def history(self) -> list[ABComparisonResult]:
         return list(self._history)
+
+    async def compare_async(
+        self,
+        agent_a_id: str,
+        agent_a_fn: AgentCallable,
+        agent_b_id: str,
+        agent_b_fn: AgentCallable,
+        scenarios: list[EvalScenario],
+    ) -> ABComparisonResult:
+        """Async wrapper — offloads blocking ``compare()`` to a thread."""
+        return await asyncio.to_thread(
+            self.compare, agent_a_id, agent_a_fn, agent_b_id, agent_b_fn, scenarios
+        )

@@ -27,7 +27,7 @@ async def list_files(request: Request) -> JSONResponse:
     """``GET /files`` — list uploaded files for the current user."""
     store = request.app.state.binary_store
     user = getattr(request.state, "user", None)
-    user_id = user.user_id if user else "anonymous"
+    user_id = str(user.user_id) if user else "anonymous"
     workspace = request.query_params.get("workspace", "default")
 
     tree = store.browse_workspace(user_id, workspace)
@@ -42,7 +42,7 @@ async def browse_workspace(request: Request) -> JSONResponse:
     """``GET /workspace/browse`` — JSON tree of user's workspace."""
     store = request.app.state.binary_store
     user = getattr(request.state, "user", None)
-    user_id = user.user_id if user else "anonymous"
+    user_id = str(user.user_id) if user else "anonymous"
     workspace = request.query_params.get("workspace", "default")
 
     tree = store.browse_workspace(user_id, workspace)
@@ -58,7 +58,7 @@ async def view_file(request: Request) -> JSONResponse:
     store = request.app.state.binary_store
     path = request.query_params.get("path", "")
     user = getattr(request.state, "user", None)
-    user_id = user.user_id if user else "anonymous"
+    user_id = str(user.user_id) if user else "anonymous"
     workspace = request.query_params.get("workspace", "default")
 
     from pathlib import Path as P

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("sandboxes.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/sandboxes.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="sandboxes-page">
+
+  {# ── Toolbar ─────────────────────────────────────────── #}
+  <div class="sandboxes-toolbar">
+    <h2>{{ _("sandboxes.title") }}</h2>
+    <button class="glass-btn glass-btn--pill" id="btn-new-sandbox">
+      {# lucide: plus #}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      {{ _("sandboxes.new_sandbox") }}
+    </button>
+  </div>
+
+  {# ── Active sandboxes ───────────────────────────────────── #}
+  <section class="sandboxes-section">
+    <h3 class="sandboxes-section-title">{{ _("sandboxes.active_sandboxes") }}</h3>
+    <div class="sandboxes-list" id="sandboxes-list">
+      <p class="sandboxes-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+
+  {# ── Shell Policy ───────────────────────────────────────── #}
+  <section class="sandboxes-section">
+    <div class="sandboxes-section-header">
+      <h3 class="sandboxes-section-title">{{ _("sandboxes.shell_policy") }}</h3>
+      <div class="sandboxes-mode-toggle">
+        <button class="glass-btn glass-btn--pill sandboxes-mode-btn active"
+                id="btn-mode-editor" data-mode="editor">
+          {{ _("sandboxes.editor_mode") }}
+        </button>
+        <button class="glass-btn glass-btn--pill sandboxes-mode-btn"
+                id="btn-mode-json" data-mode="json">
+          {{ _("sandboxes.json_mode") }}
+        </button>
+      </div>
+    </div>
+    <shell-policy-editor id="shell-policy-editor"></shell-policy-editor>
+  </section>
+
+  {# ── Execution log ──────────────────────────────────────── #}
+  <section class="sandboxes-section">
+    <h3 class="sandboxes-section-title">{{ _("sandboxes.execution_log") }}</h3>
+    <div class="exec-log-controls">
+      <label class="exec-log-filter">
+        <input type="checkbox" id="filter-blocked-only"/>
+        {{ _("sandboxes.blocked") }}
+      </label>
+    </div>
+    <div class="exec-log-list" id="exec-log-list">
+      <p class="sandboxes-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+
+</div><!-- /sandboxes-page -->
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/shell-policy-editor.js" defer></script>
+<script src="/static/js/sandboxes.js" defer></script>
+{% endblock %}

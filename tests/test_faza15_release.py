@@ -68,15 +68,15 @@ class TestWebInterfaceDoc:
 # ═══════════════════════════════════════════════════════════════
 
 class TestVersion:
-    """15.4: Version is 1.1.0."""
+    """15.4: Version is 1.2.0."""
 
     def test_pyproject_version(self):
         content = (_ROOT / "pyproject.toml").read_text()
-        assert 'version = "1.1.0"' in content
+        assert 'version = "1.2.0"' in content
 
     def test_init_version(self):
         from amiagi import __version__
-        assert __version__ == "1.1.0"
+        assert __version__ == "1.2.0"
 
 
 # ═══════════════════════════════════════════════════════════════

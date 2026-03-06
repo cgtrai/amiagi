@@ -1,0 +1,523 @@
+/* ── Model Hub page styles ────────────────────────────────── */
+
+.model-hub-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.model-hub-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.model-hub-toolbar h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.model-hub-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.model-hub-ollama-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* ── VRAM Monitor panel ───────────────────────────────────── */
+
+.model-hub-vram-panel {
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1.1rem;
+}
+
+.model-hub-vram-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.model-hub-vram-header h4 {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin: 0;
+}
+
+.model-hub-vram-total {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted, #94a3b8);
+}
+
+.model-hub-vram-bar-outer {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+}
+
+.model-hub-vram-bar-inner {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--color-success, #4ade80), var(--color-info, #60a5fa));
+  transition: width 0.4s ease;
+  width: 0%;
+}
+
+.model-hub-vram-bar-inner.vram-warn {
+  background: linear-gradient(90deg, var(--color-warning, #facc15), var(--color-danger, #f87171));
+}
+
+.model-hub-vram-bar-inner.vram-danger {
+  background: var(--color-danger, #f87171);
+}
+
+.model-hub-vram-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.model-hub-vram-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted, #94a3b8);
+}
+
+.model-hub-vram-chip .vram-chip-size {
+  color: var(--color-info, #60a5fa);
+}
+
+/* ── Tabs ──────────────────────────────────────────────────── */
+
+.model-hub-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0;
+}
+
+.model-hub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.model-hub-tab:hover {
+  color: var(--text-primary, #e2e8f0);
+}
+
+.model-hub-tab.active {
+  color: var(--color-info, #60a5fa);
+  border-bottom-color: var(--color-info, #60a5fa);
+}
+
+.model-hub-tab svg {
+  opacity: 0.7;
+}
+
+.model-hub-tab.active svg {
+  opacity: 1;
+}
+
+/* ── Tab panels ───────────────────────────────────────────── */
+
+.model-hub-tab-panel {
+  display: none;
+}
+
+.model-hub-tab-panel.active {
+  display: block;
+}
+
+/* ── Cloud form ───────────────────────────────────────────── */
+
+.model-hub-cloud-form-card {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.model-hub-cloud-form-card h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin-bottom: 0.75rem;
+}
+
+.model-hub-cloud-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cloud-form-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cloud-form-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cloud-form-field--wide {
+  flex: 2;
+}
+
+.cloud-form-field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cloud-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.model-hub-cloud-status {
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+  margin-top: 0.25rem;
+  min-height: 1.2em;
+}
+
+.model-hub-cloud-status.--ok {
+  color: var(--color-success, #4ade80);
+}
+
+.model-hub-cloud-status.--err {
+  color: var(--color-danger, #ef4444);
+}
+
+@media (max-width: 600px) {
+  .cloud-form-row {
+    flex-direction: column;
+  }
+}
+
+/* ── Info bar ─────────────────────────────────────────────── */
+
+.model-hub-info {
+  display: flex;
+  gap: 2rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.model-hub-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-hub-info-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #94a3b8);
+}
+
+.model-hub-info-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+}
+
+/* ── Sections ─────────────────────────────────────────────── */
+
+.model-hub-section {
+  margin-bottom: 1.5rem;
+}
+
+.model-hub-section h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin-bottom: 0.35rem;
+}
+
+.model-hub-section-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 0.75rem;
+}
+
+/* ── Card assign dropdown ─────────────────────────────────── */
+
+.model-hub-card-assign {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.model-hub-card-assign label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.model-hub-card-assign select {
+  flex: 1;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary, #e2e8f0);
+  cursor: pointer;
+}
+
+/* ── Grid ─────────────────────────────────────────────────── */
+
+.model-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.model-hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.15s;
+}
+
+.model-hub-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.model-hub-card-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.model-hub-card-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.model-hub-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.model-hub-card .glass-btn {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+}
+
+.model-hub-card-vram {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.model-hub-card-vram-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-info, #60a5fa);
+  transition: width 0.3s ease;
+}
+
+.model-hub-empty {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.82rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+/* ── Pull form ────────────────────────────────────────────── */
+
+.model-hub-pull-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.model-hub-pull-input {
+  flex: 1;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-primary, #e2e8f0);
+  font-family: var(--font-mono, monospace);
+}
+
+.model-hub-pull-input:focus {
+  outline: none;
+  border-color: var(--color-info, #60a5fa);
+}
+
+.model-hub-pull-status {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.model-hub-pull-status.--ok {
+  color: var(--color-success, #4ade80);
+}
+
+.model-hub-pull-status.--err {
+  color: var(--color-danger, #ef4444);
+}
+
+/* ── Assignments ──────────────────────────────────────────── */
+
+.model-hub-assignments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.model-hub-assignment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.model-hub-assignment-agent {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.model-hub-assignment-model {
+  font-size: 0.75rem;
+  color: var(--color-info, #60a5fa);
+  font-family: var(--font-mono, monospace);
+}
+
+.model-hub-assignment-select {
+  margin-top: 0.25rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary, #e2e8f0);
+}
+
+/* ── Benchmark tab ────────────────────────────────────────── */
+
+.model-hub-bench-form-card {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.model-hub-bench-form-card h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  margin-bottom: 0.75rem;
+}
+
+.model-hub-bench-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.model-hub-bench-status {
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+  min-height: 1.2em;
+}
+
+.model-hub-bench-status.--ok {
+  color: var(--color-success, #4ade80);
+}
+
+.model-hub-bench-status.--err {
+  color: var(--color-danger, #ef4444);
+}
+
+.model-hub-bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.model-hub-bench-table th {
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted, #94a3b8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.model-hub-bench-table td {
+  padding: 0.45rem 0.65rem;
+  color: var(--text-primary, #e2e8f0);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.model-hub-bench-table .bench-tps {
+  font-weight: 700;
+  color: var(--color-success, #4ade80);
+}
+
+.model-hub-bench-table .bench-preview {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.72rem;
+}

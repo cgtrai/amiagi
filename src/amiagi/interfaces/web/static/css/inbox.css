@@ -1,0 +1,283 @@
+/* ================================================================
+   Inbox (Human-in-the-Loop) page styles
+   ================================================================ */
+
+.inbox-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.inbox-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: var(--space-1);
+}
+
+.inbox-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.inbox-tab:hover {
+  color: var(--text-primary);
+}
+
+.inbox-tab.active {
+  color: var(--accent, var(--color-accent, #6366f1));
+  border-bottom-color: var(--accent, var(--color-accent, #6366f1));
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-muted);
+}
+
+.inbox-tab.active .tab-count {
+  background: var(--accent, var(--color-accent, #6366f1));
+  color: #fff;
+}
+
+.inbox-count-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ── Item list ───────────────────────────────────────────────── */
+.inbox-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.inbox-empty {
+  text-align: center;
+  padding: var(--space-8) 0;
+  font-size: 0.9rem;
+}
+
+/* ── Inbox card ──────────────────────────────────────────────── */
+.inbox-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.inbox-card:hover {
+  border-color: var(--accent, var(--color-accent, #6366f1));
+  transform: translateY(-1px);
+}
+
+.inbox-card--resolved {
+  opacity: 0.65;
+}
+
+.inbox-card-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-muted);
+}
+
+.inbox-card-icon--gate {
+  background: hsl(220, 60%, 20%);
+  color: var(--color-info, #3b82f6);
+}
+
+.inbox-card-icon--question {
+  background: hsl(35, 60%, 20%);
+  color: var(--color-warning, #facc15);
+}
+
+.inbox-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-card-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.inbox-card-excerpt {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-card-time {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.inbox-card-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.inbox-card-actions .glass-btn {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.7rem;
+}
+
+/* ── Approve / reject button colours ─────────────────────────── */
+.glass-btn--success {
+  border-color: var(--color-success, #22c55e);
+  color: var(--color-success, #22c55e);
+}
+.glass-btn--success:hover {
+  background: var(--color-success, #22c55e);
+  color: #000;
+}
+
+.glass-btn--danger {
+  border-color: var(--color-danger, #ef4444);
+  color: var(--color-danger, #ef4444);
+}
+.glass-btn--danger:hover {
+  background: var(--color-danger, #ef4444);
+  color: #fff;
+}
+
+/* ── Status pills ────────────────────────────────────────────── */
+.inbox-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+}
+
+.inbox-status--pending  { background: hsl(220, 50%, 18%); color: var(--color-info, #3b82f6); }
+.inbox-status--approved { background: hsl(142, 50%, 14%); color: var(--color-success, #22c55e); }
+.inbox-status--rejected { background: hsl(0, 50%, 16%);   color: var(--color-danger, #ef4444); }
+.inbox-status--expired  { background: var(--surface-1);    color: var(--text-muted); }
+
+/* ── Modal overlay ───────────────────────────────────────────── */
+.inbox-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 1100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.inbox-modal {
+  width: min(480px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.inbox-modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.inbox-modal-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inbox-modal-close {
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: var(--space-1);
+}
+
+.inbox-modal-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.inbox-modal-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.inbox-modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* ── Reply area ──────────────────────────────────────────────── */
+.inbox-modal-reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.inbox-modal-reply textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--space-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0, #0a0a0f);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+}

@@ -1,0 +1,20 @@
+<div class="admin-subnav">
+  <a href="/admin/users" class="admin-subnav-item{% if request.url.path == '/admin/users' or request.url.path.startswith('/admin/users/') %} active{% endif %}">
+    👥 {{ _("admin.users") }}
+  </a>
+  <a href="/admin/roles" class="admin-subnav-item{% if request.url.path == '/admin/roles' %} active{% endif %}">
+    🔐 {{ _("admin.roles") }}
+  </a>
+  <a href="/admin/permissions" class="admin-subnav-item{% if request.url.path == '/admin/permissions' %} active{% endif %}">
+    🛡️ {{ _("admin.permissions") }}
+  </a>
+  <a href="/admin/audit" class="admin-subnav-item{% if request.url.path == '/admin/audit' %} active{% endif %}">
+    📋 {{ _("admin.audit_log") }}
+  </a>
+  <a href="/admin/skills" class="admin-subnav-item{% if request.url.path.startswith('/admin/skills') %} active{% endif %}">
+    🧠 {{ _("admin.skills") }}
+  </a>
+  <a href="/admin/traits" class="admin-subnav-item{% if request.url.path.startswith('/admin/traits') %} active{% endif %}">
+    🎭 {{ _("admin.traits") }}
+  </a>
+</div>

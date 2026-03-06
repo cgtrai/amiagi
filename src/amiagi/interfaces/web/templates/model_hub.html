@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("models.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/model_hub.css"/>
+<script defer src="/static/js/components/secret-field.js"></script>
+<script defer src="/static/js/components/cloud-model-card.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="model-hub-main">
+
+  {# ── Toolbar ────────────────────────────────────────────── #}
+  <div class="model-hub-toolbar">
+    <h2>{{ _("models.title") }}</h2>
+    <div class="model-hub-toolbar-actions">
+      <button class="glass-btn glass-btn--ghost" id="btn-refresh-models" title="{{ _('models.refresh') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        {{ _("models.refresh") }}
+      </button>
+    </div>
+  </div>
+
+  {# ── Tab bar ────────────────────────────────────────────── #}
+  <div class="model-hub-tabs" id="model-tabs">
+    <button class="model-hub-tab active" data-tab="local">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      {{ _("models.local_tab") }}
+    </button>
+    <button class="model-hub-tab" data-tab="cloud">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+      {{ _("models.cloud_tab") }}
+    </button>
+    <button class="model-hub-tab" data-tab="benchmark">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      {{ _("models.benchmark_tab") }}
+    </button>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════ #}
+  {# ── TAB: Local Models (Ollama) ─────────────────────────── #}
+  {# ══════════════════════════════════════════════════════════ #}
+  <div class="model-hub-tab-panel active" id="panel-local">
+
+    {# Ollama status bar #}
+    <div class="glass-card model-hub-info" id="ollama-info">
+      <div class="model-hub-info-item">
+        <span class="model-hub-info-label">Ollama</span>
+        <span class="model-hub-info-value">
+          <span class="status-dot" id="ollama-status-dot"></span>
+          <span id="ollama-status-text">{{ _("models.checking") }}</span>
+        </span>
+      </div>
+      <div class="model-hub-info-item">
+        <span class="model-hub-info-label">{{ _("models.base_url") }}</span>
+        <span class="model-hub-info-value" id="ollama-base-url">—</span>
+      </div>
+      <div class="model-hub-info-item">
+        <span class="model-hub-info-label">{{ _("models.pulled_count") }}</span>
+        <span class="model-hub-info-value" id="ollama-model-count">0</span>
+      </div>
+    </div>
+
+    {# VRAM monitor #}
+    <div class="glass-card model-hub-vram-panel" id="vram-panel">
+      <div class="model-hub-vram-header">
+        <h4>{{ _("models.vram_monitor") }}</h4>
+        <span class="model-hub-vram-total" id="vram-total">—</span>
+      </div>
+      <div class="model-hub-vram-bar-outer">
+        <div class="model-hub-vram-bar-inner" id="vram-bar"></div>
+      </div>
+      <div class="model-hub-vram-models" id="vram-model-list"></div>
+    </div>
+
+    {# Local models grid #}
+    <div class="model-hub-section">
+      <h3>{{ _("models.available") }}</h3>
+      <div class="model-hub-grid" id="local-model-grid">
+        <div class="model-hub-empty" id="local-model-empty">{{ _("models.no_models") }}</div>
+      </div>
+    </div>
+
+    {# Pull new model #}
+    <div class="model-hub-section">
+      <h3>{{ _("models.pull_model") }}</h3>
+      <form class="model-hub-pull-form" id="model-pull-form">
+        <input type="text" class="model-hub-pull-input" id="pull-model-name"
+               placeholder="{{ _('models.pull_placeholder') }}" required />
+        <button type="submit" class="glass-btn glass-btn--primary" id="btn-pull">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          {{ _("models.pull") }}
+        </button>
+      </form>
+      <div class="model-hub-pull-status" id="pull-status"></div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════ #}
+  {# ── TAB: Cloud Models (API) ────────────────────────────── #}
+  {# ══════════════════════════════════════════════════════════ #}
+  <div class="model-hub-tab-panel" id="panel-cloud">
+
+    {# Add cloud model form #}
+    <div class="glass-card model-hub-cloud-form-card">
+      <h3>{{ _("models.cloud_add") }}</h3>
+      <form class="model-hub-cloud-form" id="cloud-model-form">
+        <div class="cloud-form-row">
+          <div class="cloud-form-field">
+            <label for="cloud-provider">{{ _("models.cloud_provider") }}</label>
+            <select id="cloud-provider" class="glass-input glass-select" aria-label="{{ _('models.cloud_provider') }}">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="custom">{{ _("models.cloud_custom") }}</option>
+            </select>
+          </div>
+          <div class="cloud-form-field">
+            <label for="cloud-model-name">{{ _("models.cloud_model_id") }}</label>
+            <input type="text" id="cloud-model-name" class="glass-input"
+                   placeholder="gpt-5-mini" required />
+          </div>
+        </div>
+        <div class="cloud-form-row">
+          <div class="cloud-form-field cloud-form-field--wide">
+            <label for="cloud-base-url">{{ _("models.cloud_base_url") }}</label>
+            <input type="url" id="cloud-base-url" class="glass-input"
+                   placeholder="https://api.openai.com/v1" />
+          </div>
+        </div>
+        <div class="cloud-form-row">
+          <div class="cloud-form-field cloud-form-field--wide">
+            <label for="cloud-api-key">{{ _("models.cloud_api_key") }}</label>
+            <input type="password" id="cloud-api-key" class="glass-input"
+                   placeholder="sk-..." required />
+          </div>
+        </div>
+        <div class="cloud-form-row">
+          <div class="cloud-form-field">
+            <label for="cloud-display-name">{{ _("models.cloud_display_name") }}</label>
+            <input type="text" id="cloud-display-name" class="glass-input"
+                   placeholder="GPT-5 Mini" />
+          </div>
+        </div>
+        <div class="cloud-form-actions">
+          <button type="button" class="glass-btn glass-btn--ghost" id="btn-cloud-test">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            {{ _("models.cloud_test") }}
+          </button>
+          <button type="submit" class="glass-btn glass-btn--primary" id="btn-cloud-save">
+            {{ _("models.cloud_save") }}
+          </button>
+        </div>
+        <div class="model-hub-cloud-status" id="cloud-form-status"></div>
+      </form>
+    </div>
+
+    {# Cloud models list #}
+    <div class="model-hub-section">
+      <h3>{{ _("models.cloud_configured") }}</h3>
+      <div class="model-hub-grid" id="cloud-model-grid">
+        <div class="model-hub-empty" id="cloud-model-empty">{{ _("models.cloud_none") }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════ #}
+  {# ── TAB: Benchmark ────────────────────────────────────── #}
+  {# ══════════════════════════════════════════════════════════ #}
+  <div class="model-hub-tab-panel" id="panel-benchmark">
+
+    <div class="glass-card model-hub-bench-form-card">
+      <h3>{{ _("models.benchmark_run") }}</h3>
+      <form class="model-hub-bench-form" id="bench-form">
+        <div class="cloud-form-row">
+          <div class="cloud-form-field">
+            <label for="bench-model-select">{{ _("models.benchmark_model") }}</label>
+            <select id="bench-model-select" class="glass-input glass-select" aria-label="{{ _('models.benchmark_model') }}">
+              <option value="">{{ _("models.benchmark_select") }}</option>
+            </select>
+          </div>
+          <div class="cloud-form-field cloud-form-field--wide">
+            <label for="bench-prompt">{{ _("models.benchmark_prompt") }}</label>
+            <input type="text" id="bench-prompt" class="glass-input"
+                   placeholder="Say hello in one sentence." value="Say hello in one sentence." />
+          </div>
+        </div>
+        <div class="cloud-form-actions">
+          <button type="submit" class="glass-btn glass-btn--primary" id="btn-bench-run">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            {{ _("models.benchmark") }}
+          </button>
+        </div>
+        <div class="model-hub-bench-status" id="bench-status"></div>
+      </form>
+    </div>
+
+    {# Benchmark results table #}
+    <div class="model-hub-section">
+      <h3>{{ _("models.benchmark_results") }}</h3>
+      <div class="model-hub-bench-results" id="bench-results">
+        <table class="model-hub-bench-table" id="bench-table">
+          <thead>
+            <tr>
+              <th>{{ _("models.benchmark_model") }}</th>
+              <th>tok/s</th>
+              <th>{{ _("models.benchmark_tokens") }}</th>
+              <th>{{ _("models.benchmark_elapsed") }}</th>
+              <th>{{ _("models.benchmark_preview") }}</th>
+            </tr>
+          </thead>
+          <tbody id="bench-tbody"></tbody>
+        </table>
+        <p class="model-hub-empty" id="bench-empty">{{ _("models.benchmark_no_results") }}</p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Agent assignments (shared) ─────────────────────────── #}
+  <div class="model-hub-section">
+    <h3>{{ _("models.assignments") }}</h3>
+    <p class="model-hub-section-desc">{{ _("models.assignments_desc") }}</p>
+    <div class="model-hub-assignments" id="model-assignments"></div>
+  </div>
+
+</div>
+
+{% block scripts %}
+<script src="/static/js/model_hub.js"></script>
+{% endblock %}
+{% endblock %}

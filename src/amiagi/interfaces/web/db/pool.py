@@ -1,23 +1,52 @@
-"""Async PostgreSQL connection pool management for the web interface."""
+"""Async database pool management for the web interface.
+
+Supports two back-ends:
+
+* **PostgreSQL** (asyncpg) — used when ``AMIAGI_DB_USER`` is configured.
+* **SQLite** (aiosqlite) — automatic fallback for local / single-user mode.
+"""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
     import asyncpg
 
     from amiagi.config import Settings
+    from amiagi.interfaces.web.db.sqlite_pool import SqlitePool
 
 logger = logging.getLogger(__name__)
 
-_MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+_PG_MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+_SQLITE_MIGRATIONS_DIR = Path(__file__).parent / "migrations_sqlite"
+
+# Union type used throughout web interface for pool references.
+DbPool = Union["asyncpg.Pool", "SqlitePool"]
 
 
-async def create_pool(settings: "Settings") -> "asyncpg.Pool":
-    """Create and return an asyncpg connection pool, setting search_path to the configured schema."""
+def _use_sqlite(settings: "Settings") -> bool:
+    """Return ``True`` when PostgreSQL credentials are not configured."""
+    return not getattr(settings, "db_user", None)
+
+
+async def create_pool(settings: "Settings") -> Any:
+    """Create and return a database pool.
+
+    Auto-detects the back-end:
+    * If ``db_user`` is set → asyncpg (PostgreSQL).
+    * Otherwise → SqlitePool (SQLite, stored in ``db_sqlite_path``).
+    """
+    if _use_sqlite(settings):
+        return await _create_sqlite_pool(settings)
+    return await _create_pg_pool(settings)
+
+
+# ── PostgreSQL ───────────────────────────────────────────────
+
+async def _create_pg_pool(settings: "Settings") -> "asyncpg.Pool":
     import asyncpg as _asyncpg
 
     dsn = (
@@ -44,30 +73,82 @@ async def create_pool(settings: "Settings") -> "asyncpg.Pool":
     return pool
 
 
-async def run_migrations(pool: "asyncpg.Pool", *, schema: str = "dbo") -> None:
-    """Execute SQL migration files in order from the migrations directory."""
-    if not _MIGRATIONS_DIR.exists():
-        logger.warning("Migrations directory not found: %s", _MIGRATIONS_DIR)
+# ── SQLite ───────────────────────────────────────────────────
+
+async def _create_sqlite_pool(settings: "Settings") -> "SqlitePool":
+    from amiagi.interfaces.web.db.sqlite_pool import SqlitePool as _SqlitePool
+
+    db_path: str = getattr(settings, "db_sqlite_path", "") or "data/web.db"
+    # Ensure parent directory exists.
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+    pool = _SqlitePool(db_path)
+    # Eagerly open the connection so migrations can run immediately.
+    await pool._ensure()
+    logger.info("SQLite pool created: %s", db_path)
+    return pool
+
+
+# ── Migrations ───────────────────────────────────────────────
+
+async def run_migrations(pool: Any, *, schema: str = "dbo") -> None:
+    """Execute SQL migration files in order.
+
+    Automatically selects the correct migration directory based on pool type.
+    """
+    from amiagi.interfaces.web.db.sqlite_pool import SqlitePool as _SqlitePool
+
+    if isinstance(pool, _SqlitePool):
+        await _run_sqlite_migrations(pool)
+    else:
+        await _run_pg_migrations(pool, schema=schema)
+
+
+async def _run_pg_migrations(pool: "asyncpg.Pool", *, schema: str = "dbo") -> None:
+    if not _PG_MIGRATIONS_DIR.exists():
+        logger.warning("PG migrations directory not found: %s", _PG_MIGRATIONS_DIR)
         return
 
-    migration_files = sorted(_MIGRATIONS_DIR.glob("*.sql"))
+    migration_files = sorted(_PG_MIGRATIONS_DIR.glob("*.sql"))
     if not migration_files:
-        logger.info("No migration files found.")
+        logger.info("No PG migration files found.")
         return
 
     async with pool.acquire() as conn:
-        # Ensure schema exists
         await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
         await conn.execute(f"SET search_path TO {schema}, public")
 
         for mig in migration_files:
-            logger.info("Running migration: %s", mig.name)
+            logger.info("Running PG migration: %s", mig.name)
             sql = mig.read_text(encoding="utf-8")
             await conn.execute(sql)
-            logger.info("Migration complete: %s", mig.name)
+            logger.info("PG migration complete: %s", mig.name)
 
 
-async def close_pool(pool: "asyncpg.Pool") -> None:
-    """Gracefully close the connection pool."""
+async def _run_sqlite_migrations(pool: "SqlitePool") -> None:
+    if not _SQLITE_MIGRATIONS_DIR.exists():
+        logger.warning("SQLite migrations directory not found: %s", _SQLITE_MIGRATIONS_DIR)
+        return
+
+    migration_files = sorted(_SQLITE_MIGRATIONS_DIR.glob("*.sql"))
+    if not migration_files:
+        logger.info("No SQLite migration files found.")
+        return
+
+    import aiosqlite
+
+    # Use executescript for multi-statement DDL.
+    conn: aiosqlite.Connection = pool._conn  # type: ignore[assignment]
+    for mig in migration_files:
+        logger.info("Running SQLite migration: %s", mig.name)
+        sql = mig.read_text(encoding="utf-8")
+        await conn.executescript(sql)
+        logger.info("SQLite migration complete: %s", mig.name)
+
+
+# ── Shutdown ─────────────────────────────────────────────────
+
+async def close_pool(pool: Any) -> None:
+    """Gracefully close the connection pool (works for both back-ends)."""
     await pool.close()
-    logger.info("PostgreSQL pool closed.")
+    logger.info("Database pool closed.")

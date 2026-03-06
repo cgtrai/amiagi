@@ -2,17 +2,18 @@
 {% block title %}Amiagi — {{ target_user.display_name }}{% endblock %}
 {% block content %}
   <div class="container">
+    {% include "partials/admin_nav.html" %}
     <h1>{{ target_user.display_name }}</h1>
 
     <section class="glass-card mb-4">
-      <p><strong>Email:</strong> {{ target_user.email }}</p>
+      <p><strong>{{ _("admin.email") }}:</strong> {{ target_user.email }}</p>
       <p><strong>Provider:</strong> {{ target_user.provider }}</p>
-      <p><strong>Aktywny:</strong> {{ "Tak" if target_user.is_active else "Nie" }}</p>
-      <p><strong>Zablokowany:</strong> {{ "Tak" if target_user.is_blocked else "Nie" }}</p>
+      <p><strong>{{ _("admin.active") }}:</strong> {{ _("admin.yes") if target_user.is_active else _("admin.no") }}</p>
+      <p><strong>{{ _("admin.blocked") }}:</strong> {{ _("admin.yes") if target_user.is_blocked else _("admin.no") }}</p>
     </section>
 
     <section class="glass-card mb-4">
-      <h2>Role</h2>
+      <h2>{{ _("admin.roles") }}</h2>
       <form id="roles-form">
         {% for role in all_roles %}
         <label class="flex gap-2 mb-4">
@@ -21,15 +22,15 @@
           {{ role.name }} — {{ role.description }}
         </label>
         {% endfor %}
-        <button type="button" class="btn btn-sm" onclick="saveRoles()">Zapisz role</button>
+        <button type="button" class="btn btn-sm" onclick="saveRoles()">{{ _("admin.save_roles") }}</button>
       </form>
     </section>
 
     <section>
       {% if not target_user.is_blocked %}
-      <button class="btn btn-danger btn-sm" onclick="blockUser()">Zablokuj</button>
+      <button class="btn btn-danger btn-sm" onclick="blockUser()">{{ _("admin.block") }}</button>
       {% else %}
-      <button class="btn btn-success btn-sm" onclick="activateUser()">Aktywuj</button>
+      <button class="btn btn-success btn-sm" onclick="activateUser()">{{ _("admin.activate") }}</button>
       {% endif %}
     </section>
   </div>

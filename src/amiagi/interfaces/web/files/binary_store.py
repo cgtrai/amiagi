@@ -52,7 +52,7 @@ class BinaryStore:
     # ------------------------------------------------------------------
 
     def _user_dir(self, user_id: str, workspace: str = "default") -> Path:
-        p = self._base / user_id / workspace
+        p = self._base / str(user_id) / str(workspace)
         p.mkdir(parents=True, exist_ok=True)
         return p
 

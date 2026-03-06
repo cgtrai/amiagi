@@ -2,10 +2,13 @@
    Amiagi Responsive — Mobile / Tablet / Desktop breakpoints
    ================================================================
 
+   Layout: Command Rail (64px) | Main Viewport | Detail Drawer (400px)
+   Status Bar: 36px fixed bottom
+
    Breakpoints:
-   - Mobile:  < 768px   → Hamburger, stack layout, bottom input bar
-   - Tablet:  768–1023px → Collapsible sidebar overlay, main fullwidth
-   - Desktop: ≥ 1024px  → Full sidebar + main + optional right panel
+   - Mobile:  < 768px   → Hamburger, rail hidden, full-screen overlay nav
+   - Tablet:  768–1023px → Compact rail (48px), main fullwidth
+   - Desktop: ≥ 1024px  → Full rail (64px) + main + optional drawer
    ================================================================ */
 
 
@@ -25,7 +28,7 @@
     border: none;
     background: transparent;
     cursor: pointer;
-    order: -1;                      /* Before nav-links */
+    order: -1;
 }
 .hamburger span {
     display: block;
@@ -40,18 +43,22 @@
 .hamburger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
 
-/* ── Sidebar overlay for mobile/tablet ───────────────────────── */
+/* ── Rail overlay for mobile ─────────────────────────────────── */
 
-.sidebar-overlay {
+.rail-overlay {
     display: none;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: calc(var(--z-modal) - 1);
+    z-index: calc(var(--z-rail) - 1);
 }
-.sidebar-overlay.active {
+.rail-overlay.active {
     display: block;
 }
+
+/* Legacy compat */
+.sidebar-overlay { display: none; }
+.sidebar-overlay.active { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: calc(var(--z-rail) - 1); }
 
 
 /* ── Touch-friendly tap targets ──────────────────────────────── */
@@ -67,7 +74,7 @@
 .mobile-input-bar {
     display: none;
     position: fixed;
-    bottom: 0;
+    bottom: var(--status-bar-height);
     left: 0;
     right: 0;
     z-index: var(--z-sticky);
@@ -100,26 +107,35 @@
 
 
 /* ================================================================
-   DESKTOP (≥ 1024px) — Default layout
+   DESKTOP (≥ 1024px) — Full Command Rail + Main + optional Drawer
    ================================================================ */
 
 @media (min-width: 1024px) {
     .app-shell {
-        grid-template-columns: var(--sidebar-width) 1fr;
-        grid-template-rows: var(--nav-height) 1fr;
+        grid-template-columns: var(--rail-width) 1fr;
+        grid-template-rows: var(--nav-height) 1fr var(--status-bar-height);
         grid-template-areas:
-            "nav     nav"
-            "sidebar main";
+            "nav    nav"
+            "rail   main"
+            "status status";
     }
-    .app-shell--with-right {
-        grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width);
+    .app-shell.drawer-open {
+        grid-template-columns: var(--rail-width) 1fr var(--drawer-width);
         grid-template-areas:
-            "nav     nav   nav"
-            "sidebar main  right";
+            "nav    nav    nav"
+            "rail   main   drawer"
+            "status status status";
     }
+
+    .command-rail,
+    .app-rail {
+        display: flex;
+    }
+    /* Legacy alias */
     .app-sidebar {
         display: flex;
     }
+
     .hamburger {
         display: none;
     }
@@ -130,45 +146,46 @@
 
 
 /* ================================================================
-   TABLET (768px – 1023px) — Collapsible sidebar overlay + main fullwidth
+   TABLET (768px – 1023px) — Compact rail (48px) + fullwidth main
    ================================================================ */
 
 @media (min-width: 768px) and (max-width: 1023px) {
+    :root {
+        --rail-width: 48px;
+    }
+
     .app-shell {
-        grid-template-columns: 1fr;
-        grid-template-rows: var(--nav-height) 1fr;
+        grid-template-columns: var(--rail-width) 1fr;
+        grid-template-rows: var(--nav-height) 1fr var(--status-bar-height);
         grid-template-areas:
-            "nav"
-            "main";
+            "nav    nav"
+            "rail   main"
+            "status status";
+    }
+
+    .command-rail {
+        width: var(--rail-width);
+    }
+    .command-rail-item {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+    .command-rail-item[data-tooltip]::after {
+        content: attr(data-tooltip);
     }
 
     .hamburger {
-        display: flex;
-    }
-
-    /* Sidebar as overlay */
-    .app-sidebar {
         display: none;
-        position: fixed;
-        top: var(--nav-height);
-        left: 0;
-        bottom: 0;
-        width: var(--sidebar-width);
-        z-index: var(--z-modal);
-        background: var(--glass-bg);
-        -webkit-backdrop-filter: blur(var(--glass-blur));
-        backdrop-filter: blur(var(--glass-blur));
-        border-right: 1px solid var(--glass-border);
-        overflow-y: auto;
-        flex-direction: column;
-    }
-    .app-sidebar.open {
-        display: flex;
     }
 
-    /* Main area fills width */
+    /* Detail drawer as overlay on tablet */
+    .detail-drawer {
+        width: min(var(--drawer-width), 80vw);
+    }
+
+    /* Main area */
     .app-main {
-        grid-column: 1;
         padding: var(--space-4);
     }
 
@@ -185,13 +202,8 @@
         grid-template-columns: 1fr;
     }
 
-    /* Debug grid 2-col still works at tablet */
-    .debug-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    /* Buttons & links touch-friendly */
-    .sidebar-item,
+    /* Touch-friendly buttons */
+    .command-rail-item,
     .nav-links a,
     .glass-btn,
     .section-tab {
@@ -201,6 +213,11 @@
     }
 
     .mobile-input-bar {
+        display: none;
+    }
+
+    /* Status bar: hide low-priority sections */
+    .status-bar .status-hide-tablet {
         display: none;
     }
 }
@@ -213,10 +230,11 @@
 @media (max-width: 767px) {
     .app-shell {
         grid-template-columns: 1fr;
-        grid-template-rows: var(--nav-height) 1fr;
+        grid-template-rows: var(--nav-height) 1fr var(--status-bar-height);
         grid-template-areas:
             "nav"
-            "main";
+            "main"
+            "status";
     }
 
     /* Show hamburger */
@@ -224,19 +242,76 @@
         display: flex;
     }
 
-    /* Hide desktop nav-links, show in sidebar */
+    /* Hide desktop nav-links, show in mobile menu */
     .glass-nav .nav-links {
         display: none;
     }
 
-    /* Sidebar as fullscreen overlay */
+    /* Command rail hidden by default on mobile, shown as overlay */
+    .command-rail {
+        display: none;
+        position: fixed;
+        top: var(--nav-height);
+        left: 0;
+        right: 0;
+        bottom: var(--status-bar-height);
+        width: 100%;
+        z-index: var(--z-modal);
+        background: var(--glass-dense-bg);
+        -webkit-backdrop-filter: var(--glass-dense-filter);
+        backdrop-filter: var(--glass-dense-filter);
+        overflow-y: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: var(--space-4);
+    }
+    .command-rail.open {
+        display: flex;
+    }
+
+    /* Rail items become wide menu items on mobile */
+    .command-rail.open .command-rail-item {
+        width: 100%;
+        height: auto;
+        min-height: 48px;
+        padding: var(--space-3) var(--space-4);
+        font-size: 1rem;
+        justify-content: flex-start;
+        gap: var(--space-3);
+        border-radius: var(--radius-sm);
+    }
+    /* Show tooltip text inline on mobile */
+    .command-rail.open .command-rail-item[data-tooltip]::after {
+        position: static;
+        transform: none;
+        display: inline;
+        opacity: 1;
+        background: transparent;
+        border: none;
+        padding: 0;
+        color: var(--text-secondary);
+        font-size: 1rem;
+        white-space: normal;
+    }
+    .command-rail.open .command-rail-item:active {
+        background: var(--glass-bg-active);
+    }
+    .command-rail.open .command-rail-divider {
+        width: 100%;
+        margin: var(--space-2) 0;
+    }
+    .command-rail.open .command-rail-spacer {
+        display: none;
+    }
+
+    /* Legacy sidebar compat */
     .app-sidebar {
         display: none;
         position: fixed;
         top: var(--nav-height);
         left: 0;
         right: 0;
-        bottom: 0;
+        bottom: var(--status-bar-height);
         width: 100%;
         z-index: var(--z-modal);
         background: var(--glass-bg);
@@ -249,8 +324,6 @@
     .app-sidebar.open {
         display: flex;
     }
-
-    /* Sidebar items — mobile-friendly */
     .app-sidebar .sidebar-item {
         min-height: 48px;
         padding: var(--space-3) var(--space-4);
@@ -263,8 +336,6 @@
     .app-sidebar .sidebar-item:active {
         background: var(--glass-bg-active);
     }
-
-    /* Nav links shown in sidebar on mobile */
     .app-sidebar .mobile-nav-links {
         display: flex;
         flex-direction: column;
@@ -289,7 +360,7 @@
     /* Main area — full width, extra bottom padding for input bar */
     .app-main {
         padding: var(--space-3);
-        padding-bottom: calc(var(--space-16) + 44px);
+        padding-bottom: calc(var(--space-16) + 44px + var(--status-bar-height));
         overflow-x: hidden;
     }
 
@@ -301,6 +372,23 @@
     /* Show bottom input bar */
     .mobile-input-bar {
         display: block;
+    }
+
+    /* Detail drawer fullscreen on mobile */
+    .detail-drawer {
+        width: 100%;
+        top: var(--nav-height);
+        bottom: var(--status-bar-height);
+    }
+
+    /* Status bar: compact on mobile */
+    .status-bar {
+        gap: var(--space-2);
+        padding: 0 var(--space-2);
+        font-size: 0.65rem;
+    }
+    .status-bar .status-hide-mobile {
+        display: none;
     }
 
     /* Dashboard layout → vertical stack */
@@ -339,21 +427,7 @@
         grid-template-columns: 1fr;
     }
 
-    /* Debug grid: single column */
-    .debug-grid {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-        height: auto;
-    }
-
-    /* Agent tab content: single pane */
-    .agent-tab-content.debug-grid {
-        grid-template-columns: 1fr !important;
-        grid-template-rows: auto !important;
-        height: auto !important;
-    }
-
-    /* Task board: list layout on mobile (no horizontal Kanban scroll) */
+    /* Task board: list layout on mobile */
     task-board {
         display: block;
     }
@@ -388,15 +462,7 @@
         font-size: 0.85rem;
     }
 
-    /* Tab bar: scrollable */
-    .tab-bar {
-        overflow-x: auto;
-    }
-    .agent-tab {
-        min-height: 44px;
-    }
-
-    /* Touch-friendly: all buttons & interactive elements */
+    /* Touch-friendly */
     .glass-btn,
     .glass-btn--ghost,
     button,
@@ -406,31 +472,19 @@
         min-width: 44px;
     }
 
-    /* Chat input row on mobile */
-    .chat-input-row {
-        flex-wrap: nowrap;
-    }
-    .chat-input-row input {
-        min-height: 44px;
-    }
-    .chat-input-row button {
-        min-width: 44px;
-        min-height: 44px;
-    }
-
     /* Search bar: full width */
     .search-bar {
         flex-direction: column;
     }
 
-    /* Headings smaller on mobile */
+    /* Headings smaller */
     h1 { font-size: var(--font-size-xl); }
     h2 { font-size: var(--font-size-lg); }
 
     /* Login card: responsive */
     .login-card {
         width: 100%;
-        max-width: 380px;
+        max-height: 380px;
     }
 }
 

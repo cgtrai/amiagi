@@ -58,7 +58,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,
-        session_manager: "SessionManager",
+        session_manager: "SessionManager | None" = None,
         api_key_manager: "ApiKeyManager | None" = None,
     ) -> None:
         super().__init__(app)
@@ -74,10 +74,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
             return await call_next(request)
 
+        # Lazy-resolve from app.state (set during on_startup) when not
+        # injected via the constructor — allows registering the middleware
+        # before the application has started.
+        session_mgr = self._session_manager or getattr(
+            request.app.state, "session_manager", None,
+        )
+        api_key_mgr = self._api_key_manager or getattr(
+            request.app.state, "api_key_manager", None,
+        )
+
+        if session_mgr is None:
+            # Auth subsystem not yet initialised — let request through.
+            return await call_next(request)
+
         # --- 1. Try X-API-Key header ---
         api_key = request.headers.get(_API_KEY_HEADER)
-        if api_key and self._api_key_manager is not None:
-            key_record = await self._api_key_manager.validate_key(api_key)
+        if api_key and api_key_mgr is not None:
+            key_record = await api_key_mgr.validate_key(api_key)
             if key_record is not None:
                 request.state.user = ApiKeyUser(
                     user_id=key_record.user_id,
@@ -97,7 +111,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return self._unauthenticated_response(request)
 
         # Validate session
-        user_session = await self._session_manager.validate_session(token)
+        user_session = await session_mgr.validate_session(token)
         if user_session is None:
             return self._unauthenticated_response(request)
 

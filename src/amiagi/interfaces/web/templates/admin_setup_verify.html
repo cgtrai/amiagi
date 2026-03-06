@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Amiagi — Weryfikacja administratora</title>
+  <link rel="stylesheet" href="/static/css/tokens.css"/>
+  <link rel="stylesheet" href="/static/css/components.css"/>
+  <link rel="stylesheet" href="/static/css/layout.css"/>
+</head>
+<body class="login-page">
+  <div class="glass-card login-card">
+    <h1>Amiagi</h1>
+    <p class="text-muted text-sm mb-4">Weryfikacja konta administratora</p>
+
+    <p class="setup-info">
+      Wpisz 6-cyfrowy kod wygenerowany poleceniem <code>amiagi --admin</code>
+    </p>
+
+    <form method="POST" action="/auth/setup-verify" class="setup-form">
+      <input
+        type="text"
+        name="code"
+        class="setup-code-input"
+        maxlength="6"
+        pattern="[0-9]{6}"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        autofocus
+        required
+        placeholder="------"
+      />
+      <button type="submit" class="glass-btn glass-btn--primary setup-submit">
+        Zweryfikuj
+      </button>
+    </form>
+
+    {% if error_message %}
+    <div class="glass-badge badge-danger mt-4">{{ error_message }}</div>
+    {% endif %}
+
+    {% if remaining is defined and remaining is not none %}
+    <p class="setup-info">Pozostało prób: {{ remaining }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>

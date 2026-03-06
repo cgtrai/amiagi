@@ -1,0 +1,57 @@
+{# ── Detail Drawer — 400px slide-in panel (right) ─────────── #}
+
+{# Overlay backdrop #}
+<div class="detail-drawer-overlay" id="drawer-overlay" onclick="closeDetailDrawer()"></div>
+
+{# Drawer panel #}
+<aside class="detail-drawer app-drawer" id="detail-drawer" role="complementary" aria-label="{{ _('drawer.title') }}">
+  <div class="detail-drawer-header">
+    <h3 id="drawer-title">{{ _("drawer.details") }}</h3>
+    <button class="detail-drawer-close" onclick="closeDetailDrawer()" aria-label="{{ _('common.close') }}">✕</button>
+  </div>
+  <div class="detail-drawer-body" id="drawer-body">
+    {% block drawer_content %}
+    {# Page-specific drawer content injected here #}
+    {% endblock %}
+  </div>
+</aside>
+
+<script>
+/* ── Drawer open / close helpers ─────────────────────────────── */
+function openDetailDrawer(title, htmlContent) {
+  var drawer  = document.getElementById('detail-drawer');
+  var overlay = document.getElementById('drawer-overlay');
+  var shell   = document.querySelector('.app-shell');
+
+  if (title) {
+    document.getElementById('drawer-title').textContent = title;
+  }
+  if (htmlContent) {
+    document.getElementById('drawer-body').innerHTML = htmlContent;
+  }
+
+  drawer.classList.add('open');
+  overlay.classList.add('active');
+  if (shell) shell.classList.add('drawer-open');
+}
+
+function closeDetailDrawer() {
+  var drawer  = document.getElementById('detail-drawer');
+  var overlay = document.getElementById('drawer-overlay');
+  var shell   = document.querySelector('.app-shell');
+
+  drawer.classList.remove('open');
+  overlay.classList.remove('active');
+  if (shell) shell.classList.remove('drawer-open');
+}
+
+/* Close drawer on Escape */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var drawer = document.getElementById('detail-drawer');
+    if (drawer && drawer.classList.contains('open')) {
+      closeDetailDrawer();
+    }
+  }
+});
+</script>

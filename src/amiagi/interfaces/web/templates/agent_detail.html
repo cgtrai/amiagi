@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Agent {{ agent_id }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.agent-page { padding: var(--space-6); }
+.agent-page-header {
+  display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-6);
+}
+.agent-page-header h2 { margin: 0; color: var(--text-primary); }
+.agent-back { color: var(--text-muted); text-decoration: none; font-size: var(--font-size-lg); }
+.agent-back:hover { color: var(--text-primary); }
+.agent-columns {
+  display: grid; grid-template-columns: 340px 1fr; gap: var(--space-5);
+}
+@media (max-width: 900px) { .agent-columns { grid-template-columns: 1fr; } }
+.agent-info-panel {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5);
+  -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); height: fit-content;
+}
+.agent-info-panel h3 { margin: 0 0 var(--space-4); color: var(--text-primary); }
+.info-row { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--glass-border); font-size: var(--font-size-sm); }
+.info-row .info-label { color: var(--text-muted); }
+.info-row .info-value { color: var(--text-primary); font-weight: 500; }
+.agent-chat-panel {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: 0; display: flex; flex-direction: column;
+  -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); min-height: 500px;
+}
+.agent-chat-header {
+  padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--glass-border);
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.agent-chat-header h3 { margin: 0; color: var(--text-primary); }
+.agent-chat-body { flex: 1; overflow: hidden; }
+.agent-chat-input {
+  display: flex; gap: var(--space-3); padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--glass-border);
+}
+.agent-chat-input input { flex: 1; }
+.agent-config-section { margin-top: var(--space-5); }
+.agent-config-section h4 { color: var(--text-primary); margin-bottom: var(--space-3); }
+.persona-text {
+  background: var(--glass-bg-hover); border-radius: var(--glass-radius-sm);
+  padding: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary);
+  max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-family: var(--font-mono);
+}
+.skill-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.skill-item {
+  font-size: var(--font-size-xs); padding: 2px var(--space-2);
+  background: rgba(99,102,241,0.15); border-radius: var(--glass-radius-pill); color: var(--accent-purple);
+}
+.ws-indicator { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ws-indicator.connected { background: var(--state-success); }
+.ws-indicator.disconnected { background: var(--state-error); }
+.model-selector-row {
+  display: flex; gap: var(--space-2); align-items: center;
+}
+.model-selector-row select { flex: 1; }
+.model-save-status {
+  font-size: var(--font-size-xs); margin-top: var(--space-1); min-height: 1.2em;
+}
+.model-save-status.success { color: var(--color-success); }
+.model-save-status.error { color: var(--color-error); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agent-page">
+  <div class="agent-page-header">
+    <a href="/agents" class="agent-back">←</a>
+    <h2 id="agent-name">Agent</h2>
+    <span class="glass-badge" id="agent-state-badge">—</span>
+    <span class="ws-indicator disconnected" id="ws-indicator" title="WebSocket"></span>
+  </div>
+
+  <div class="agent-columns">
+    <!-- Left: Info panel -->
+    <div class="agent-info-panel">
+      <h3>{{ _("agent.info") }}</h3>
+      <div class="info-row"><span class="info-label">ID</span><span class="info-value" id="info-id">—</span></div>
+      <div class="info-row"><span class="info-label">{{ _("agent.role") }}</span><span class="info-value" id="info-role">—</span></div>
+      <div class="info-row"><span class="info-label">{{ _("agent.model") }}</span><span class="info-value" id="info-model">—</span></div>
+      <div class="info-row"><span class="info-label">{{ _("agent.backend") }}</span><span class="info-value" id="info-backend">—</span></div>
+      <div class="info-row"><span class="info-label">{{ _("agent.state") }}</span><span class="info-value" id="info-state">—</span></div>
+      <div class="info-row"><span class="info-label">{{ _("agent.created") }}</span><span class="info-value" id="info-created">—</span></div>
+
+      <div class="agent-config-section">
+        <h4>{{ _("agent.skills") }}</h4>
+        <div class="skill-list" id="skill-list"></div>
+      </div>
+
+      <div class="agent-config-section">
+        <h4>{{ _("agent.change_model") }}</h4>
+        <div class="model-selector-row">
+          <select class="glass-input glass-select" id="model-select" aria-label="{{ _("agent.change_model") }}">
+            <option value="">{{ _("agent.loading_models") }}</option>
+          </select>
+          <button class="glass-btn glass-btn--primary" id="btn-save-model" disabled>{{ _("agent.save") }}</button>
+        </div>
+        <div id="model-save-status" class="model-save-status"></div>
+      </div>
+
+      <div class="agent-config-section">
+        <h4>{{ _("agent.persona") }}</h4>
+        <div class="persona-text" id="persona-text">—</div>
+      </div>
+    </div>
+
+    <!-- Right: Chat panel -->
+    <div class="agent-chat-panel">
+      <div class="agent-chat-header">
+        <h3>💬 {{ _("agent.console") }}</h3>
+      </div>
+      <div class="agent-chat-body">
+        <chat-stream id="agent-chat"></chat-stream>
+      </div>
+      <div class="agent-chat-input">
+        <input type="text" class="glass-input" id="chat-input" placeholder="{{ _("agent.send_msg") }}" autocomplete="off"/>
+        <button class="glass-btn glass-btn--primary" id="chat-send">▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/chat-stream.js"></script>
+<script>
+(function() {
+  const agentId = '{{ agent_id }}';
+  let ws = null;
+  let currentModel = '';
+
+  async function loadAgent() {
+    try {
+      const res = await fetch('/api/agents/' + agentId);
+      const data = await res.json();
+      const a = data.agent || data;
+      document.getElementById('agent-name').textContent = a.name || a.agent_id;
+      document.getElementById('agent-state-badge').textContent = a.state;
+      document.getElementById('info-id').textContent = a.agent_id;
+      document.getElementById('info-role').textContent = a.role;
+      document.getElementById('info-model').textContent = a.model_name || '—';
+      document.getElementById('info-backend').textContent = a.model_backend || '—';
+      document.getElementById('info-state').textContent = a.state;
+      document.getElementById('info-created').textContent = a.created_at ? new Date(a.created_at).toLocaleString() : '—';
+
+      const skillList = document.getElementById('skill-list');
+      skillList.innerHTML = (a.skills||[]).map(s => '<span class="skill-item">'+s+'</span>').join('') || '<span class="text-muted">{{ _("agent.no_skills") }}</span>';
+
+      document.getElementById('persona-text').textContent = a.persona_prompt || '{{ _("agent.no_persona") }}';
+      currentModel = a.model_name || '';
+      loadModelSelector(currentModel);
+    } catch(e) { console.error('Failed to load agent', e); }
+  }
+
+  // ── Model selector ───────────────────────────────────────────
+  async function loadModelSelector(activeModel) {
+    const select = document.getElementById('model-select');
+    const btn = document.getElementById('btn-save-model');
+    try {
+      // Fetch local + cloud models in parallel
+      const [localRes, cloudRes, legacyRes] = await Promise.all([
+        fetch('/api/models/local').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/models/cloud').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/models').then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      const options = [];
+      // Local models
+      const localModels = (localRes && localRes.models) ? localRes.models.map(m => m.name) : [];
+      const legacyOllama = (legacyRes && legacyRes.ollama_models) || [];
+      const allLocal = [...new Set([...localModels, ...legacyOllama])];
+      for (const m of allLocal) {
+        options.push({ value: m, label: m + ' (local)', backend: 'ollama' });
+      }
+      // Cloud models
+      const cloudModels = (cloudRes && cloudRes.models) || [];
+      for (const c of cloudModels) {
+        var lbl = (c.display_name || c.model) + ' (' + c.provider + ')';
+        options.push({ value: c.model, label: lbl, backend: c.provider });
+      }
+      // Ensure active model is in the list
+      if (activeModel && !options.find(o => o.value === activeModel)) {
+        options.unshift({ value: activeModel, label: activeModel + ' ✓', backend: '' });
+      }
+      select.innerHTML = options.map(o =>
+        '<option value="' + o.value + '" data-backend="' + o.backend + '"' +
+        (o.value === activeModel ? ' selected' : '') + '>' + o.label +
+        (o.value === activeModel ? ' ✓' : '') + '</option>'
+      ).join('');
+      if (options.length === 0) {
+        select.innerHTML = '<option value="">{{ _("agent.no_models") }}</option>';
+      }
+      btn.disabled = false;
+    } catch(e) {
+      select.innerHTML = '<option value="">{{ _("agent.models_error") }}</option>';
+    }
+  }
+
+  async function saveModel() {
+    const select = document.getElementById('model-select');
+    const status = document.getElementById('model-save-status');
+    const newModel = select.value;
+    const selectedOption = select.options[select.selectedIndex];
+    const backend = selectedOption ? (selectedOption.dataset.backend || 'ollama') : 'ollama';
+    if (!newModel || newModel === currentModel) {
+      status.textContent = '{{ _("agent.model_unchanged") }}';
+      status.className = 'model-save-status';
+      return;
+    }
+    try {
+      const res = await fetch('/agents/' + agentId + '/config', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ model_name: newModel, model_backend: backend }),
+      });
+      if (res.ok) {
+        currentModel = newModel;
+        document.getElementById('info-model').textContent = newModel;
+        status.textContent = '{{ _("agent.model_saved") }}';
+        status.className = 'model-save-status success';
+      } else {
+        const err = await res.json();
+        status.textContent = err.error || '{{ _("agent.model_save_error") }}';
+        status.className = 'model-save-status error';
+      }
+    } catch(e) {
+      status.textContent = '{{ _("agent.model_save_error") }}';
+      status.className = 'model-save-status error';
+    }
+  }
+
+  document.getElementById('btn-save-model').addEventListener('click', saveModel);
+
+  // ── WebSocket ────────────────────────────────────────────────
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws/agent/' + agentId);
+    const ind = document.getElementById('ws-indicator');
+    ws.onopen = () => { ind.className = 'ws-indicator connected'; };
+    ws.onclose = () => { ind.className = 'ws-indicator disconnected'; setTimeout(connectWS, 3000); };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        const chat = document.getElementById('agent-chat');
+        if (msg.type === 'agent_message' || msg.type === 'message') {
+          chat.addMessage({ role: 'agent', text: msg.text || msg.content || JSON.stringify(msg), timestamp: msg.timestamp });
+        } else if (msg.type === 'log') {
+          chat.addMessage({ role: 'agent', text: '[LOG] ' + (msg.message || msg.text || ''), timestamp: msg.timestamp });
+        }
+      } catch(err) {}
+    };
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'user_prompt', message: text }));
+    const chat = document.getElementById('agent-chat');
+    chat.addMessage({ role: 'user', text: text, timestamp: new Date().toISOString() });
+    input.value = '';
+  }
+
+  document.getElementById('chat-send').addEventListener('click', sendMessage);
+  document.getElementById('chat-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  loadAgent();
+  connectWS();
+})();
+</script>
+{% endblock %}

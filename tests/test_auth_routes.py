@@ -55,10 +55,12 @@ class TestAuthLogin:
         assert r.status_code == 302
         assert "accounts.google.com" in r.headers["location"]
 
-    def test_login_sets_state_cookie(self):
+    def test_login_includes_state_in_url(self):
         client = TestClient(_make_app())
         r = client.get("/auth/login", follow_redirects=False)
-        assert "oauth_state" in r.cookies
+        # State is embedded in the Google redirect URL, not as a cookie
+        assert r.status_code == 302
+        assert "state=" in r.headers["location"]
 
     def test_login_renders_template_with_google_url(self, tmp_path):
         """When Jinja2Templates are configured, renders login.html."""
@@ -128,6 +130,9 @@ class TestAuthCallback:
         pool = MagicMock()
         pool.acquire.return_value.__aenter__ = AsyncMock(return_value=fake_conn)
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        # Pool-level async helpers used by login attempt tracking & admin token check
+        pool.fetchval = AsyncMock(return_value=0)
+        pool.execute = AsyncMock(return_value="INSERT 0 1")
 
         sm = AsyncMock()
         sm.create_session.return_value = "jwt-token-xxx"
@@ -135,9 +140,9 @@ class TestAuthCallback:
         client = TestClient(
             _make_app(session_manager=sm, db_pool=pool),
         )
-        client.cookies.set("oauth_state", "s")
+        # HMAC-signed state — no cookie needed, just matching query param
         r = client.get(
-            "/auth/callback?code=AUTH_CODE&state=s",
+            "/auth/callback?code=AUTH_CODE&state=signed-state",
             follow_redirects=False,
         )
         assert r.status_code == 302

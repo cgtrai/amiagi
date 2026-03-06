@@ -1,0 +1,274 @@
+/* ================================================================
+   Evaluations / Benchmarks / A/B Tests page styles
+   ================================================================ */
+
+.evaluations-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────── */
+.eval-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.eval-tabs .tab-btn {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  border: 1px solid transparent;
+  background: var(--glass-pill-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.eval-tabs .tab-btn:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-primary);
+}
+
+.eval-tabs .tab-btn.active {
+  background: var(--glass-bg-active);
+  border-color: var(--glass-border);
+  color: var(--text-primary);
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────── */
+.eval-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ── Overview cards ──────────────────────────────────────────── */
+.eval-overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+
+.overview-card .card-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.overview-card .card-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* ── History table ───────────────────────────────────────────── */
+.eval-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.eval-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.eval-table td {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.eval-table tr:hover td {
+  background: var(--glass-bg-hover);
+}
+
+/* ── A/B campaign cards ──────────────────────────────────────── */
+.ab-campaign-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+
+.ab-card {
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+
+.ab-card .ab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.ab-card .ab-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.ab-card .ab-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--glass-radius-full);
+}
+
+.ab-status.running   { color: #38bdf8; background: rgba(14,165,233,.12); }
+.ab-status.completed { color: #4ade80; background: rgba(34,197,94,.12); }
+.ab-status.pending   { color: #94a3b8; background: rgba(148,163,184,.12); }
+
+.ab-card .ab-variants {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Baseline table ──────────────────────────────────────────── */
+.baseline-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.baseline-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.baseline-table td {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+/* ── Suite grid ──────────────────────────────────────────────── */
+.suite-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.suite-card {
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+
+.suite-card .suite-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.suite-card .suite-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Regression alerts ───────────────────────────────────────── */
+.regression-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.regression-alert {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ── Chart container ─────────────────────────────────────────── */
+.eval-chart-container {
+  min-height: 240px;
+  margin: var(--space-3) 0;
+}
+
+/* ── Dialogs ─────────────────────────────────────────────────── */
+dialog.eval-dialog {
+  max-width: 500px;
+  width: 90vw;
+  padding: var(--space-4);
+  border-radius: var(--glass-radius);
+  background: linear-gradient(160deg, rgba(18,22,35,.95), rgba(12,16,28,.98));
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+}
+
+dialog.eval-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+dialog.eval-dialog label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+dialog.eval-dialog input,
+dialog.eval-dialog select {
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  margin-bottom: var(--space-3);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--space-6) var(--space-4);
+  font-size: 0.9rem;
+}

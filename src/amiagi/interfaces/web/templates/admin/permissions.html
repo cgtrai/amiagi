@@ -1,20 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Permissions Matrix{% endblock %}
+{% block title %}Amiagi — {{ _("admin.permissions") }}{% endblock %}
 {% block content %}
 <div class="container">
-  <h1>Permissions Matrix</h1>
-  <p class="text-secondary">Roles × permissions overview. Toggle to modify.</p>
+  {% include "partials/admin_nav.html" %}
+  <h1>{{ _("admin.permissions") }}</h1>
+  <p class="text-secondary">{{ _("admin.roles") }} × {{ _("admin.permissions") }}</p>
 
   <div class="glass-card glass-card--scroll-x">
     <table class="table" id="perm-matrix">
       <thead>
         <tr>
-          <th>Permission</th>
+          <th>{{ _("admin.permissions") }}</th>
           <!-- Role columns injected by JS -->
         </tr>
       </thead>
       <tbody id="perm-body">
-        <tr><td colspan="99">Loading…</td></tr>
+        <tr><td colspan="99">{{ _("common.loading") }}</td></tr>
       </tbody>
     </table>
   </div>

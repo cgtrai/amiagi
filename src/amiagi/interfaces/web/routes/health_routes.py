@@ -1,9 +1,10 @@
-"""Health check routes — GET /health, GET /health/detailed."""
+"""Health check routes — GET /health, GET /health/detailed, /vram, /connections."""
 
 from __future__ import annotations
 
 import os
 import time
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -54,16 +55,11 @@ async def health_detailed(request: Request) -> JSONResponse:
     else:
         checks["db_pool"] = None
 
-    # ── Ollama connectivity (fast check, timeout 2s) ──
+    # ── Ollama connectivity (uses shared 30-s cache) ──
     try:
-        import httpx  # noqa: F811
-
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://127.0.0.1:11434/api/tags")
-            checks["ollama"] = {
-                "available": r.status_code == 200,
-                "models": len(r.json().get("models", [])) if r.status_code == 200 else 0,
-            }
+        from amiagi.interfaces.web.routes.api_routes import _check_ollama_cached
+        alive, models = await _check_ollama_cached()
+        checks["ollama"] = {"available": alive, "models": models}
     except Exception:
         checks["ollama"] = {"available": False, "models": 0}
 
@@ -105,7 +101,101 @@ async def health_detailed(request: Request) -> JSONResponse:
     return JSONResponse(checks)
 
 
+async def health_vram(request: Request) -> JSONResponse:
+    """Return GPU/VRAM information and per-model allocation."""
+    data: dict[str, Any] = {"available": False}
+
+    # ── VramAdvisor (if it exists on app state) ──
+    vram_advisor = getattr(request.app.state, "vram_advisor", None)
+    if vram_advisor is not None:
+        try:
+            info = vram_advisor.detect()
+            data["available"] = True
+            data["total_mb"] = getattr(info, "total_mb", 0)
+            data["used_mb"] = getattr(info, "used_mb", 0)
+            data["free_mb"] = getattr(info, "free_mb", 0)
+        except Exception:
+            pass
+
+    # ── VRAMScheduler per-agent allocation ──
+    vram_sched = getattr(request.app.state, "vram_scheduler", None)
+    if vram_sched is not None:
+        try:
+            alloc = vram_sched.allocations() if hasattr(vram_sched, "allocations") else {}
+            data["allocations"] = alloc
+        except Exception:
+            data["allocations"] = {}
+
+    # ── Ollama model sizes (list loaded models with size info) ──
+    try:
+        from amiagi.interfaces.web.routes.api_routes import _check_ollama_cached
+        alive, model_count = await _check_ollama_cached()
+        data["ollama_alive"] = alive
+        data["ollama_model_count"] = model_count
+    except Exception:
+        data["ollama_alive"] = False
+
+    return JSONResponse(data)
+
+
+async def health_connections(request: Request) -> JSONResponse:
+    """Return database pool and connection statistics."""
+    data: dict[str, Any] = {}
+
+    # ── DB pool stats ──
+    pool = getattr(request.app.state, "db_pool", None)
+    if pool is not None and hasattr(pool, "get_size"):
+        data["db_pool"] = {
+            "size": pool.get_size(),
+            "idle": pool.get_idle_size(),
+            "min": pool.get_min_size(),
+            "max": pool.get_max_size(),
+            "utilization_pct": round(
+                (pool.get_size() - pool.get_idle_size()) / max(pool.get_max_size(), 1) * 100, 1
+            ),
+        }
+    elif pool is not None:
+        # SQLite fallback
+        data["db_pool"] = {"type": "sqlite", "size": 1}
+    else:
+        data["db_pool"] = None
+
+    # ── WebSocket connections ──
+    hub = getattr(request.app.state, "event_hub", None)
+    if hub is not None:
+        try:
+            data["websocket_clients"] = len(hub._clients) if hasattr(hub, "_clients") else 0
+        except Exception:
+            data["websocket_clients"] = 0
+
+    # ── Rate limiter status ──
+    rate_limiter = getattr(request.app.state, "rate_limiter", None)
+    if rate_limiter is not None:
+        try:
+            data["rate_limiter"] = {"active": True}
+        except Exception:
+            data["rate_limiter"] = None
+
+    # ── Active agents/tasks ──
+    registry = getattr(request.app.state, "agent_registry", None)
+    if registry is not None:
+        try:
+            agents = registry.list_all()
+            data["agent_count"] = len(agents)
+        except Exception:
+            data["agent_count"] = 0
+
+    # ── Uptime ──
+    startup_ts = getattr(request.app.state, "_startup_time", None)
+    if startup_ts is not None:
+        data["uptime_seconds"] = round(time.time() - startup_ts, 1)
+
+    return JSONResponse(data)
+
+
 health_routes = [
     Route("/health", health, methods=["GET"]),
     Route("/health/detailed", health_detailed, methods=["GET"]),
+    Route("/api/health/vram", health_vram, methods=["GET"]),
+    Route("/api/health/connections", health_connections, methods=["GET"]),
 ]

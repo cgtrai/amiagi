@@ -1,27 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Skills{% endblock %}
+{% block title %}Amiagi — {{ _("admin.skills") }}{% endblock %}
 {% block content %}
 <div class="container">
+  {% include "partials/admin_nav.html" %}
   <div class="page-header">
-    <h1>Skills</h1>
-    <button class="btn btn-primary" onclick="openCreateSkill()">+ New Skill</button>
+    <h1>{{ _("admin.skills") }}</h1>
+    <button class="btn btn-primary" onclick="openCreateSkill()">+ {{ _("agents.create") }}</button>
   </div>
 
   <div class="glass-card">
     <table class="table" id="skills-table">
       <thead>
         <tr>
-          <th>Name</th>
+          <th>{{ _("admin.name") }}</th>
           <th>Display Name</th>
           <th>Keywords</th>
           <th>Token Cost</th>
           <th>Priority</th>
-          <th>Active</th>
-          <th>Actions</th>
+          <th>{{ _("admin.active") }}</th>
+          <th>{{ _("admin.actions") }}</th>
         </tr>
       </thead>
       <tbody id="skills-body">
-        <tr><td colspan="7">Loading…</td></tr>
+        <tr><td colspan="7">{{ _("common.loading") }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -56,8 +57,8 @@
       <input id="sk-priority" type="number" value="50">
     </div>
     <div class="btn-row">
-      <button class="btn" onclick="closeCreateModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="createSkill()">Create</button>
+      <button class="btn" onclick="closeCreateModal()">{{ _("common.cancel") }}</button>
+      <button class="btn btn-primary" onclick="createSkill()">{{ _("common.save") }}</button>
     </div>
   </div>
 </div>

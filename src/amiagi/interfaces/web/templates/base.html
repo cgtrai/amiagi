@@ -11,22 +11,29 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell" id="app-shell">
 
     {% include "partials/nav.html" %}
-    {% include "partials/sidebar.html" %}
+    {% include "partials/command_rail.html" %}
 
     <main class="app-main">
       {% block content %}{% endblock %}
     </main>
 
+    {% include "partials/detail_drawer.html" %}
+
   </div>
+
+  {% include "partials/status_bar.html" %}
 
   <!-- Web Components -->
   <script src="/static/js/components/global-search.js" defer></script>
   <script src="/static/js/components/session-timeline.js" defer></script>
   <script src="/static/js/components/performance-chart.js" defer></script>
+  <script src="/static/js/status_bar.js" defer></script>
   <global-search></global-search>
+
+  {% include "partials/toast.html" %}
 
   <!-- Service Worker registration (Web Push) -->
   <script>

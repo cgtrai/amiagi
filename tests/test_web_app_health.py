@@ -76,11 +76,11 @@ class TestHealthEndpoint:
         data = client.get("/health").json()
         assert data["version"] == __version__
 
-    def test_health_version_is_1_1_0(self):
+    def test_health_version_is_1_2_0(self):
         app = _create_test_app()
         client = TestClient(app)
         data = client.get("/health").json()
-        assert data["version"] == "1.1.0"
+        assert data["version"] == "1.2.0"
 
     def test_health_content_type(self):
         app = _create_test_app()

@@ -50,9 +50,11 @@ class WorkflowEngine:
         *,
         executor: NodeExecutor | None = None,
         gate_handler: Callable[[WorkflowNode], bool] | None = None,
+        on_gate_waiting: Callable[[WorkflowNode, "WorkflowRun"], None] | None = None,
     ) -> None:
         self._executor = executor or self._default_executor
         self._gate_handler = gate_handler  # returns True = approved
+        self._on_gate_waiting = on_gate_waiting  # fires when gate enters WAITING_APPROVAL
         self._lock = threading.Lock()
         self._runs: dict[str, WorkflowRun] = {}
 
@@ -228,6 +230,11 @@ class WorkflowEngine:
                 node.result = "auto-approved"
             else:
                 node.status = NodeStatus.WAITING_APPROVAL
+                if self._on_gate_waiting is not None:
+                    try:
+                        self._on_gate_waiting(node, run)
+                    except Exception:
+                        logger.debug("on_gate_waiting callback error", exc_info=True)
             return
 
         # FAN_IN — just mark complete (synchronisation point)

@@ -1,0 +1,53 @@
+{# ── Status Bar — 36px bottom bar with system telemetry ─────── #}
+{# Icons: Lucide inline SVG — 14×14 for status bar density #}
+<footer class="status-bar app-status" id="status-bar">
+
+  {# ── Model status ──────────────────────────────────────────── #}
+  <div class="status-bar-section status-clickable" title="{{ _('status.model_status') }}">
+    <span class="status-dot status-dot--green" id="model-status-dot"></span>
+    <span id="model-status-name">{{ model_name | default('—') }}</span>
+  </div>
+
+  {# ── Budget bar ────────────────────────────────────────────── #}
+  <div class="status-bar-section" title="{{ _('status.budget') }}">
+    {# lucide: wallet #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+    <div class="progress-micro">
+      <div class="progress-micro-fill progress-micro-fill--green"
+           id="budget-bar-fill"
+           data-pct="{{ budget_pct | default(100) }}"></div>
+    </div>
+    <span id="budget-label">{{ budget_used | default('0.00') }}/{{ budget_limit | default('∞') }}</span>
+  </div>
+
+  {# ── Active tasks ──────────────────────────────────────────── #}
+  <div class="status-bar-section status-clickable" title="{{ _('status.active_tasks') }}">
+    {# lucide: list-checks #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+    <span id="active-tasks-count">{{ active_tasks | default(0) }}</span>
+  </div>
+
+  {# ── Inbox pending ─────────────────────────────────────────── #}
+  <div class="status-bar-section status-clickable" title="{{ _('status.inbox_pending') }}">
+    {# lucide: inbox #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+    <span id="inbox-pending-count">{{ inbox_pending | default(0) }}</span>
+  </div>
+
+  <div class="status-bar-spacer"></div>
+
+  {# ── Token counter ─────────────────────────────────────────── #}
+  <div class="status-bar-section status-hide-mobile" title="{{ _('status.tokens') }}">
+    {# lucide: hash #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+    <span id="token-counter">{{ token_count | default(0) }}</span>
+  </div>
+
+  {# ── Uptime ────────────────────────────────────────────────── #}
+  <div class="status-bar-section status-hide-mobile" title="{{ _('status.uptime') }}">
+    {# lucide: clock #}
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span id="uptime-label">{{ uptime | default('0m') }}</span>
+  </div>
+
+</footer>

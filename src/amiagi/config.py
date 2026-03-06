@@ -99,11 +99,21 @@ class Settings:
     db_password: str = ""
     db_min_pool: int = 2
     db_max_pool: int = 10
+    # SQLite fallback (when db_user is empty)
+    db_sqlite_path: str = "data/web.db"
     # v1.0 — team composition (Phase 11)
     teams_dir: Path = Path("./data/teams")
 
     @staticmethod
     def from_env() -> "Settings":
+        # Load .env file (if present) so that AMIAGI_* / OAUTH_* variables
+        # are available via os.getenv without manual ``export``.
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+
         retry_backoff_raw = os.getenv("OLLAMA_RETRY_BACKOFF_SECONDS", "0.75")
         try:
             retry_backoff = float(retry_backoff_raw)
@@ -315,6 +325,7 @@ class Settings:
                 os.getenv("AMIAGI_DB_MAX_POOL", "10"),
                 default=10,
             ),
+            db_sqlite_path=os.getenv("AMIAGI_DB_SQLITE_PATH", "data/web.db"),
             # Phase 11
             teams_dir=Path(
                 os.getenv("AMIAGI_TEAMS_DIR", "./data/teams")

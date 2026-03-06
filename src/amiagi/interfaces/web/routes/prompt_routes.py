@@ -18,7 +18,7 @@ from starlette.routing import Route
 
 async def list_prompts(request: Request) -> JSONResponse:
     repo = request.app.state.prompt_repository
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     tag = request.query_params.get("tag")
     prompts = await repo.list_prompts(user_id=user_id, tag=tag)
     return JSONResponse([p.to_dict() for p in prompts])
@@ -26,7 +26,7 @@ async def list_prompts(request: Request) -> JSONResponse:
 
 async def create_prompt(request: Request) -> JSONResponse:
     repo = request.app.state.prompt_repository
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     body = await request.json()
     prompt = await repo.create_prompt(
         user_id=user_id,
@@ -85,7 +85,7 @@ async def use_prompt(request: Request) -> JSONResponse:
 async def clone_prompt(request: Request) -> JSONResponse:
     """``POST /prompts/{id}/clone`` — duplicate an existing prompt for the current user."""
     repo = request.app.state.prompt_repository
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     source = await repo.get_prompt(request.path_params["id"])
     if not source:
         return JSONResponse({"error": "not found"}, 404)

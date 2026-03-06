@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Logi aktywności{% endblock %}
+{% block title %}Amiagi — {{ _("admin.activity_logs") }}{% endblock %}
 {% block content %}
   <div class="container">
-    <h1>Logi aktywności</h1>
+    {% include "partials/admin_nav.html" %}
+    <h1>{{ _("admin.activity_logs") }}</h1>
 
     <table class="table glass-card">
       <thead>
         <tr>
-          <th>Data</th>
-          <th>Email</th>
-          <th>Akcja</th>
-          <th>Szczegóły</th>
-          <th>IP</th>
+          <th>{{ _("admin.date") }}</th>
+          <th>{{ _("admin.email") }}</th>
+          <th>{{ _("admin.actions") }}</th>
+          <th>{{ _("admin.details") }}</th>
+          <th>{{ _("admin.ip") }}</th>
         </tr>
       </thead>
       <tbody>

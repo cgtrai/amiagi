@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("knowledge.title") }} — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/knowledge.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📚 {{ _("knowledge.title") }}</h1>
+  <div class="page-actions">
+    <button class="btn btn-primary" id="btn-new-base">+ {{ _("knowledge.new_base") }}</button>
+    <button class="btn btn-outline" id="btn-import">⬆ {{ _("knowledge.import") }}</button>
+  </div>
+</div>
+
+<!-- Section tabs -->
+<div class="section-tabs">
+  <button class="tab-btn active" data-tab="overview">📊 {{ _("knowledge.tab_overview") }}</button>
+  <button class="tab-btn" data-tab="sources">📁 {{ _("knowledge.tab_sources") }}</button>
+  <button class="tab-btn" data-tab="explore">🔍 {{ _("knowledge.tab_explore") }}</button>
+  <button class="tab-btn" data-tab="pipeline">⚙️ {{ _("knowledge.tab_pipeline") }}</button>
+  <button class="tab-btn" data-tab="stats">📈 {{ _("knowledge.tab_stats") }}</button>
+</div>
+
+<!-- Overview -->
+<section id="tab-overview" class="knowledge-tab active">
+  <div id="bases-list" class="bases-grid">
+    <p class="empty-state">{{ _("knowledge.loading") }}</p>
+  </div>
+</section>
+
+<!-- Sources -->
+<section id="tab-sources" class="knowledge-tab" hidden>
+  <div class="glass-card">
+    <div class="section-header">
+      <h3>{{ _("knowledge.sources") }}</h3>
+      <button class="btn btn-sm btn-primary" id="btn-add-source">+ {{ _("knowledge.add_source") }}</button>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _("knowledge.col_type") }}</th>
+          <th>{{ _("knowledge.col_path") }}</th>
+          <th>{{ _("knowledge.col_chunks") }}</th>
+          <th>{{ _("knowledge.col_status") }}</th>
+          <th>{{ _("knowledge.col_indexed") }}</th>
+          <th>{{ _("common.actions") }}</th>
+        </tr>
+      </thead>
+      <tbody id="sources-body">
+        <tr><td colspan="6" class="empty-state">{{ _("knowledge.no_sources") }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Explore (semantic search) -->
+<section id="tab-explore" class="knowledge-tab" hidden>
+  <div class="glass-card">
+    <div class="explore-search-bar">
+      <select id="explore-base-select">
+        <option value="global">{{ _("knowledge.global_base") }}</option>
+      </select>
+      <input type="text" id="explore-query" placeholder="{{ _('knowledge.explore_placeholder') }}"/>
+      <select id="explore-top">
+        <option value="5">Top 5</option>
+        <option value="10">Top 10</option>
+        <option value="20">Top 20</option>
+      </select>
+      <button class="btn btn-primary" id="btn-explore-search">{{ _("common.search") }}</button>
+    </div>
+    <div id="explore-results" class="explore-results">
+      <p class="empty-state">{{ _("knowledge.explore_hint") }}</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pipeline -->
+<section id="tab-pipeline" class="knowledge-tab" hidden>
+  <div class="glass-card">
+    <h3>{{ _("knowledge.pipeline_config") }}</h3>
+    <div class="pipeline-config-grid">
+      <label>{{ _("knowledge.chunking") }}
+        <select id="cfg-chunking">
+          <option value="paragraph">{{ _("knowledge.chunk_paragraph") }}</option>
+          <option value="sentence">{{ _("knowledge.chunk_sentence") }}</option>
+          <option value="fixed">{{ _("knowledge.chunk_fixed") }}</option>
+        </select>
+      </label>
+      <label>{{ _("knowledge.chunk_size") }}
+        <select id="cfg-chunk-size">
+          <option value="256">256 tokens</option>
+          <option value="512" selected>512 tokens</option>
+          <option value="1024">1024 tokens</option>
+        </select>
+      </label>
+      <label>{{ _("knowledge.overlap") }}
+        <select id="cfg-overlap">
+          <option value="32">32 tokens</option>
+          <option value="64" selected>64 tokens</option>
+          <option value="128">128 tokens</option>
+        </select>
+      </label>
+      <label>{{ _("knowledge.embedding") }}
+        <select id="cfg-embedding">
+          <option value="tfidf" selected>TF-IDF (local)</option>
+        </select>
+      </label>
+    </div>
+    <div class="pipeline-status glass-pill" id="pipeline-status">
+      {{ _("knowledge.pipeline_idle") }}
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<section id="tab-stats" class="knowledge-tab" hidden>
+  <div id="kb-stats-grid" class="stats-grid">
+    <p class="empty-state">{{ _("knowledge.loading") }}</p>
+  </div>
+</section>
+
+<!-- Add Source dialog -->
+<dialog id="add-source-dialog" class="glass-dialog">
+  <form id="add-source-form" method="dialog">
+    <h3>{{ _("knowledge.add_source_title") }}</h3>
+    <label>{{ _("knowledge.base") }}
+      <select name="base_id" id="source-base-select"></select>
+    </label>
+    <label>{{ _("knowledge.source_type") }}
+      <select name="type">
+        <option value="file">📄 {{ _("knowledge.type_file") }}</option>
+        <option value="dir">📁 {{ _("knowledge.type_dir") }}</option>
+        <option value="url">🌐 {{ _("knowledge.type_url") }}</option>
+      </select>
+    </label>
+    <label>{{ _("knowledge.path") }}
+      <input type="text" name="path" required placeholder="/docs/api/ or https://..."/>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">{{ _("knowledge.add_source") }}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- New Base dialog -->
+<dialog id="new-base-dialog" class="glass-dialog">
+  <form id="new-base-form" method="dialog">
+    <h3>{{ _("knowledge.new_base_title") }}</h3>
+    <label>{{ _("knowledge.name") }}
+      <input type="text" name="name" required placeholder="Coding Standards"/>
+    </label>
+    <label>{{ _("knowledge.description") }}
+      <textarea name="description" rows="2"></textarea>
+    </label>
+    <label>{{ _("knowledge.engine") }}
+      <select name="engine">
+        <option value="tfidf">TF-IDF</option>
+      </select>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">{{ _("knowledge.create") }}</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/knowledge-search.js" defer></script>
+<script src="/static/js/components/index-progress.js" defer></script>
+<script src="/static/js/knowledge.js" defer></script>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("budget.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/budget.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="budget-main">
+
+  {# ── Toolbar ────────────────────────────────────────────── #}
+  <div class="budget-toolbar">
+    <h2>{{ _("budget.title") }}</h2>
+    <div class="budget-toolbar-actions">
+      <button class="glass-btn glass-btn--ghost" id="btn-refresh-budget" title="{{ _('budget.refresh') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        {{ _("budget.refresh") }}
+      </button>
+    </div>
+  </div>
+
+  {# ── Session overview ───────────────────────────────────── #}
+  <div class="budget-section">
+    <h3>{{ _("budget.session_overview") }}</h3>
+    <div class="budget-overview-grid" id="budget-overview">
+      <div class="glass-card budget-stat-card">
+        <div class="budget-stat-label">{{ _("budget.total_spent") }}</div>
+        <div class="budget-stat-value" id="budget-total-spent">$0.00</div>
+        <div class="budget-bar-wrap">
+          <div class="budget-bar" id="budget-bar-session"></div>
+        </div>
+        <div class="budget-stat-sub" id="budget-limit-text">/ $0.00</div>
+      </div>
+      <div class="glass-card budget-stat-card">
+        <div class="budget-stat-label">{{ _("budget.total_tokens") }}</div>
+        <div class="budget-stat-value" id="budget-total-tokens">0</div>
+      </div>
+      <div class="glass-card budget-stat-card">
+        <div class="budget-stat-label">{{ _("budget.total_requests") }}</div>
+        <div class="budget-stat-value" id="budget-total-requests">0</div>
+      </div>
+      <div class="glass-card budget-stat-card">
+        <div class="budget-stat-label">{{ _("budget.utilization") }}</div>
+        <div class="budget-stat-value" id="budget-utilization">0%</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Cost history chart ───────────────────────────────────── #}
+  <div class="budget-section">
+    <h3>{{ _("budget.history_chart") }}</h3>
+    <div class="glass-card budget-chart-card">
+      <div class="budget-chart-container" id="budget-chart-container">
+        <canvas id="budget-history-chart" width="800" height="200"></canvas>
+        <p class="budget-empty" id="budget-chart-empty">{{ _("budget.no_history") }}</p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Per-agent breakdown ────────────────────────────────── #}
+  <div class="budget-section">
+    <h3>{{ _("budget.per_agent") }}</h3>
+    <div class="budget-agent-grid" id="budget-agent-grid"></div>
+  </div>
+
+  {# ── Per-task breakdown ─────────────────────────────────── #}
+  <div class="budget-section">
+    <h3>{{ _("budget.per_task") }}</h3>
+    <div class="budget-task-grid" id="budget-task-grid">
+      <div class="budget-empty" id="budget-task-empty">{{ _("budget.no_tasks") }}</div>
+    </div>
+  </div>
+
+  {# ── Quotas configuration ──────────────────────────────── #}
+  <div class="budget-section">
+    <h3>{{ _("budget.quotas") }}</h3>
+    <div class="glass-card budget-quotas-card" id="budget-quotas">
+      <form id="budget-quotas-form" class="budget-quotas-form">
+        <div class="budget-quota-row">
+          <label for="quota-session-limit">{{ _("budget.session_limit") }}</label>
+          <input type="number" step="0.01" min="0" id="quota-session-limit" class="budget-quota-input" />
+        </div>
+        <div class="budget-quota-row">
+          <label for="quota-warning-pct">{{ _("budget.warning_pct") }}</label>
+          <input type="number" step="1" min="0" max="100" id="quota-warning-pct" class="budget-quota-input" />
+        </div>
+        <div class="budget-quota-row">
+          <label for="quota-blocked-pct">{{ _("budget.blocked_pct") }}</label>
+          <input type="number" step="1" min="0" max="100" id="quota-blocked-pct" class="budget-quota-input" />
+        </div>
+        <div class="budget-quota-actions">
+          <button type="submit" class="glass-btn glass-btn--primary">{{ _("budget.save_quotas") }}</button>
+          <button type="button" class="glass-btn glass-btn--ghost glass-btn--danger" id="btn-reset-session" title="{{ _('budget.reset_session') }}">{{ _("budget.reset_session") }}</button>
+        </div>
+        <span class="budget-quota-status" id="quota-status"></span>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+{% block scripts %}
+<script src="/static/js/budget.js"></script>
+{% endblock %}
+{% endblock %}

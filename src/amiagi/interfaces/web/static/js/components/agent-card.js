@@ -14,14 +14,25 @@ class AgentCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._renderPending = false;
   }
 
   connectedCallback() {
-    this.render();
+    this._scheduleRender();
   }
 
   attributeChangedCallback() {
-    this.render();
+    this._scheduleRender();
+  }
+
+  /** Batch multiple attribute changes into a single render via microtask. */
+  _scheduleRender() {
+    if (this._renderPending) return;
+    this._renderPending = true;
+    queueMicrotask(() => {
+      this._renderPending = false;
+      this.render();
+    });
   }
 
   get agentId() { return this.getAttribute("agent-id") || ""; }

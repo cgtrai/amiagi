@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Workspace — Amiagi{% endblock %}
+{% block title %}{{ _("workspace.title") }} — Amiagi{% endblock %}
 
 {% block head %}
 <!-- Highlight.js for syntax highlighting -->
@@ -12,9 +12,9 @@
 <div class="ws-layout">
   <!-- File tree -->
   <div class="ws-tree">
-    <h3>📂 Workspace</h3>
+    <h3>📂 {{ _("workspace.title") }}</h3>
     <ul id="ws-tree-list">
-      <li class="ws-empty">Loading…</li>
+      <li class="ws-empty">{{ _("common.loading") }}</li>
     </ul>
   </div>
 

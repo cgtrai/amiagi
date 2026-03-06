@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Role{% endblock %}
+{% block title %}Amiagi — {{ _("admin.roles") }}{% endblock %}
 {% block content %}
   <div class="container">
-    <h1>Role</h1>
+    {% include "partials/admin_nav.html" %}
+    <h1>{{ _("admin.roles") }}</h1>
 
     <table class="table glass-card">
       <thead>
         <tr>
-          <th>Nazwa</th>
-          <th>Opis</th>
-          <th>Systemowa</th>
-          <th>Uprawnienia</th>
-          <th>Akcje</th>
+          <th>{{ _("admin.name") }}</th>
+          <th>{{ _("admin.description") }}</th>
+          <th>{{ _("admin.system_role") }}</th>
+          <th>{{ _("admin.permissions") }}</th>
+          <th>{{ _("admin.actions") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -19,11 +20,11 @@
         <tr>
           <td>{{ role.name }}</td>
           <td>{{ role.description }}</td>
-          <td>{{ "Tak" if role.is_system else "Nie" }}</td>
+          <td>{{ _("admin.yes") if role.is_system else _("admin.no") }}</td>
           <td>{{ role.permissions | map(attribute='codename') | join(', ') }}</td>
           <td>
             {% if not role.is_system %}
-              <button class="btn btn-xs btn-danger" onclick="deleteRole('{{ role.id }}')">Usuń</button>
+              <button class="btn btn-xs btn-danger" onclick="deleteRole('{{ role.id }}')">{{ _("common.delete") }}</button>
             {% endif %}
           </td>
         </tr>

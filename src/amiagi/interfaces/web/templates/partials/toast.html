@@ -1,0 +1,53 @@
+<!-- Toast notification container — include once in base.html -->
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+<script>
+(function() {
+  'use strict';
+  /**
+   * showToast(message, type?, duration?)
+   * type: 'info' | 'success' | 'warning' | 'error'
+   */
+  window.showToast = function(message, type, duration) {
+    type = type || 'info';
+    duration = duration || 4000;
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+
+    var toast = document.createElement('div');
+    toast.className = 'toast toast--' + type;
+    toast.setAttribute('role', 'status');
+
+    var icons = {info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌'};
+    toast.innerHTML =
+      '<span class="toast-icon">' + (icons[type] || '') + '</span>' +
+      '<span class="toast-msg">' + _esc(message) + '</span>' +
+      '<button class="toast-close" aria-label="Close">&times;</button>';
+
+    toast.querySelector('.toast-close').addEventListener('click', function() {
+      dismiss(toast);
+    });
+
+    container.appendChild(toast);
+    // Trigger entrance animation
+    requestAnimationFrame(function() { toast.classList.add('toast--visible'); });
+
+    var timer = setTimeout(function() { dismiss(toast); }, duration);
+    toast._timer = timer;
+
+    function dismiss(el) {
+      clearTimeout(el._timer);
+      el.classList.remove('toast--visible');
+      el.addEventListener('transitionend', function() { el.remove(); });
+      // Fallback if transition doesn't fire
+      setTimeout(function() { if (el.parentNode) el.remove(); }, 400);
+    }
+
+    function _esc(s) {
+      var d = document.createElement('span');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+  };
+})();
+</script>

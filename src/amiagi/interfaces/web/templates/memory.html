@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("memory.title") }} — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/memory.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ _("memory.title") }}</h1>
+  <div class="page-actions">
+    <button class="btn btn-outline active" data-tab="messages">{{ _("memory.tab_messages") }}</button>
+    <button class="btn btn-outline" data-tab="shared">{{ _("memory.tab_shared") }}</button>
+    <button class="btn btn-outline" data-tab="knowledge">{{ _("memory.tab_knowledge") }}</button>
+  </div>
+</div>
+
+<div class="memory-layout">
+  <!-- Agent sidebar -->
+  <aside class="memory-sidebar glass-card">
+    <h3>{{ _("memory.agents") }}</h3>
+    <div id="agent-list" class="agent-nav">
+      <button class="agent-btn active" data-agent="">
+        {{ _("memory.all_agents") }} <span class="badge" id="total-count">0</span>
+      </button>
+      <!-- Dynamically populated -->
+    </div>
+    <div class="sidebar-actions">
+      <div class="search-box">
+        <input type="text" id="memory-search" placeholder="{{ _('memory.search_placeholder') }}"/>
+        <button class="btn btn-sm" id="btn-search">🔍</button>
+      </div>
+      <button class="btn btn-sm btn-outline" id="btn-export">📥 {{ _("memory.export") }}</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="memory-content">
+    <!-- Messages tab -->
+    <section id="tab-messages" class="memory-tab active">
+      <div id="memory-items" class="memory-items-list">
+        <p class="empty-state">{{ _("memory.loading") }}</p>
+      </div>
+    </section>
+
+    <!-- Shared tab -->
+    <section id="tab-shared" class="memory-tab" hidden>
+      <div id="shared-items" class="memory-items-list">
+        <p class="empty-state">{{ _("memory.no_shared") }}</p>
+      </div>
+    </section>
+
+    <!-- Knowledge tab -->
+    <section id="tab-knowledge" class="memory-tab" hidden>
+      <div class="knowledge-search-bar">
+        <input type="text" id="kb-search-input" placeholder="{{ _('memory.kb_search_placeholder') }}"/>
+        <button class="btn btn-primary" id="btn-kb-search">{{ _("common.search") }}</button>
+      </div>
+      <div id="kb-results" class="memory-items-list">
+        <p class="empty-state">{{ _("memory.kb_hint") }}</p>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/memory.js" defer></script>
+{% endblock %}

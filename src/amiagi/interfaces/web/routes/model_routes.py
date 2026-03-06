@@ -91,9 +91,9 @@ async def update_model_config(request: Request) -> Response:
     # Log activity
     activity_logger = getattr(request.app.state, "activity_logger", None)
     if activity_logger is not None:
-        user = getattr(request.state, "user", None)
-        user_id = str(user.id) if user else "anonymous"
         try:
+            user = getattr(request.state, "user", None)
+            user_id = str(user.user_id) if user else "anonymous"
             await activity_logger.log(
                 user_id=user_id,
                 action="models.config_update",
@@ -165,9 +165,9 @@ async def assign_agent_model(request: Request) -> Response:
     # Log activity
     activity_logger = getattr(request.app.state, "activity_logger", None)
     if activity_logger is not None:
-        user = getattr(request.state, "user", None)
-        user_id = str(user.id) if user else "anonymous"
         try:
+            user = getattr(request.state, "user", None)
+            user_id = str(user.user_id) if user else "anonymous"
             await activity_logger.log(
                 user_id=user_id,
                 action="agent.model_changed",

@@ -1,22 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Amiagi — Użytkownicy{% endblock %}
+{% block title %}Amiagi — {{ _("admin.users") }}{% endblock %}
 {% block content %}
   <div class="container">
-    <h1>Użytkownicy</h1>
+    {% include "partials/admin_nav.html" %}
+    <h1>{{ _("admin.users") }}</h1>
 
     <form method="get" action="/admin/users" class="search-bar">
-      <input type="text" name="q" value="{{ search }}" placeholder="Szukaj…" class="input"/>
-      <button type="submit" class="btn btn-sm">Szukaj</button>
+      <input type="text" name="q" value="{{ search }}" placeholder="{{ _("admin.search") }}" class="input"/>
+      <button type="submit" class="btn btn-sm">{{ _("common.search") }}</button>
     </form>
 
     <table class="table glass-card">
       <thead>
         <tr>
-          <th>Email</th>
-          <th>Nazwa</th>
-          <th>Role</th>
-          <th>Status</th>
-          <th>Akcje</th>
+          <th>{{ _("admin.email") }}</th>
+          <th>{{ _("admin.name") }}</th>
+          <th>{{ _("admin.roles") }}</th>
+          <th>{{ _("admin.status") }}</th>
+          <th>{{ _("admin.actions") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -26,12 +27,12 @@
           <td>{{ u.display_name }}</td>
           <td>{{ u.roles | map(attribute='name') | join(', ') }}</td>
           <td>
-            {% if u.is_blocked %}<span class="badge badge-danger">Zablokowany</span>
-            {% elif u.is_active %}<span class="badge badge-success">Aktywny</span>
-            {% else %}<span class="badge badge-muted">Nieaktywny</span>{% endif %}
+            {% if u.is_blocked %}<span class="badge badge-danger">{{ _("admin.blocked") }}</span>
+            {% elif u.is_active %}<span class="badge badge-success">{{ _("admin.active") }}</span>
+            {% else %}<span class="badge badge-muted">{{ _("admin.inactive") }}</span>{% endif %}
           </td>
           <td>
-            <a href="/admin/users/{{ u.id }}" class="btn btn-xs">Szczegóły</a>
+            <a href="/admin/users/{{ u.id }}" class="btn btn-xs">{{ _("admin.details") }}</a>
           </td>
         </tr>
         {% endfor %}
@@ -39,10 +40,10 @@
     </table>
 
     {% if page.has_prev %}
-      <a href="?page={{ page.page - 1 }}&q={{ search }}" class="btn btn-sm">← Poprzednia</a>
+      <a href="?page={{ page.page - 1 }}&q={{ search }}" class="btn btn-sm">← {{ _("admin.prev") }}</a>
     {% endif %}
     {% if page.has_next %}
-      <a href="?page={{ page.page + 1 }}&q={{ search }}" class="btn btn-sm">Następna →</a>
+      <a href="?page={{ page.page + 1 }}&q={{ search }}" class="btn btn-sm">{{ _("admin.next") }} →</a>
     {% endif %}
   </div>
 {% endblock %}

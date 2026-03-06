@@ -89,6 +89,8 @@ SUPPORTED_TOOLS: frozenset[str] = frozenset({
     "check_capabilities",
     "write_file",
     "append_file",
+    "ask_human",
+    "review_request",
 })
 
 _TOOL_ALIASES: dict[str, str] = {
@@ -2866,6 +2868,30 @@ class RouterEngine:
             if check_network:
                 payload["ollama_reachable"] = bool(self.chat_service.ollama_client.ping())
             return {"ok": True, **payload}
+
+        # ---- Human-in-the-Loop tools (ask_human, review_request) ----
+        if tool == "ask_human":
+            bridge = getattr(self, "_human_bridge", None)
+            if bridge is None:
+                return {"ok": False, "tool": "ask_human", "error": "HumanInteractionBridge not configured"}
+            return bridge.ask_human(
+                question=str(args.get("question", args.get("message", ""))),
+                agent_id=agent_id,
+                context=str(args.get("context", "")),
+                priority=int(args.get("priority", 5)),
+            )
+
+        if tool == "review_request":
+            bridge = getattr(self, "_human_bridge", None)
+            if bridge is None:
+                return {"ok": False, "tool": "review_request", "error": "HumanInteractionBridge not configured"}
+            return bridge.request_review(
+                title=str(args.get("title", "Review requested")),
+                description=str(args.get("description", "")),
+                content=str(args.get("content", "")),
+                agent_id=agent_id,
+                priority=int(args.get("priority", 3)),
+            )
 
         custom_script = resolve_registered_tool_script(self.work_dir, tool)
         if custom_script is not None:

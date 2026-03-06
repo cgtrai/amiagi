@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("settings.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/settings.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+  <h2>⚙️ {{ _("settings.title") }}</h2>
+
+  <div class="settings-tabs">
+    <button class="settings-tab active" onclick="switchSettings('general', this)">{{ _("settings.general") }}</button>
+    <button class="settings-tab" onclick="switchSettings('models', this)">{{ _("settings.models") }}</button>
+    <button class="settings-tab" onclick="switchSettings('costs', this)">{{ _("settings.cost_config") }}</button>
+    <button class="settings-tab" onclick="switchSettings('cron', this)">{{ _("settings.scheduled") }}</button>
+    <button class="settings-tab" onclick="switchSettings('integrations', this)">{{ _("settings.integrations") }}</button>
+    <button class="settings-tab" onclick="switchSettings('memory', this)">{{ _("settings.memory") }}</button>
+    <button class="settings-tab" onclick="switchSettings('prompts', this)">{{ _("settings.prompts") }}</button>
+    <button class="settings-tab" onclick="switchSettings('templates', this)">{{ _("settings.templates_section") }}</button>
+    <button class="settings-tab" onclick="switchSettings('execution', this)">{{ _("settings.execution") }}</button>
+    <button class="settings-tab" onclick="switchSettings('security', this)">{{ _("settings.security") }}</button>
+    <button class="settings-tab" onclick="switchSettings('system', this)">{{ _("settings.system") }}</button>
+    <button class="settings-tab" onclick="switchSettings('advanced', this)">{{ _("settings.advanced") }}</button>
+  </div>
+
+  <!-- ═══ General ═══ -->
+  <div class="settings-section active" id="sect-general">
+    <div class="settings-panel">
+      <h3>{{ _("settings.general") }}</h3>
+      <div class="settings-prefs-grid">
+        <div class="settings-pref-item">
+          <label for="pref-language">{{ _("settings.language") }}</label>
+          <select class="glass-input settings-input--narrow" id="pref-language">
+            <option value="pl">Polski</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="settings-pref-item">
+          <label for="pref-theme">{{ _("settings.theme") }}</label>
+          <select class="glass-input settings-input--narrow" id="pref-theme">
+            <option value="dark">Dark (Liquid Glass)</option>
+          </select>
+        </div>
+        <div class="settings-pref-item">
+          <label>{{ _("settings.default_workspace") }}</label>
+          <input class="glass-input settings-input--narrow" id="pref-workspace" placeholder="data/workspaces"/>
+        </div>
+        <div class="settings-pref-item">
+          <label for="pref-auto-refresh">{{ _("settings.auto_refresh") }}</label>
+          <select class="glass-input settings-input--narrow" id="pref-auto-refresh">
+            <option value="10">10s</option>
+            <option value="30" selected>30s</option>
+            <option value="60">60s</option>
+            <option value="0">{{ _("settings.disabled") }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="settings-add-row">
+        <button class="glass-btn glass-btn--primary" onclick="saveGeneralPrefs()">{{ _("settings.save_config") }}</button>
+        <span id="general-save-status" class="settings-save-status"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Models ═══ -->
+  <div class="settings-section" id="sect-models">
+    <div class="settings-panel">
+      <h3>{{ _("settings.model_config") }}</h3>
+      <div class="form-group">
+        <label>Polluks — {{ _("agent.model") }}</label>
+        <select class="glass-input" id="cfg-polluks-model" aria-label="Polluks model">
+          <option value="">{{ _("settings.select_model") }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Polluks — {{ _("settings.model_source") }}</label>
+        <select class="glass-input" id="cfg-polluks-source" aria-label="Polluks source" onchange="onSourceChange('polluks')"><option value="ollama">Ollama</option><option value="openai">OpenAI</option></select>
+      </div>
+      <div class="form-group">
+        <label>Kastor — {{ _("agent.model") }}</label>
+        <select class="glass-input" id="cfg-kastor-model" aria-label="Kastor model">
+          <option value="">{{ _("settings.select_model") }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Kastor — {{ _("settings.model_source") }}</label>
+        <select class="glass-input" id="cfg-kastor-source" aria-label="Kastor source" onchange="onSourceChange('kastor')"><option value="ollama">Ollama</option><option value="openai">OpenAI</option></select>
+      </div>
+      <button class="glass-btn glass-btn--primary" onclick="saveModelConfig()">{{ _("settings.save_config") }}</button>
+      <span id="model-save-status" class="settings-save-status"></span>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.ollama_status") }}</h3>
+      <div id="ollama-status-info"></div>
+      <div id="ollama-models-list" class="settings-sub-panel"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Integrations (API Keys + Webhooks merged) ═══ -->
+  <div class="settings-section" id="sect-integrations">
+    <div class="settings-panel">
+      <h3>{{ _("settings.api_keys") }}</h3>
+      <ul class="key-list" id="api-keys-list"><li class="empty-msg">{{ _("common.loading") }}</li></ul>
+      <div class="settings-add-row">
+        <input class="glass-input settings-input--inline" id="new-key-name" placeholder="Nazwa klucza"/>
+        <button class="glass-btn glass-btn--primary" onclick="createApiKey()">{{ _("settings.create_key") }}</button>
+      </div>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.webhooks") }}</h3>
+      <ul class="hook-list" id="webhooks-list"><li class="empty-msg">{{ _("common.loading") }}</li></ul>
+      <div class="settings-add-row--flex">
+        <input class="glass-input settings-input--md" id="new-hook-url" placeholder="URL webhooka"/>
+        <button class="glass-btn glass-btn--primary" onclick="createWebhook()">{{ _("settings.add_webhook") }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Memory ═══ -->
+  <div class="settings-section" id="sect-memory">
+    <div class="settings-panel">
+      <h3>{{ _("settings.inter_agent_memory") }}</h3>
+      <div class="settings-filter-row">
+        <input class="glass-input settings-input--sm" id="memory-filter" placeholder="{{ _("settings.filter") }}" oninput="filterMemory()"/>
+        <button class="glass-btn glass-btn--danger glass-btn--sm" onclick="clearAllMemory()">{{ _("settings.clear_all") }}</button>
+      </div>
+      <div id="memory-items"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Cron ═══ -->
+  <div class="settings-section" id="sect-cron">
+    <div class="settings-panel">
+      <h3>{{ _("settings.scheduled_tasks") }}</h3>
+      <div id="cron-list"></div>
+      <div class="settings-add-row--flex-end">
+        <div class="form-group form-group--compact"><label>Nazwa</label><input class="glass-input" id="cron-name" placeholder="np. Codzienny raport"/></div>
+        <div class="form-group form-group--compact"><label>Cron</label><input class="glass-input settings-input--narrow" id="cron-expr" placeholder="0 2 * * *"/></div>
+        <div class="form-group form-group--compact"><label>Tytuł zadania</label><input class="glass-input" id="cron-task" placeholder="Opis zadania"/></div>
+        <button class="glass-btn glass-btn--primary" onclick="createCronJob()">{{ _("settings.add") }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Prompts ═══ -->
+  <div class="settings-section" id="sect-prompts">
+    <div class="settings-panel">
+      <h3>{{ _("settings.prompt_library") }}</h3>
+      <div id="prompts-list-settings"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Templates ═══ -->
+  <div class="settings-section" id="sect-templates">
+    <div class="settings-panel">
+      <h3>{{ _("settings.task_templates") }}</h3>
+      <div id="templates-list-settings"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Costs ═══ -->
+  <div class="settings-section" id="sect-costs">
+    <div class="settings-panel">
+      <h3>{{ _("settings.cost_config") }}</h3>
+      <div class="form-group">
+        <label for="cost-currency">{{ _("settings.currency") }}</label>
+        <input class="glass-input settings-input--narrow" id="cost-currency" placeholder="USD"/>
+      </div>
+      <div class="form-group">
+        <label for="cost-energy">{{ _("settings.energy_price") }}</label>
+        <input class="glass-input settings-input--narrow" id="cost-energy" type="number" step="0.001" placeholder="0.12"/>
+      </div>
+      <div class="form-group">
+        <label for="cost-token">{{ _("settings.token_cost_1k") }}</label>
+        <input class="glass-input settings-input--narrow" id="cost-token" type="number" step="0.0001" placeholder="0.002"/>
+      </div>
+      <button class="glass-btn glass-btn--primary" onclick="saveCostConfig()">{{ _("settings.save_costs") }}</button>
+      <span id="cost-save-status" class="settings-save-status"></span>
+    </div>
+  </div>
+
+  <!-- ═══ Execution ═══ -->
+  <div class="settings-section" id="sect-execution">
+    <div class="settings-panel">
+      <h3>{{ _("settings.execution") }}</h3>
+      <p class="empty-msg" id="exec-sandbox-summary">{{ _("common.loading") }}</p>
+      <div id="exec-sandbox-list"></div>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("sandboxes.shell_policy") }} ({{ _("settings.read_only") }})</h3>
+      <pre class="settings-policy-pre" id="exec-shell-policy">{{ _("common.loading") }}</pre>
+    </div>
+  </div>
+
+  <!-- ═══ Security ═══ -->
+  <div class="settings-section" id="sect-security">
+    <div class="settings-panel">
+      <h3>{{ _("settings.security") }}</h3>
+      <p class="settings-muted">{{ _("settings.security_desc") }}</p>
+      <div class="settings-session-list" id="security-sessions">
+        <p class="empty-msg">{{ _("settings.no_sessions") }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ System ═══ -->
+  <div class="settings-section" id="sect-system">
+    <div class="settings-panel">
+      <h3>{{ _("settings.system_info") }}</h3>
+      <div class="settings-info-grid" id="system-info-grid">
+        <p class="empty-msg">{{ _("common.loading") }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Advanced ═══ -->
+  <div class="settings-section" id="sect-advanced">
+    <div class="settings-panel">
+      <h3>{{ _("settings.shell_allowlist") }}</h3>
+      <pre class="settings-policy-pre" id="advanced-shell-policy">{{ _("common.loading") }}</pre>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.quota_policies") }}</h3>
+      <pre class="settings-policy-pre" id="advanced-quota-data">{{ _("common.loading") }}</pre>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  /* ── Tab switching ── */
+  window.switchSettings = function(name, btn) {
+    document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+    document.getElementById('sect-'+name).classList.add('active');
+    if (btn) btn.classList.add('active');
+    // Lazy load data
+    if (name === 'integrations') { loadApiKeys(); loadWebhooks(); }
+    else if (name === 'memory') loadMemory();
+    else if (name === 'cron') loadCronJobs();
+    else if (name === 'prompts') loadPrompts();
+    else if (name === 'templates') loadTemplates();
+    else if (name === 'costs') loadCostConfig();
+    else if (name === 'execution') loadExecution();
+    else if (name === 'system') loadSystemInfo();
+    else if (name === 'advanced') loadAdvanced();
+  };
+
+  /* ── Models ── */
+  let _ollamaModels = [];
+
+  async function fetchOllamaModels() {
+    try {
+      const res = await fetch('/models/ollama/status');
+      const data = await res.json();
+      _ollamaModels = (data.models || []).map(m => typeof m === 'string' ? m : m.name || String(m));
+    } catch(e) { _ollamaModels = []; }
+    return _ollamaModels;
+  }
+
+  function populateModelSelect(selectId, currentValue) {
+    const sel = document.getElementById(selectId);
+    const agentKey = selectId.replace('cfg-', '').replace('-model', '');
+    const src = document.getElementById('cfg-' + agentKey + '-source').value;
+    sel.innerHTML = '';
+    if (src === 'ollama' && _ollamaModels.length) {
+      const placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = '— {{ _("settings.select_model") }} —';
+      sel.appendChild(placeholder);
+      _ollamaModels.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        if (m === currentValue) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      // If current value is set but not in the list, add it
+      if (currentValue && !_ollamaModels.includes(currentValue)) {
+        const opt = document.createElement('option');
+        opt.value = currentValue; opt.textContent = currentValue + ' (not pulled)';
+        opt.selected = true;
+        sel.appendChild(opt);
+      }
+    } else if (src === 'ollama') {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '{{ _("settings.no_models") }}';
+      sel.appendChild(opt);
+    } else {
+      // OpenAI — allow typing a custom model name
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '— {{ _("settings.enter_model") }} —';
+      sel.appendChild(opt);
+      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'].forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        if (m === currentValue) o.selected = true;
+        sel.appendChild(o);
+      });
+      if (currentValue && !sel.querySelector('option[value="'+currentValue+'"]')) {
+        const o = document.createElement('option');
+        o.value = currentValue; o.textContent = currentValue; o.selected = true;
+        sel.appendChild(o);
+      }
+    }
+  }
+
+  window.onSourceChange = function(agent) {
+    const selectId = 'cfg-' + agent + '-model';
+    populateModelSelect(selectId, document.getElementById(selectId).value);
+  };
+
+  async function loadModelConfig() {
+    await fetchOllamaModels();
+    try {
+      const res = await fetch('/models/config');
+      const cfg = await res.json();
+      if (cfg.polluks) {
+        document.getElementById('cfg-polluks-source').value = cfg.polluks.source || 'ollama';
+        populateModelSelect('cfg-polluks-model', cfg.polluks.model_name || '');
+      } else {
+        populateModelSelect('cfg-polluks-model', '');
+      }
+      if (cfg.kastor) {
+        document.getElementById('cfg-kastor-source').value = cfg.kastor.source || 'ollama';
+        populateModelSelect('cfg-kastor-model', cfg.kastor.model_name || '');
+      } else {
+        populateModelSelect('cfg-kastor-model', '');
+      }
+    } catch(e) {
+      populateModelSelect('cfg-polluks-model', '');
+      populateModelSelect('cfg-kastor-model', '');
+    }
+  }
+  window.saveModelConfig = async function() {
+    const body = {
+      polluks: { model_name: document.getElementById('cfg-polluks-model').value, source: document.getElementById('cfg-polluks-source').value },
+      kastor: { model_name: document.getElementById('cfg-kastor-model').value, source: document.getElementById('cfg-kastor-source').value },
+    };
+    const res = await fetch('/models/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    document.getElementById('model-save-status').textContent = res.ok ? '✓ {{ _("common.save") }}' : '✗ {{ _("common.error") }}';
+    setTimeout(() => document.getElementById('model-save-status').textContent = '', 3000);
+  };
+  async function loadOllamaStatus() {
+    try {
+      const res = await fetch('/models/ollama/status');
+      const data = await res.json();
+      document.getElementById('ollama-status-info').innerHTML =
+        `<span class="glass-badge glass-badge--${data.status==='ok'?'success':'error'}">${data.status||'—'}</span>`;
+      const models = data.models || [];
+      document.getElementById('ollama-models-list').innerHTML = models.length
+        ? models.map(m => `<span class="glass-badge glass-badge--muted settings-badge-inline">${m.name || m}</span>`).join('')
+        : '<span class="text-muted">{{ _("settings.no_models") }}</span>';
+    } catch(e) {
+      document.getElementById('ollama-status-info').innerHTML = '<span class="glass-badge glass-badge--error">{{ _("settings.unavailable") }}</span>';
+    }
+  }
+  loadModelConfig();
+  loadOllamaStatus();
+
+  /* ── API Keys ── */
+  async function loadApiKeys() {
+    try {
+      const res = await fetch('/settings/api-keys');
+      const keys = await res.json();
+      const list = document.getElementById('api-keys-list');
+      if (!keys.length) { list.innerHTML = '<li class="empty-msg">{{ _("settings.no_keys") }}</li>'; return; }
+      list.innerHTML = keys.map(k => `<li>
+        <div><span class="key-prefix">${k.prefix||k.id}</span> — ${k.name||'—'}</div>
+        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="revokeKey('${k.id}')">{{ _("settings.revoke") }}</button>
+      </li>`).join('');
+    } catch(e) {}
+  }
+  window.createApiKey = async function() {
+    const name = document.getElementById('new-key-name').value.trim() || 'Unnamed';
+    const res = await fetch('/settings/api-keys', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+    if (res.ok) { const data = await res.json(); alert('Klucz: ' + (data.raw_key||'—') + '\n\nZapisz go — nie będzie widoczny ponownie.'); loadApiKeys(); }
+  };
+  window.revokeKey = async function(id) {
+    if (!confirm('Odwołać klucz?')) return;
+    await fetch('/settings/api-keys/'+id+'/revoke', {method:'PUT'});
+    loadApiKeys();
+  };
+
+  /* ── Webhooks ── */
+  async function loadWebhooks() {
+    try {
+      const res = await fetch('/settings/webhooks');
+      const hooks = await res.json();
+      const list = document.getElementById('webhooks-list');
+      if (!hooks.length) { list.innerHTML = '<li class="empty-msg">{{ _("settings.no_hooks") }}</li>'; return; }
+      list.innerHTML = hooks.map(h => `<li>
+        <div><strong>${h.url||'—'}</strong> <span class="text-muted">(${(h.events||[]).join(', ')||'all'})</span></div>
+        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteWebhook('${h.id}')">{{ _("common.delete") }}</button>
+      </li>`).join('');
+    } catch(e) {}
+  }
+  window.createWebhook = async function() {
+    const url = document.getElementById('new-hook-url').value.trim();
+    if (!url) return;
+    await fetch('/settings/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url, events:[]}) });
+    loadWebhooks();
+  };
+  window.deleteWebhook = async function(id) {
+    if (!confirm('Usunąć webhook?')) return;
+    await fetch('/settings/webhooks/'+id, {method:'DELETE'});
+    loadWebhooks();
+  };
+
+  /* ── Memory ── */
+  let _memoryItems = [];
+  async function loadMemory() {
+    try {
+      const res = await fetch('/api/memory');
+      _memoryItems = await res.json();
+      renderMemory(_memoryItems);
+    } catch(e) {}
+  }
+  function renderMemory(items) {
+    const el = document.getElementById('memory-items');
+    if (!items.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_memory") }}</div>'; return; }
+    el.innerHTML = items.map((m,i) => `<div class="memory-item">
+      <div class="mem-content">${m.content||m.text||JSON.stringify(m)}</div>
+      <div><span class="mem-meta">${m.agent||''} ${m.tag||''}</span>
+        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteMemory(${i})">×</button>
+      </div>
+    </div>`).join('');
+  }
+  window.filterMemory = function() {
+    const q = document.getElementById('memory-filter').value.toLowerCase();
+    renderMemory(_memoryItems.filter(m => JSON.stringify(m).toLowerCase().includes(q)));
+  };
+  window.clearAllMemory = async function() {
+    if (!confirm('Usunąć całą pamięć?')) return;
+    await fetch('/api/memory', {method:'DELETE'});
+    loadMemory();
+  };
+  window.deleteMemory = async function(idx) {
+    await fetch('/api/memory/'+idx, {method:'DELETE'});
+    loadMemory();
+  };
+
+  /* ── Cron ── */
+  async function loadCronJobs() {
+    try {
+      const res = await fetch('/api/cron');
+      const jobs = await res.json();
+      const el = document.getElementById('cron-list');
+      if (!jobs.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_cron") }}</div>'; return; }
+      el.innerHTML = jobs.map(j => `<div class="cron-item">
+        <div><span class="cron-name">${j.name||'—'}</span> <span class="cron-expr">${j.cron_expression||''}</span>
+          <span class="glass-badge glass-badge--${j.enabled?'success':'muted'}">${j.enabled?'{{ _("settings.active") }}':'{{ _("settings.disabled") }}'}</span></div>
+        <div>
+          <button class="glass-btn glass-btn--ghost glass-btn--xs" onclick="toggleCron('${j.id}')">${j.enabled?'{{ _("settings.disable") }}':'{{ _("settings.enable") }}'}</button>
+          <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteCron('${j.id}')">{{ _("common.delete") }}</button>
+        </div>
+      </div>`).join('');
+    } catch(e) {}
+  }
+  window.createCronJob = async function() {
+    const body = {
+      name: document.getElementById('cron-name').value,
+      cron_expression: document.getElementById('cron-expr').value,
+      task_title: document.getElementById('cron-task').value,
+    };
+    await fetch('/api/cron', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    loadCronJobs();
+  };
+  window.toggleCron = async function(id) { await fetch('/api/cron/'+id+'/toggle', {method:'PUT'}); loadCronJobs(); };
+  window.deleteCron = async function(id) { if(!confirm('Usunąć?'))return; await fetch('/api/cron/'+id, {method:'DELETE'}); loadCronJobs(); };
+
+  /* ── Prompts ── */
+  async function loadPrompts() {
+    try {
+      const res = await fetch('/prompts');
+      const prompts = await res.json();
+      const el = document.getElementById('prompts-list-settings');
+      if (!prompts.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_prompts") }}</div>'; return; }
+      el.innerHTML = prompts.map(p => `<div class="settings-list-item">
+        <strong>${p.title||'—'}</strong> <span class="text-muted">${(p.tags||[]).join(', ')}</span>
+        <span class="glass-badge glass-badge--muted">${p.use_count||0} uses</span>
+      </div>`).join('');
+    } catch(e) {}
+  }
+
+  /* ── Templates ── */
+  async function loadTemplates() {
+    try {
+      const res = await fetch('/templates');
+      const tpls = await res.json();
+      const el = document.getElementById('templates-list-settings');
+      if (!tpls.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_templates") }}</div>'; return; }
+      el.innerHTML = tpls.map(t => `<div class="settings-list-item">
+        <strong>${t.name||'—'}</strong> <span class="text-muted">${t.description||''}</span>
+        <span class="glass-badge glass-badge--muted">${t.use_count||0} uses</span>
+      </div>`).join('');
+    } catch(e) {}
+  }
+
+  /* ── Cost Config ── */
+  async function loadCostConfig() {
+    try {
+      const res = await fetch('/api/budget/config');
+      const cfg = await res.json();
+      document.getElementById('cost-currency').value = cfg.currency || 'USD';
+      document.getElementById('cost-energy').value = cfg.energy_price_kwh || '';
+      document.getElementById('cost-token').value = cfg.token_cost_1k || '';
+    } catch(e) {}
+  }
+  window.saveCostConfig = async function() {
+    const body = {
+      currency: document.getElementById('cost-currency').value.trim() || 'USD',
+      energy_price_kwh: parseFloat(document.getElementById('cost-energy').value) || 0,
+      token_cost_1k: parseFloat(document.getElementById('cost-token').value) || 0,
+    };
+    const res = await fetch('/api/budget/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const status = document.getElementById('cost-save-status');
+    status.textContent = res.ok ? '✓ {{ _("common.save") }}' : '✗ {{ _("common.error") }}';
+    setTimeout(() => status.textContent = '', 3000);
+  };
+
+  /* ── General preferences ── */
+  window.saveGeneralPrefs = async function() {
+    const status = document.getElementById('general-save-status');
+    // Language change
+    const lang = document.getElementById('pref-language').value;
+    if (lang) {
+      try { await fetch('/lang/' + lang); } catch(e) {}
+    }
+    status.textContent = '✓ {{ _("common.save") }}';
+    setTimeout(() => status.textContent = '', 3000);
+  };
+
+  /* ── Execution tab (RO sandbox + shell policy) ── */
+  async function loadExecution() {
+    try {
+      const [sbRes, polRes] = await Promise.all([fetch('/api/sandboxes'), fetch('/api/shell-policy')]);
+      const sbData = await sbRes.json();
+      const polData = await polRes.json();
+      const list = document.getElementById('exec-sandbox-list');
+      const summary = document.getElementById('exec-sandbox-summary');
+      const sandboxes = sbData.sandboxes || sbData || [];
+      if (sandboxes.length) {
+        summary.textContent = sandboxes.length + ' active sandbox(es)';
+        list.innerHTML = sandboxes.map(s =>
+          '<div class="settings-sandbox-row"><span>' + (s.agent_id || '—') + '</span><span>' +
+          ((s.size_bytes||0)/1048576).toFixed(1) + ' MB / ' + (s.file_count||0) + ' files</span></div>'
+        ).join('');
+      } else {
+        summary.textContent = '{{ _("sandboxes.no_sandboxes") }}';
+        list.innerHTML = '';
+      }
+      document.getElementById('exec-shell-policy').textContent = JSON.stringify(polData, null, 2);
+    } catch(e) {
+      document.getElementById('exec-sandbox-summary').textContent = '—';
+    }
+  }
+
+  /* ── System tab ── */
+  async function loadSystemInfo() {
+    try {
+      const res = await fetch('/health/detailed');
+      const d = await res.json();
+      const grid = document.getElementById('system-info-grid');
+      const items = [];
+      items.push({label:'Status', value: d.status || '—'});
+      items.push({label:'Version', value: d.version || '—'});
+      if (d.uptime_seconds != null) {
+        const h = Math.floor(d.uptime_seconds / 3600);
+        const m = Math.floor((d.uptime_seconds % 3600) / 60);
+        items.push({label:'Uptime', value: h + 'h ' + m + 'm'});
+      }
+      if (d.cpu_percent != null) items.push({label:'CPU', value: d.cpu_percent + '%'});
+      if (d.ram_rss_mb != null) items.push({label:'RAM (RSS)', value: d.ram_rss_mb + ' MB'});
+      if (d.disk) items.push({label:'Disk Used', value: d.disk.used_pct + '%'});
+      if (d.db_pool) items.push({label:'DB Pool', value: d.db_pool.size + '/' + d.db_pool.max});
+      if (d.ollama) items.push({label:'Ollama', value: d.ollama.available ? 'OK (' + (d.ollama.models||0) + ' models)' : 'Offline'});
+      if (d.agents) items.push({label:'Agents', value: d.agents.total + ' total'});
+      grid.innerHTML = items.map(i =>
+        '<div class="settings-info-item"><span class="settings-info-label">' + i.label +
+        '</span><span class="settings-info-value">' + i.value + '</span></div>'
+      ).join('');
+    } catch(e) {
+      document.getElementById('system-info-grid').innerHTML = '<p class="empty-msg">{{ _("common.error") }}</p>';
+    }
+  }
+
+  /* ── Advanced tab ── */
+  async function loadAdvanced() {
+    try {
+      const polRes = await fetch('/api/shell-policy');
+      const polData = await polRes.json();
+      document.getElementById('advanced-shell-policy').textContent = JSON.stringify(polData, null, 2);
+    } catch(e) {
+      document.getElementById('advanced-shell-policy').textContent = 'Error loading policy';
+    }
+    try {
+      const budgetRes = await fetch('/api/budget');
+      const budgetData = await budgetRes.json();
+      document.getElementById('advanced-quota-data').textContent = JSON.stringify(budgetData, null, 2);
+    } catch(e) {
+      document.getElementById('advanced-quota-data').textContent = 'Error loading quotas';
+    }
+  }
+})();
+</script>
+{% endblock %}

@@ -1,5 +1,7 @@
 /* ================================================================
-   Amiagi Layout — Desktop: sidebar + main + optional right panel
+   Amiagi Layout v2 — Command Center
+   Grid: command-rail | main-viewport (+ optional detail-drawer)
+   Status bar pinned at bottom
    ================================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -21,6 +23,7 @@ html, body {
     line-height: var(--line-height-base);
     color: var(--text-primary);
     background: var(--bg-gradient);
+    overflow: hidden;  /* Shell handles its own scroll */
 }
 body::before {
     content: '';
@@ -31,29 +34,37 @@ body::before {
     z-index: -1;
 }
 
-/* ── App shell ───────────────────────────────────────────────── */
+/* ── App shell — Command Center grid ─────────────────────────── */
 
 .app-shell {
     display: grid;
-    grid-template-columns: var(--sidebar-width) 1fr;
-    grid-template-rows: var(--nav-height) 1fr;
+    grid-template-columns: var(--rail-width) 1fr;
+    grid-template-rows: var(--nav-height) 1fr var(--status-bar-height);
     grid-template-areas:
-        "nav     nav"
-        "sidebar main";
+        "nav    nav"
+        "rail   main"
+        "status status";
     min-height: 100vh;
+    max-height: 100vh;
 }
 
-.app-shell--with-right {
-    grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width);
+/* With detail drawer open */
+.app-shell.drawer-open {
+    grid-template-columns: var(--rail-width) 1fr var(--drawer-width);
     grid-template-areas:
-        "nav     nav   nav"
-        "sidebar main  right";
+        "nav    nav    nav"
+        "rail   main   drawer"
+        "status status status";
 }
 
 .app-nav     { grid-area: nav; }
-.app-sidebar { grid-area: sidebar; }
+.app-rail    { grid-area: rail; }
 .app-main    { grid-area: main; padding: var(--space-6); overflow-y: auto; }
-.app-right   { grid-area: right; padding: var(--space-4); overflow-y: auto; }
+.app-drawer  { grid-area: drawer; }
+.app-status  { grid-area: status; }
+
+/* Legacy compat: map old class names to new grid areas */
+.app-sidebar { grid-area: rail; }
 
 /* ── Container ───────────────────────────────────────────────── */
 
@@ -77,7 +88,7 @@ body::before {
     display: grid;
     grid-template-columns: 350px 1fr;
     gap: var(--space-6);
-    height: calc(100vh - var(--nav-height) - var(--space-12));
+    height: calc(100vh - var(--nav-height) - var(--status-bar-height) - var(--space-12));
 }
 .agent-split .agent-info {
     overflow-y: auto;
@@ -97,16 +108,6 @@ body::before {
 .agent-split .chat-input {
     padding: var(--space-4);
     border-top: 1px solid var(--glass-border);
-}
-
-/* ── Debug 2×2 grid ──────────────────────────────────────────── */
-
-.debug-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: var(--space-4);
-    height: calc(100vh - var(--nav-height) - var(--space-12));
 }
 
 /* ── Headings ────────────────────────────────────────────────── */

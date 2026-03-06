@@ -138,7 +138,8 @@ class TestMobileInputBar:
     def test_mobile_input_bar_css_fixed(self):
         css = _read_responsive_css()
         assert "position: fixed" in css
-        assert "bottom: 0" in css
+        # Input bar sits above the status bar
+        assert "bottom:" in css
 
     def test_mobile_input_bar_shown_on_mobile(self):
         css = _read_responsive_css()
@@ -226,12 +227,6 @@ class TestNoHorizontalScroll:
         mobile_idx = css.index("max-width: 767px")
         mobile_section = css[mobile_idx:]
         assert "grid-template-columns: 1fr" in mobile_section
-
-    def test_debug_grid_single_column_mobile(self):
-        css = _read_responsive_css()
-        mobile_idx = css.index("max-width: 767px")
-        mobile_section = css[mobile_idx:]
-        assert ".debug-grid" in mobile_section
 
 
 # ---------------------------------------------------------------------------

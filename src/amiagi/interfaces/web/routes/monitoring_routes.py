@@ -35,7 +35,7 @@ async def api_performance_summary(request: Request) -> JSONResponse:
 
 async def api_notifications(request: Request) -> JSONResponse:
     svc = request.app.state.notification_service
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     unread = request.query_params.get("unread") == "true"
     notifs = await svc.list_for_user(user_id, unread_only=unread)
     count = await svc.unread_count(user_id)
@@ -50,7 +50,7 @@ async def api_notification_read(request: Request) -> JSONResponse:
 
 async def api_notifications_read_all(request: Request) -> JSONResponse:
     svc = request.app.state.notification_service
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     count = await svc.mark_all_read(user_id)
     return JSONResponse({"marked": count})
 
@@ -96,14 +96,14 @@ async def api_session_replay(request: Request) -> JSONResponse:
 
 async def api_keys_list(request: Request) -> JSONResponse:
     mgr = request.app.state.api_key_manager
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     keys = await mgr.list_keys(user_id)
     return JSONResponse([k.to_dict() for k in keys])
 
 
 async def api_keys_create(request: Request) -> JSONResponse:
     mgr = request.app.state.api_key_manager
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     body = await request.json()
     raw_key, record = await mgr.create_key(
         user_id, body.get("name", "Unnamed"),
@@ -130,14 +130,14 @@ async def api_keys_delete(request: Request) -> JSONResponse:
 
 async def webhooks_list(request: Request) -> JSONResponse:
     mgr = request.app.state.webhook_manager
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     hooks = await mgr.list_webhooks(user_id)
     return JSONResponse([h.to_dict() for h in hooks])
 
 
 async def webhooks_create(request: Request) -> JSONResponse:
     mgr = request.app.state.webhook_manager
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     body = await request.json()
     hook = await mgr.create_webhook(
         user_id, body.get("url", ""), body.get("events", []),
@@ -155,7 +155,7 @@ async def webhooks_delete(request: Request) -> JSONResponse:
 async def webhooks_test(request: Request) -> JSONResponse:
     """Send a test payload to a specific webhook."""
     mgr = request.app.state.webhook_manager
-    hooks = await mgr.list_webhooks(str(request.state.user.get("sub", "")))
+    hooks = await mgr.list_webhooks(str(request.state.user.user_id))
     target = [h for h in hooks if h.id == request.path_params["id"]]
     if not target:
         return JSONResponse({"error": "not found"}, 404)

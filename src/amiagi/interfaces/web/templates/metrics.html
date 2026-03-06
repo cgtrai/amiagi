@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("metrics.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.metrics-page { padding: var(--space-6); }
+.metrics-page h2 { margin: 0 0 var(--space-6); color: var(--text-primary); }
+.metrics-summary {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4); margin-bottom: var(--space-6);
+}
+.summary-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5); text-align: center;
+}
+.summary-card .summary-value { font-size: 2rem; font-weight: 700; color: var(--text-primary); }
+.summary-card .summary-label { font-size: var(--font-size-sm); color: var(--text-muted); margin-top: var(--space-2); }
+.metrics-panels {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5);
+}
+@media (max-width: 900px) { .metrics-panels { grid-template-columns: 1fr; } }
+.metrics-panel {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5);
+}
+.metrics-panel h3 { margin: 0 0 var(--space-4); color: var(--text-primary); }
+.metrics-panel--full { grid-column: 1 / -1; }
+.health-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4); margin-top: var(--space-5);
+}
+.health-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm); padding: var(--space-4);
+}
+.health-card .health-title { font-size: var(--font-size-sm); color: var(--text-muted); margin-bottom: var(--space-2); }
+.health-card .health-value { font-size: var(--font-size-lg); font-weight: 600; color: var(--text-primary); }
+.health-card.ok { border-left: 3px solid var(--state-success); }
+.health-card.warn { border-left: 3px solid var(--state-warning); }
+.health-card.error { border-left: 3px solid var(--state-error); }
+.cost-table { width: 100%; }
+.cost-table th { text-align: left; padding: var(--space-2) var(--space-3); color: var(--text-muted); font-size: var(--font-size-xs); text-transform: uppercase; border-bottom: 1px solid var(--glass-border); }
+.cost-table td { padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); color: var(--text-primary); border-bottom: 1px solid var(--glass-border); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="metrics-page">
+  <h2>📊 {{ _("metrics.title") }}</h2>
+
+  <!-- Metrics summary cards -->
+  <div class="metrics-summary" id="metrics-summary"></div>
+
+  <div class="metrics-panels">
+    <!-- Performance chart -->
+    <div class="metrics-panel metrics-panel--full">
+      <h3>{{ _("metrics.performance_over_time") }}</h3>
+      <performance-chart metric="latency" auto-refresh="30"></performance-chart>
+    </div>
+
+    <!-- Budget / costs -->
+    <div class="metrics-panel">
+      <h3>{{ _("metrics.costs") }}</h3>
+      <div id="budget-info"></div>
+      <table class="cost-table" id="cost-table">
+        <thead><tr><th>{{ _("metrics.task") }}</th><th>{{ _("metrics.tokens") }}</th><th>{{ _("metrics.cost") }}</th></tr></thead>
+        <tbody id="cost-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- System health -->
+    <div class="metrics-panel">
+      <h3>{{ _("metrics.system_health") }}</h3>
+      <div class="health-grid" id="health-grid"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  async function loadMetrics() {
+    try {
+      const res = await fetch('/api/metrics');
+      const data = await res.json();
+      const summary = document.getElementById('metrics-summary');
+      const items = [
+        {label:'{{ _("metrics.cycles") }}',value:data.total_cycles||0,color:'var(--accent-blue)'},
+        {label:'{{ _("metrics.tasks_completed") }}',value:data.tasks_completed||0,color:'var(--state-success)'},
+        {label:'{{ _("metrics.errors") }}',value:data.errors||0,color:'var(--state-error)'},
+        {label:'{{ _("metrics.avg_cycle") }}',value:(data.avg_cycle_time||0).toFixed(1)+'s',color:'var(--accent-teal)'},
+        {label:'{{ _("metrics.input_tokens") }}',value:data.total_input_tokens||0,color:'var(--accent-purple)'},
+        {label:'{{ _("metrics.output_tokens") }}',value:data.total_output_tokens||0,color:'var(--accent-amber)'},
+      ];
+      summary.innerHTML = items.map(i => `<div class="summary-card"><div class="summary-value" style="color:${i.color}">${i.value}</div><div class="summary-label">${i.label}</div></div>`).join('');
+    } catch(e) { console.error('metrics',e); }
+  }
+
+  async function loadBudget() {
+    try {
+      const [budgetRes, tasksRes] = await Promise.all([fetch('/api/budget'), fetch('/api/budget/tasks')]);
+      const budget = await budgetRes.json();
+      const tasks = await tasksRes.json();
+
+      document.getElementById('budget-info').innerHTML = `
+        <p style="color:var(--text-secondary);font-size:var(--font-size-sm)">
+          Sesja: <strong>$${(budget.session_cost||0).toFixed(4)}</strong> |
+          Łącznie: <strong>$${(budget.total_cost||0).toFixed(4)}</strong>
+        </p>`;
+
+      const tbody = document.getElementById('cost-tbody');
+      const taskList = tasks.tasks || tasks || [];
+      tbody.innerHTML = taskList.slice(0,20).map(t => `<tr><td>${t.title||t.task_id||'—'}</td><td>${t.tokens||0}</td><td>$${(t.cost||0).toFixed(4)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">{{ _("common.loading") }}</td></tr>';
+    } catch(e) { console.error('budget',e); }
+  }
+
+  async function loadHealth() {
+    try {
+      const res = await fetch('/health/detailed');
+      const data = await res.json();
+      const grid = document.getElementById('health-grid');
+      const cards = [];
+      if (data.memory) cards.push({title:'RAM',value:data.memory.percent+'%',cls:data.memory.percent>90?'error':data.memory.percent>75?'warn':'ok'});
+      if (data.cpu !== undefined) cards.push({title:'CPU',value:data.cpu+'%',cls:data.cpu>90?'error':data.cpu>75?'warn':'ok'});
+      if (data.disk) cards.push({title:'Dysk',value:data.disk.percent+'%',cls:data.disk.percent>90?'error':'ok'});
+      if (data.db_pool) cards.push({title:'DB Pool',value:data.db_pool.size+'/'+data.db_pool.max_size,cls:'ok'});
+      if (data.ollama) cards.push({title:'Ollama',value:data.ollama.status||'—',cls:data.ollama.status==='ok'?'ok':'warn'});
+      if (data.agents) cards.push({title:'Agenci',value:data.agents.total+' ('+data.agents.working+' aktyw.)',cls:'ok'});
+      if (data.uptime) cards.push({title:'Uptime',value:Math.floor(data.uptime/60)+'m',cls:'ok'});
+      grid.innerHTML = cards.map(c => `<div class="health-card ${c.cls}"><div class="health-title">${c.title}</div><div class="health-value">${c.value}</div></div>`).join('') || '<p class="text-muted">{{ _("common.loading") }}</p>';
+    } catch(e) { console.error('health',e); }
+  }
+
+  loadMetrics();
+  loadBudget();
+  loadHealth();
+  setInterval(loadMetrics, 30000);
+  setInterval(loadHealth, 30000);
+})();
+</script>
+{% endblock %}

@@ -4,7 +4,7 @@ Use this checklist before tagging a new release.
 
 ## 1) Code quality and tests
 
-- [x] Local test suite passes (`pytest -q`) — 1902 passed, 0 warnings
+- [x] Local test suite passes (`pytest -q`) — 2543 passed, 0 warnings
 - [ ] CI workflow is green on the target branch
 - [x] No unresolved critical issues in open PRs
 
@@ -28,7 +28,7 @@ Use this checklist before tagging a new release.
 
 ## 5) Final release steps
 
-- [x] Update version in `pyproject.toml` (v1.1.0)
+- [x] Update version in `pyproject.toml` (v1.2.0)
 - [x] Create release notes (highlights + breaking changes + migration notes)
 - [ ] Tag release in GitHub
 - [ ] Verify installation path (`pip install -e .` and CLI entry `amiagi`)

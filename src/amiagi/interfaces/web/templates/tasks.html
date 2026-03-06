@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("tasks.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.tasks-page { padding: var(--space-6); }
+.tasks-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6);
+  flex-wrap: wrap; gap: var(--space-3);
+}
+.tasks-header h2 { margin: 0; color: var(--text-primary); }
+.tasks-toolbar { display: flex; gap: var(--space-3); align-items: center; }
+.tasks-toolbar select { min-width: 140px; }
+.tasks-stats {
+  display: flex; gap: var(--space-4); margin-bottom: var(--space-5); flex-wrap: wrap;
+}
+.stat-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm); padding: var(--space-3) var(--space-5);
+  text-align: center; min-width: 100px;
+}
+.stat-card .stat-value { font-size: var(--font-size-xl); font-weight: 700; color: var(--text-primary); }
+.stat-card .stat-label { font-size: var(--font-size-xs); color: var(--text-muted); text-transform: uppercase; }
+.task-board-container {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5);
+  min-height: 400px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tasks-page">
+  <div class="tasks-header">
+    <h2>📋 {{ _("tasks.title") }}</h2>
+    <div class="tasks-toolbar">
+      <select class="glass-input" id="filter-origin" aria-label="Filter tasks by origin" onchange="loadTasks()">
+        <option value="">{{ _("tasks.all_sources") }}</option>
+        <option value="web">{{ _("tasks.from_panel") }}</option>
+        <option value="system">{{ _("tasks.system") }}</option>
+        <option value="template">{{ _("tasks.from_templates") }}</option>
+        <option value="cron">{{ _("tasks.scheduled") }}</option>
+      </select>
+      <a href="/tasks/new" class="glass-btn glass-btn--primary">+ {{ _("tasks.new") }}</a>
+    </div>
+  </div>
+
+  <div class="tasks-stats" id="tasks-stats"></div>
+
+  <div class="task-board-container">
+    <task-board id="task-board"></task-board>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/task-board.js"></script>
+<script>
+(function() {
+  async function loadTasks() {
+    const origin = document.getElementById('filter-origin').value;
+    const url = '/api/tasks' + (origin ? '?origin=' + origin : '');
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const tasks = data.tasks || data || [];
+      const board = document.getElementById('task-board');
+      board.setTasks(tasks);
+
+      // Stats
+      const counts = {};
+      tasks.forEach(t => { counts[t.status] = (counts[t.status]||0)+1; });
+      const statsEl = document.getElementById('tasks-stats');
+      const labels = {pending:'{{ _("tasks.pending") }}',assigned:'{{ _("tasks.assigned") }}',in_progress:'{{ _("tasks.in_progress") }}',review:'{{ _("tasks.review") }}',done:'{{ _("tasks.done") }}',failed:'{{ _("tasks.failed") }}',cancelled:'{{ _("tasks.cancelled") }}'};
+      const colors = {pending:'var(--text-muted)',assigned:'var(--accent-blue)',in_progress:'var(--accent-teal)',review:'var(--accent-purple)',done:'var(--state-success)',failed:'var(--state-error)',cancelled:'var(--text-muted)'};
+      statsEl.innerHTML = Object.entries(labels).map(([k,v]) => {
+        const c = counts[k]||0;
+        return `<div class="stat-card"><div class="stat-value" style="color:${colors[k]||'inherit'}">${c}</div><div class="stat-label">${v}</div></div>`;
+      }).join('');
+    } catch(e) { console.error('Failed to load tasks', e); }
+  }
+
+  window.loadTasks = loadTasks;
+  loadTasks();
+})();
+</script>
+{% endblock %}

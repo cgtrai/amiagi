@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("eval.title") }} — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/evaluations.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🧪 {{ _("eval.title") }}</h1>
+  <div class="page-actions">
+    <button class="btn btn-primary" id="btn-new-eval">▶ {{ _("eval.new_eval") }}</button>
+    <button class="btn btn-outline" id="btn-new-ab">⚡ {{ _("eval.new_ab") }}</button>
+  </div>
+</div>
+
+<!-- Section tabs -->
+<div class="section-tabs">
+  <button class="tab-btn active" data-tab="dashboard">📊 {{ _("eval.tab_dashboard") }}</button>
+  <button class="tab-btn" data-tab="history">📋 {{ _("eval.tab_history") }}</button>
+  <button class="tab-btn" data-tab="ab-tests">🔬 {{ _("eval.tab_ab") }}</button>
+  <button class="tab-btn" data-tab="baselines">📏 {{ _("eval.tab_baselines") }}</button>
+  <button class="tab-btn" data-tab="suites">📦 {{ _("eval.tab_suites") }}</button>
+</div>
+
+<!-- Dashboard -->
+<section id="tab-dashboard" class="eval-tab active">
+  <div class="eval-overview-grid">
+    <div class="glass-card eval-summary-card" id="card-last-eval">
+      <h4>{{ _("eval.last_eval") }}</h4>
+      <div class="eval-metric" id="last-eval-score">—</div>
+      <div class="eval-label" id="last-eval-agent">—</div>
+    </div>
+    <div class="glass-card eval-summary-card" id="card-active-ab">
+      <h4>{{ _("eval.active_ab") }}</h4>
+      <div class="eval-metric" id="active-ab-count">0</div>
+      <div class="eval-label">{{ _("eval.campaigns") }}</div>
+    </div>
+    <div class="glass-card eval-summary-card" id="card-regressions">
+      <h4>{{ _("eval.regressions") }}</h4>
+      <div class="eval-metric" id="regressions-count">0</div>
+      <div class="eval-label">{{ _("eval.detected") }}</div>
+    </div>
+  </div>
+
+  <!-- Recent results -->
+  <div class="glass-card">
+    <h3>{{ _("eval.recent_results") }}</h3>
+    <div id="recent-results-table" class="eval-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _("eval.col_date") }}</th>
+            <th>{{ _("eval.col_agent") }}</th>
+            <th>{{ _("eval.col_suite") }}</th>
+            <th>{{ _("eval.col_score") }}</th>
+            <th>{{ _("eval.col_pass_fail") }}</th>
+            <th>{{ _("eval.col_vs_baseline") }}</th>
+          </tr>
+        </thead>
+        <tbody id="recent-results-body">
+          <tr><td colspan="6" class="empty-state">{{ _("eval.no_results") }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- History -->
+<section id="tab-history" class="eval-tab" hidden>
+  <div class="glass-card">
+    <div class="filter-bar">
+      <select id="filter-agent"><option value="">{{ _("eval.all_agents") }}</option></select>
+      <select id="filter-suite"><option value="">{{ _("eval.all_suites") }}</option></select>
+      <button class="btn btn-sm" id="btn-filter-apply">{{ _("common.apply") }}</button>
+    </div>
+    <div id="history-table-wrap" class="eval-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ _("eval.col_date") }}</th>
+            <th>{{ _("eval.col_agent") }}</th>
+            <th>{{ _("eval.col_suite") }}</th>
+            <th>{{ _("eval.col_score") }}</th>
+            <th>{{ _("eval.col_pass_fail") }}</th>
+            <th>{{ _("eval.col_label") }}</th>
+            <th>{{ _("common.actions") }}</th>
+          </tr>
+        </thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- A/B Tests -->
+<section id="tab-ab-tests" class="eval-tab" hidden>
+  <div id="ab-campaigns-list" class="ab-campaigns">
+    <p class="empty-state">{{ _("eval.no_ab_campaigns") }}</p>
+  </div>
+</section>
+
+<!-- Baselines -->
+<section id="tab-baselines" class="eval-tab" hidden>
+  <div class="glass-card">
+    <h3>{{ _("eval.baselines") }}</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ _("eval.col_agent") }}</th>
+          <th>{{ _("eval.col_score") }}</th>
+          <th>{{ _("eval.col_scenarios") }}</th>
+          <th>{{ _("eval.col_pass_fail") }}</th>
+          <th>{{ _("common.actions") }}</th>
+        </tr>
+      </thead>
+      <tbody id="baselines-body">
+        <tr><td colspan="5" class="empty-state">{{ _("eval.no_baselines") }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Suites -->
+<section id="tab-suites" class="eval-tab" hidden>
+  <div class="glass-card">
+    <h3>{{ _("eval.suites") }}</h3>
+    <div id="suites-list" class="suites-grid">
+      <p class="empty-state">{{ _("eval.no_suites") }}</p>
+    </div>
+  </div>
+</section>
+
+<!-- New Eval dialog -->
+<dialog id="new-eval-dialog" class="glass-dialog">
+  <form id="new-eval-form" method="dialog">
+    <h3>{{ _("eval.run_eval_title") }}</h3>
+    <label>{{ _("eval.agent") }}
+      <select name="agent_id" required id="eval-agent-select"></select>
+    </label>
+    <label>{{ _("eval.suite") }}
+      <select name="suite" required id="eval-suite-select"></select>
+    </label>
+    <label>{{ _("eval.scorer") }}
+      <select name="scorer"><option value="keyword">keyword</option><option value="llm_judge">LLM Judge</option></select>
+    </label>
+    <label>{{ _("eval.label") }}
+      <input type="text" name="label" placeholder="experiment-2026"/>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">▶ {{ _("eval.run") }}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- New A/B dialog -->
+<dialog id="new-ab-dialog" class="glass-dialog">
+  <form id="new-ab-form" method="dialog">
+    <h3>{{ _("eval.ab_title") }}</h3>
+    <label>{{ _("eval.agent_a") }}
+      <select name="agent_a_id" required id="ab-agent-a-select"></select>
+    </label>
+    <label>{{ _("eval.agent_b") }}
+      <select name="agent_b_id" required id="ab-agent-b-select"></select>
+    </label>
+    <label>{{ _("eval.suite") }}
+      <select name="suite" id="ab-suite-select"></select>
+    </label>
+    <label>{{ _("eval.label") }}
+      <input type="text" name="label" placeholder="persona-v2-vs-v1"/>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">⚡ {{ _("eval.start_ab") }}</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/eval-chart.js" defer></script>
+<script src="/static/js/components/ab-comparison.js" defer></script>
+<script src="/static/js/evaluations.js" defer></script>
+{% endblock %}

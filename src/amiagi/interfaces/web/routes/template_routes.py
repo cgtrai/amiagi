@@ -28,7 +28,7 @@ async def get_template(request: Request) -> JSONResponse:
 async def create_template(request: Request) -> JSONResponse:
     repo = request.app.state.template_repository
     body = await request.json()
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     try:
         tpl = await repo.create(
             name=body.get("name", "Untitled"),
@@ -91,7 +91,7 @@ async def import_template_yaml(request: Request) -> JSONResponse:
     repo = request.app.state.template_repository
     body = await request.json()
     yaml_content = body.get("yaml_content", "")
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     try:
         from amiagi.interfaces.web.task_templates.template_repository import validate_yaml
         import yaml

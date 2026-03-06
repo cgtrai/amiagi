@@ -1,27 +1,46 @@
 <aside class="glass-sidebar app-sidebar" id="sidebar">
-  <div class="sidebar-item active">
-    <span>🏠</span> Dashboard
-  </div>
-  <div class="sidebar-item" id="agents-section">
-    <span>🤖</span> Agenci
-  </div>
-  <div class="sidebar-item">
-    <span>📋</span> Zadania
-  </div>
-  <div class="sidebar-item">
-    <span>📁</span> Pliki
-  </div>
-  <div class="sidebar-item">
-    <span>📊</span> Metryki
-  </div>
-  <div class="sidebar-item">
-    <span>⚙️</span> Ustawienia
-  </div>
+  <a href="/dashboard" class="sidebar-item{% if request.url.path == '/dashboard' %} active{% endif %}">
+    <span>🏠</span> {{ _("nav.dashboard") }}
+  </a>
+  <a href="/agents" class="sidebar-item{% if request.url.path.startswith('/agents') %} active{% endif %}">
+    <span>🤖</span> {{ _("dashboard.agents") }}
+  </a>
+  <a href="/tasks" class="sidebar-item{% if request.url.path == '/tasks' or request.url.path == '/tasks/new' %} active{% endif %}">
+    <span>📋</span> {{ _("dashboard.tasks") }}
+  </a>
+  <a href="/teams" class="sidebar-item{% if request.url.path == '/teams' %} active{% endif %}">
+    <span>👥</span> {{ _("nav.teams") }}
+  </a>
+  <a href="/files" class="sidebar-item{% if request.url.path == '/files' %} active{% endif %}">
+    <span>📁</span> {{ _("workspace.title") }}
+  </a>
+  <a href="/metrics" class="sidebar-item{% if request.url.path == '/metrics' %} active{% endif %}">
+    <span>📊</span> {{ _("monitoring.performance") }}
+  </a>
+  <a href="/settings" class="sidebar-item{% if request.url.path.startswith('/settings') %} active{% endif %}">
+    <span>⚙️</span> {{ _("nav.settings") }}
+  </a>
 
-  <!-- Mobile-only navigation links (replicate nav-links) -->
+  {% if request.state.user and request.state.user.roles and 'admin' in request.state.user.roles %}
+  <div class="sidebar-divider"></div>
+  <a href="/admin/users" class="sidebar-item{% if request.url.path.startswith('/admin') %} active{% endif %}">
+    <span>🛡️</span> {{ _("nav.admin") }}
+  </a>
+  {% endif %}
+
+  <!-- Mobile-only navigation links -->
   <div class="mobile-nav-links">
-    <a href="/dashboard" onclick="closeMobileMenu()">Dashboard</a>
-    <a href="/admin/users" onclick="closeMobileMenu()">Admin</a>
-    <a href="/auth/logout">Wyloguj</a>
+    <a href="/dashboard" onclick="closeMobileMenu()">{{ _("nav.dashboard") }}</a>
+    <a href="/admin/users" onclick="closeMobileMenu()">{{ _("nav.admin") }}</a>
+    <div class="mobile-lang-switcher">
+      <span>🌐 {{ _("nav.language") }}:</span>
+      <button class="lang-switcher-btn" onclick="switchLang('pl')">PL</button>
+      <button class="lang-switcher-btn" onclick="switchLang('en')">EN</button>
+    </div>
+    <a href="#" onclick="event.preventDefault(); toggleNotificationDropdown(); closeMobileMenu();">
+      🔔 {{ _("notifications.title") }}
+      <span id="mobile-bell-badge" class="nav-bell-badge">0</span>
+    </a>
+    <a href="/auth/logout">{{ _("nav.logout") }}</a>
   </div>
 </aside>

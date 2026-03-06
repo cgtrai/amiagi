@@ -27,20 +27,17 @@
   50% { opacity: 0.5; }
 }
 
-/* ── Agent sidebar (left panel inside main) ─────────────────── */
+/* ── Dashboard layout (legacy flex removed — now pure grid via base) ── */
 .dashboard-layout {
   display: flex;
   gap: var(--space-4);
   height: 100%;
   min-height: 0;
 }
+
+/* Legacy agent sidebar — hidden; agent list now lives in Detail Drawer */
 .agent-sidebar-panel {
-  width: 260px;
-  flex-shrink: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: none;
 }
 .agent-sidebar-panel h3 {
   font-size: 0.85rem;
@@ -55,6 +52,26 @@
   font-size: 0.85rem;
   text-align: center;
   padding: var(--space-4) 0;
+}
+
+/* ── Agent Overview panel rows ──────────────────────────────── */
+.agent-overview-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--font-size-sm);
+}
+.agent-overview-row:last-child { border-bottom: none; }
+.agent-overview-name {
+  flex: 1;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+.agent-overview-model {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
 }
 
 /* ── Main content area ──────────────────────────────────────── */
@@ -142,81 +159,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: var(--space-3);
-}
-
-/* ── Agent tabs ─────────────────────────────────────────────── */
-.tab-bar {
-  display: flex;
-  gap: 2px;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--glass-border);
-  padding-bottom: var(--space-1);
-}
-.agent-tab {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-bottom: none;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  white-space: nowrap;
-  transition: background 0.2s;
-}
-.agent-tab:hover { background: rgba(255,255,255,0.08); }
-.agent-tab.active {
-  background: rgba(255,255,255,0.1);
-  color: var(--text-primary);
-  border-color: var(--accent-primary);
-}
-.tab-close {
-  font-size: 1rem;
-  line-height: 1;
-  opacity: 0.5;
-  cursor: pointer;
-}
-.tab-close:hover { opacity: 1; color: var(--color-error); }
-
-/* ── Agent tab panel ────────────────────────────────────────── */
-.agent-tab-panel { display: none; }
-.agent-detail-split {
-  display: flex;
-  flex-direction: column;
-  height: 400px;
-}
-.agent-chat-area {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.chat-input-row {
-  display: flex;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-}
-.chat-input-row input { flex: 1; }
-
-/* ── Debug 2×2 grid ─────────────────────────────────────────── */
-.agent-tab-content.debug-grid {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: var(--space-3);
-  height: 600px;
-}
-.agent-tab-content.debug-grid .agent-tab-panel {
-  display: flex !important;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-.agent-tab-content.debug-grid .agent-detail-split {
-  height: 100%;
 }
 
 /* ── Section tabs (Monitoring / Teams / Models) ─────────────── */

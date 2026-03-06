@@ -78,9 +78,34 @@ class TestStateToken:
         t2 = generate_state_token()
         assert t1 != t2
 
-    def test_verify_matching(self):
+    def test_hmac_generate_has_three_parts(self):
+        token = generate_state_token(secret="test-secret")
+        parts = token.split(".")
+        assert len(parts) == 3
+        assert parts[0].isdigit()  # timestamp
+
+    def test_hmac_verify_matching(self):
+        secret = "my-secret-key"
+        token = generate_state_token(secret=secret)
+        assert verify_state_token(token, secret) is True
+
+    def test_hmac_verify_wrong_secret(self):
+        token = generate_state_token(secret="secret-a")
+        assert verify_state_token(token, "secret-b") is False
+
+    def test_hmac_verify_tampered_nonce(self):
+        secret = "s"
+        token = generate_state_token(secret=secret)
+        parts = token.split(".")
+        parts[1] = "tampered"
+        assert verify_state_token(".".join(parts), secret) is False
+
+    def test_legacy_verify_matching(self):
         token = generate_state_token()
         assert verify_state_token(token, token) is True
 
-    def test_verify_mismatch(self):
+    def test_legacy_verify_mismatch(self):
         assert verify_state_token("aaa", "bbb") is False
+
+    def test_verify_empty_returns_false(self):
+        assert verify_state_token("", "secret") is False

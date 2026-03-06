@@ -1,0 +1,242 @@
+/* ================================================================
+   Sandboxes admin page — Liquid Glass v2 styles
+   ================================================================ */
+
+/* ── Page ─────────────────────────────────────────────────────── */
+.sandboxes-page {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 1400px;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────── */
+.sandboxes-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.sandboxes-toolbar h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── Sections ─────────────────────────────────────────────────── */
+.sandboxes-section {
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-5);
+}
+.sandboxes-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.sandboxes-section-title {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+.sandboxes-section-header .sandboxes-section-title {
+  margin-bottom: 0;
+}
+.sandboxes-muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Mode toggle ──────────────────────────────────────────────── */
+.sandboxes-mode-toggle {
+  display: flex;
+  gap: var(--space-1);
+}
+.sandboxes-mode-btn {
+  font-size: var(--font-size-xs) !important;
+  padding: var(--space-1) var(--space-3) !important;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+.sandboxes-mode-btn.active {
+  opacity: 1;
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* ── Sandbox card ─────────────────────────────────────────────── */
+.sandboxes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sandbox-card {
+  background: var(--glass-pill-bg);
+  -webkit-backdrop-filter: var(--glass-pill-filter);
+  backdrop-filter: var(--glass-pill-filter);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: border-color var(--transition-fast);
+}
+.sandbox-card:hover {
+  border-color: var(--glass-border-strong);
+}
+.sandbox-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.sandbox-card-name {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.sandbox-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+.sandbox-card-meta span {
+  white-space: nowrap;
+}
+.sandbox-card-path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+.sandbox-card-warning {
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.sandbox-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+.sandbox-card-actions .glass-btn {
+  font-size: var(--font-size-xs) !important;
+  padding: var(--space-1) var(--space-2) !important;
+}
+
+/* ── Execution log ────────────────────────────────────────────── */
+.exec-log-controls {
+  margin-bottom: var(--space-3);
+}
+.exec-log-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.exec-log-filter input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+}
+.exec-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.exec-log-row {
+  display: grid;
+  grid-template-columns: 80px 90px 1fr 70px 60px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  border-bottom: 1px solid var(--glass-border);
+  align-items: center;
+}
+.exec-log-row:last-child {
+  border-bottom: none;
+}
+.exec-log-time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.exec-log-agent {
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+.exec-log-cmd {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-log-status {
+  text-align: center;
+}
+.exec-log-status--ok {
+  color: var(--color-success);
+}
+.exec-log-status--blocked {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-semibold);
+}
+.exec-log-duration {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sandboxes-page {
+    padding: var(--space-4);
+  }
+  .sandbox-list {
+    grid-template-columns: 1fr;
+  }
+  .exec-log-row {
+    grid-template-columns: 60px 70px 1fr 50px;
+  }
+  .exec-log-duration {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .sandboxes-page {
+    padding: var(--space-3);
+  }
+  .sandbox-card-actions {
+    flex-direction: column;
+  }
+  .exec-log-row {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1);
+  }
+  .exec-log-agent {
+    display: none;
+  }
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+}

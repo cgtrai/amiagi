@@ -1,6 +1,6 @@
 /**
  * Dashboard controller — orchestrates panels, WebSocket connection,
- * agent tabs, and debug grid mode.
+ * and agent sidebar.
  */
 (function () {
   "use strict";
@@ -23,8 +23,30 @@
   // State
   // -------------------------------------------------------------------
   let ws = null;
-  let agentTabs = {};       // agent_id → { ws, tabEl, panelEl }
-  let debugMode = false;
+
+  // -------------------------------------------------------------------
+  // Shared agent data cache (avoids duplicate /api/agents fetches)
+  // -------------------------------------------------------------------
+  let _agentDataCache = null;
+  let _agentDataTs = 0;
+  let _agentDataPromise = null; // de-dup in-flight requests
+  const _AGENT_CACHE_TTL = 2000; // 2 seconds
+
+  async function fetchAgents() {
+    const now = Date.now();
+    if (_agentDataCache && now - _agentDataTs < _AGENT_CACHE_TTL) return _agentDataCache;
+    if (_agentDataPromise) return _agentDataPromise;
+    _agentDataPromise = fetch("/api/agents").then(r => r.json()).then(data => {
+      _agentDataCache = data;
+      _agentDataTs = Date.now();
+      _agentDataPromise = null;
+      return data;
+    }).catch(err => {
+      _agentDataPromise = null;
+      throw err;
+    });
+    return _agentDataPromise;
+  }
 
   // -------------------------------------------------------------------
   // Panel preferences (localStorage)
@@ -172,188 +194,90 @@
     if (!list) return;
 
     try {
-      const resp = await fetch("/api/agents");
-      const data = await resp.json();
+      const data = await fetchAgents();
       if (!data.agents || data.agents.length === 0) {
         list.innerHTML = '<div class="sidebar-empty">No agents registered</div>';
         return;
       }
-      list.innerHTML = data.agents.map(a => `
-        <div class="agent-sidebar-item" data-agent-id="${a.agent_id}" role="button" tabindex="0">
-          <agent-card name="${esc(a.name)}"
-                      role="${esc(a.role)}"
-                      state="${esc(a.state)}"
-                      model="${esc(a.model_name)}"
-                      agent-id="${esc(a.agent_id)}">
-          </agent-card>
-        </div>
-      `).join("");
 
-      // Click → open agent tab
-      list.querySelectorAll(".agent-sidebar-item").forEach(el => {
-        el.addEventListener("click", () => openAgentTab(el.dataset.agentId));
-        el.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") openAgentTab(el.dataset.agentId);
-        });
+      const incoming = data.agents;
+      const incomingIds = new Set(incoming.map(a => a.agent_id));
+
+      // Build a map of existing cards for fast lookup
+      const existingItems = list.querySelectorAll(".agent-sidebar-item");
+      const existingMap = new Map();
+      existingItems.forEach(el => existingMap.set(el.dataset.agentId, el));
+
+      // Remove agents no longer present
+      existingMap.forEach((el, id) => {
+        if (!incomingIds.has(id)) el.remove();
       });
+
+      // Update existing or create new cards
+      for (const a of incoming) {
+        const existing = existingMap.get(a.agent_id);
+        if (existing) {
+          // Update attributes on existing card (only changed ones)
+          const card = existing.querySelector("agent-card");
+          if (card) {
+            if (card.getAttribute("state") !== a.state) card.setAttribute("state", a.state);
+            if (card.getAttribute("name") !== a.name) card.setAttribute("name", a.name);
+            if (card.getAttribute("role") !== a.role) card.setAttribute("role", a.role);
+            if (card.getAttribute("model") !== a.model_name) card.setAttribute("model", a.model_name);
+          }
+        } else {
+          // Create new card element
+          const div = document.createElement("div");
+          div.className = "agent-sidebar-item";
+          div.dataset.agentId = a.agent_id;
+          div.setAttribute("role", "button");
+          div.tabIndex = 0;
+          div.innerHTML = `
+            <agent-card name="${esc(a.name)}"
+                        role="${esc(a.role)}"
+                        state="${esc(a.state)}"
+                        model="${esc(a.model_name)}"
+                        agent-id="${esc(a.agent_id)}">
+            </agent-card>
+          `;
+          div.addEventListener("click", () => { location.href = "/agents/" + encodeURIComponent(a.agent_id); });
+          div.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") { location.href = "/agents/" + encodeURIComponent(a.agent_id); }
+          });
+          list.appendChild(div);
+        }
+      }
     } catch (err) {
       list.innerHTML = '<div class="sidebar-empty">Failed to load agents</div>';
       console.error("[dashboard] agent list error", err);
     }
   }
 
+
+
   // -------------------------------------------------------------------
-  // Agent tabs
+  // Agents Overview panel
   // -------------------------------------------------------------------
-  function openAgentTab(agentId) {
-    if (agentTabs[agentId]) {
-      activateTab(agentId);
-      return;
-    }
-
-    const tabBar = document.getElementById("agent-tab-bar");
-    const tabContent = document.getElementById("agent-tab-content");
-    if (!tabBar || !tabContent) return;
-
-    // Create tab button
-    const tabBtn = document.createElement("button");
-    tabBtn.className = "glass-tab agent-tab";
-    tabBtn.dataset.agentId = agentId;
-    tabBtn.innerHTML = `<span>${esc(agentId)}</span><span class="tab-close" title="Close">&times;</span>`;
-    tabBtn.querySelector(".tab-close").addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeAgentTab(agentId);
-    });
-    tabBtn.addEventListener("click", () => activateTab(agentId));
-    tabBar.appendChild(tabBtn);
-
-    // Create tab panel
-    const panel = document.createElement("div");
-    panel.className = "agent-tab-panel";
-    panel.dataset.agentId = agentId;
-    panel.innerHTML = `
-      <div class="agent-detail-split">
-        <div class="agent-chat-area">
-          <chat-stream agent-id="${esc(agentId)}"></chat-stream>
-          <div class="chat-input-row">
-            <input type="text" class="glass-input agent-prompt-input"
-                   placeholder="Send a message to ${esc(agentId)}…"
-                   data-agent-id="${esc(agentId)}">
-            <button class="glass-btn glass-btn--primary send-btn">Send</button>
-          </div>
-        </div>
-      </div>
-    `;
-    tabContent.appendChild(panel);
-
-    // Wire input
-    const input = panel.querySelector(".agent-prompt-input");
-    const sendBtn = panel.querySelector(".send-btn");
-    const chatStream = panel.querySelector("chat-stream");
-
-    const sendPrompt = () => {
-      const text = input.value.trim();
-      if (!text) return;
-      chatStream.addMessage({ role: "user", text });
-      const agentWS = agentTabs[agentId]?.ws;
-      if (agentWS && agentWS.readyState === WebSocket.OPEN) {
-        agentWS.send(JSON.stringify({ type: "user_prompt", message: text }));
+  async function loadAgentsOverview() {
+    const container = document.getElementById("agents-overview-content");
+    if (!container) return;
+    try {
+      const data = await fetchAgents();
+      const agents = data.agents || [];
+      if (!agents.length) {
+        container.innerHTML = '<div class="sidebar-empty">No agents registered.</div>';
+        return;
       }
-      input.value = "";
-    };
-    sendBtn.addEventListener("click", sendPrompt);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
-    });
-
-    // Connect per-agent WebSocket
-    const agentWS = connectAgentWS(agentId, chatStream);
-
-    agentTabs[agentId] = { ws: agentWS, tabEl: tabBtn, panelEl: panel };
-    activateTab(agentId);
-  }
-
-  function activateTab(agentId) {
-    Object.values(agentTabs).forEach(t => {
-      t.tabEl.classList.remove("active");
-      t.panelEl.style.display = "none";
-    });
-    const tab = agentTabs[agentId];
-    if (tab) {
-      tab.tabEl.classList.add("active");
-      tab.panelEl.style.display = "";
-    }
-  }
-
-  function closeAgentTab(agentId) {
-    const tab = agentTabs[agentId];
-    if (!tab) return;
-    if (tab.ws) tab.ws.close();
-    tab.tabEl.remove();
-    tab.panelEl.remove();
-    delete agentTabs[agentId];
-    // Activate another tab if available
-    const remaining = Object.keys(agentTabs);
-    if (remaining.length > 0) activateTab(remaining[0]);
-  }
-
-  function connectAgentWS(agentId, chatStream) {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const token = getWSToken();
-    const url = `${proto}//${location.host}/ws/agent/${encodeURIComponent(agentId)}?token=${encodeURIComponent(token)}`;
-    const sock = new WebSocket(url);
-
-    sock.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "ping") {
-          sock.send(JSON.stringify({ type: "pong" }));
-          return;
-        }
-        if (msg.type === "log") {
-          chatStream.addMessage({ role: "agent", text: msg.message, timestamp: msg.timestamp });
-        } else if (msg.type === "error") {
-          chatStream.addMessage({ role: "agent", text: `⚠️ ${msg.message}` });
-        }
-      } catch (_) { /* ignore */ }
-    };
-    sock.onclose = (e) => {
-      console.log(`[agent-ws] disconnected: ${agentId}`, e.code);
-      // Auto-reconnect per-agent WS with backoff
-      if (agentTabs[agentId]) {
-        const delay = Math.min(2000, _MAX_RECONNECT_DELAY);
-        setTimeout(() => {
-          if (agentTabs[agentId]) {
-            agentTabs[agentId].ws = connectAgentWS(agentId, chatStream);
-          }
-        }, delay);
-      }
-    };
-    sock.onerror = (e) => console.error(`[agent-ws] error: ${agentId}`, e);
-    return sock;
-  }
-
-  // -------------------------------------------------------------------
-  // Debug grid mode
-  // -------------------------------------------------------------------
-  function toggleDebugMode() {
-    debugMode = !debugMode;
-    const content = document.getElementById("agent-tab-content");
-    const btn = document.getElementById("btn-debug-grid");
-    if (content) {
-      content.classList.toggle("debug-grid", debugMode);
-    }
-    if (btn) {
-      btn.textContent = debugMode ? "Exit Debug Grid" : "Open in New Pane";
-      btn.classList.toggle("active", debugMode);
-    }
-    // In debug mode, show all tab panels simultaneously
-    if (debugMode) {
-      Object.values(agentTabs).forEach(t => { t.panelEl.style.display = ""; });
-    } else {
-      // Restore single-tab view
-      const active = Object.entries(agentTabs).find(([_, t]) => t.tabEl.classList.contains("active"));
-      if (active) activateTab(active[0]);
+      container.innerHTML = agents.map(function (a) {
+        const stateColor = {idle: "muted", working: "success", paused: "idle", error: "error", terminated: "danger"}[a.state] || "muted";
+        return '<div class="agent-overview-row">' +
+          '<span class="agent-overview-name">' + esc(a.name || a.agent_id) + '</span>' +
+          '<span class="glass-badge glass-badge--' + stateColor + '">' + esc(a.state) + '</span>' +
+          '<span class="agent-overview-model">' + esc(a.model_name || "—") + '</span>' +
+          '</div>';
+      }).join("");
+    } catch (err) {
+      container.innerHTML = '<div class="sidebar-empty">Failed to load agent data.</div>';
     }
   }
 
@@ -508,19 +432,17 @@
 
     connectGlobalWS();
     loadAgentSidebar();
+    loadAgentsOverview();
     loadTasks();
     loadMetrics();
     loadBudget();
     loadTaskCosts();
     loadHealthDiagnostics();
 
-    // Debug grid toggle
-    const debugBtn = document.getElementById("btn-debug-grid");
-    if (debugBtn) debugBtn.addEventListener("click", toggleDebugMode);
-
     // Periodic refresh (30s)
     setInterval(() => {
       loadAgentSidebar();
+      loadAgentsOverview();
       loadTasks();
       loadMetrics();
       loadBudget();

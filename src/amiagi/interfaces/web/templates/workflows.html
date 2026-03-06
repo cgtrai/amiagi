@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("workflows.title") }} — Amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/workflows.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ _("workflows.title") }}</h1>
+  <div class="page-actions">
+    <button class="btn btn-outline" id="btn-tab-runs" data-tab="runs">{{ _("workflows.tab_runs") }}</button>
+    <button class="btn btn-outline" id="btn-tab-definitions" data-tab="definitions">{{ _("workflows.tab_definitions") }}</button>
+    <button class="btn btn-primary" id="btn-create-workflow">+ {{ _("workflows.create") }}</button>
+  </div>
+</div>
+
+<!-- Tab: Active Runs -->
+<section id="tab-runs" class="workflow-tab active">
+  <div class="section-header">
+    <h2>{{ _("workflows.active_runs") }}</h2>
+    <button class="btn btn-sm btn-outline" id="btn-refresh-runs">↻ {{ _("common.refresh") }}</button>
+  </div>
+  <div id="runs-list" class="workflow-runs-list">
+    <p class="empty-state">{{ _("workflows.no_runs") }}</p>
+  </div>
+</section>
+
+<!-- Tab: Definitions -->
+<section id="tab-definitions" class="workflow-tab" hidden>
+  <div class="section-header">
+    <h2>{{ _("workflows.definitions") }}</h2>
+  </div>
+  <div id="definitions-list" class="workflow-definitions-list">
+    <p class="empty-state">{{ _("workflows.no_definitions") }}</p>
+  </div>
+</section>
+
+<!-- Run Detail modal/drawer -->
+<div id="workflow-run-detail" class="workflow-detail-panel" hidden>
+  <div class="detail-header">
+    <h3 id="run-detail-title"></h3>
+    <button class="btn-close" id="btn-close-run-detail">✕</button>
+  </div>
+  <div class="detail-body">
+    <div class="run-meta">
+      <span class="glass-pill" id="run-detail-status"></span>
+      <span id="run-detail-started"></span>
+    </div>
+    <div class="run-controls" id="run-controls">
+      <button class="btn btn-sm btn-outline" data-action="pause">⏸ {{ _("workflows.pause") }}</button>
+      <button class="btn btn-sm btn-outline" data-action="resume">▶ {{ _("workflows.resume") }}</button>
+      <button class="btn btn-sm btn-danger" data-action="abort">⏹ {{ _("workflows.abort") }}</button>
+    </div>
+    <workflow-dag id="run-dag"></workflow-dag>
+  </div>
+</div>
+
+<!-- Create Workflow modal -->
+<dialog id="create-workflow-dialog" class="glass-dialog">
+  <form id="create-workflow-form" method="dialog">
+    <h3>{{ _("workflows.create_title") }}</h3>
+    <label>
+      {{ _("workflows.name") }}
+      <input type="text" name="name" required placeholder="Code Review Pipeline"/>
+    </label>
+    <label>
+      {{ _("workflows.description") }}
+      <textarea name="description" rows="2" placeholder="{{ _('workflows.description_placeholder') }}"></textarea>
+    </label>
+    <label>
+      {{ _("workflows.yaml_definition") }}
+      <textarea name="yaml_body" rows="12" class="code-textarea" placeholder="nodes:
+  - node_id: analyze
+    node_type: EXECUTE
+    label: Analyze Code
+    agent_role: executor
+  - node_id: review
+    node_type: GATE
+    label: Human Review
+    depends_on: [analyze]"></textarea>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" id="btn-cancel-create">{{ _("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">{{ _("workflows.create") }}</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/components/workflow-dag.js" defer></script>
+<script src="/static/js/workflows.js" defer></script>
+{% endblock %}

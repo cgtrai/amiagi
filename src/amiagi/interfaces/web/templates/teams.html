@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("teams.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.teams-page { padding: var(--space-6); }
+.teams-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-6);
+}
+.teams-header h2 { margin: 0; color: var(--text-primary); }
+.teams-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-5);
+}
+.team-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius); padding: var(--space-5);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  transition: border-color var(--transition-fast);
+}
+.team-card:hover { border-color: var(--accent-blue); }
+.team-card h3 { margin: 0 0 var(--space-3); color: var(--text-primary); }
+.team-card .team-desc { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-4); }
+.team-members { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.team-member {
+  font-size: var(--font-size-xs); padding: 2px var(--space-2);
+  background: var(--glass-bg-hover); border-radius: var(--glass-radius-pill); color: var(--text-secondary);
+}
+.team-member--lead { background: rgba(99,102,241,0.15); color: var(--accent-purple); }
+.teams-empty { text-align: center; padding: var(--space-10); color: var(--text-muted); font-size: var(--font-size-lg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="teams-page">
+  <div class="teams-header">
+    <h2>👥 {{ _("teams.title") }}</h2>
+  </div>
+  <div class="teams-grid" id="teams-grid">
+    <div class="teams-empty">{{ _("teams.loading") }}</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+
+  async function loadTeams() {
+    try {
+      var res = await fetch('/api/teams');
+      var data = await res.json();
+      var teams = data.teams || data || [];
+      var grid = document.getElementById('teams-grid');
+
+      if (!teams.length) {
+        grid.innerHTML = '<div class="teams-empty">{{ _("teams.empty") }}</div>';
+        return;
+      }
+
+      grid.innerHTML = teams.map(function(team) {
+        var members = (team.members || []).map(function(m) {
+          var cls = m.role === 'lead' || m.role === 'supervisor' ? 'team-member team-member--lead' : 'team-member';
+          return '<span class="' + cls + '">' + esc(m.name || m.agent_id || m.id || '—') + '</span>';
+        }).join('');
+
+        return '<div class="team-card">'
+          + '<h3>' + esc(team.name || team.id || '—') + '</h3>'
+          + (team.description ? '<div class="team-desc">' + esc(team.description) + '</div>' : '')
+          + '<div class="team-members">' + (members || '<span class="text-muted">—</span>') + '</div>'
+          + '</div>';
+      }).join('');
+    } catch(e) {
+      document.getElementById('teams-grid').innerHTML =
+        '<div class="teams-empty">{{ _("common.error") }}</div>';
+    }
+  }
+
+  function esc(s) {
+    var d = document.createElement('span');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  loadTeams();
+})();
+</script>
+{% endblock %}

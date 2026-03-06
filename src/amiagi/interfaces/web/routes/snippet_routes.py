@@ -14,7 +14,7 @@ from starlette.routing import Route
 
 async def list_snippets(request: Request) -> JSONResponse:
     repo = request.app.state.snippet_repository
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     tag = request.query_params.get("tag")
     snippets = await repo.list_snippets(user_id, tag=tag)
     return JSONResponse([s.to_dict() for s in snippets])
@@ -22,7 +22,7 @@ async def list_snippets(request: Request) -> JSONResponse:
 
 async def create_snippet(request: Request) -> JSONResponse:
     repo = request.app.state.snippet_repository
-    user_id = str(request.state.user.get("sub", ""))
+    user_id = str(request.state.user.user_id)
     body = await request.json()
     snippet = await repo.create_snippet(
         user_id=user_id,

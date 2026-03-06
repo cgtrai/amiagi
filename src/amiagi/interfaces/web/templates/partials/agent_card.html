@@ -1,0 +1,40 @@
+<!-- Agent card partial — server-rendered fallback / <noscript> -->
+<div class="agent-card glass-panel" data-agent-id="{{ agent.agent_id }}">
+  <div class="agent-card-header">
+    <div class="agent-role-icon">
+      {% set icons = {'executor': '⚙️', 'supervisor': '👁️', 'researcher': '🔬', 'planner': '📐', 'reviewer': '🔍'} %}
+      {{ icons.get(agent.role, '🤖') }}
+    </div>
+    <div class="agent-card-info">
+      <h4 class="agent-card-name">{{ agent.name or agent.agent_id }}</h4>
+      <span class="agent-card-role text-muted">{{ agent.role }}</span>
+    </div>
+    <span class="glass-badge glass-badge--{{ 'success' if agent.state == 'working' else 'muted' }}">
+      {{ agent.state }}
+    </span>
+  </div>
+
+  {% if agent.model_name %}
+  <div class="agent-card-model text-sm text-muted">
+    {{ _("agent.model") }}: <strong>{{ agent.model_name }}</strong>
+    {% if agent.model_backend %} ({{ agent.model_backend }}){% endif %}
+  </div>
+  {% endif %}
+
+  {% if agent.skills %}
+  <div class="agent-card-skills">
+    {% for skill in agent.skills[:5] %}
+    <span class="skill-tag">{{ skill }}</span>
+    {% endfor %}
+    {% if agent.skills|length > 5 %}
+    <span class="skill-tag">+{{ agent.skills|length - 5 }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="agent-card-actions">
+    <a href="/agents/{{ agent.agent_id }}" class="glass-btn glass-btn--ghost glass-btn--xs">
+      {{ _("admin.details") }}
+    </a>
+  </div>
+</div>

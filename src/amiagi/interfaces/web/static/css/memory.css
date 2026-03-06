@@ -1,0 +1,217 @@
+/* ================================================================
+   Memory Browser page styles
+   ================================================================ */
+
+.memory-main {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Agent sidebar ───────────────────────────────────────────── */
+.memory-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-right: 1px solid var(--glass-border);
+  overflow-y: auto;
+  background: var(--glass-dense-bg);
+  -webkit-backdrop-filter: var(--glass-dense-filter);
+  backdrop-filter: var(--glass-dense-filter);
+}
+
+.memory-sidebar h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.agent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--glass-radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: background 0.12s ease;
+}
+
+.agent-item:hover {
+  background: var(--glass-bg-hover);
+}
+
+.agent-item.active {
+  background: var(--glass-bg-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.agent-item .agent-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--glass-pill-bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--glass-radius-full);
+}
+
+/* ── Content area ────────────────────────────────────────────── */
+.memory-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────── */
+.memory-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.memory-tabs .tab-btn {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  border: 1px solid transparent;
+  background: var(--glass-pill-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.memory-tabs .tab-btn:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-primary);
+}
+
+.memory-tabs .tab-btn.active {
+  background: var(--glass-bg-active);
+  border-color: var(--glass-border);
+  color: var(--text-primary);
+}
+
+/* ── Search bar ──────────────────────────────────────────────── */
+.memory-search {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.memory-search input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, .6);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.memory-search input:focus {
+  border-color: var(--color-accent, #0ea5e9);
+}
+
+/* ── Memory items ────────────────────────────────────────────── */
+.memory-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory-item {
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+
+.memory-item .item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.memory-item .item-role {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.memory-item .item-role.user      { color: #38bdf8; }
+.memory-item .item-role.assistant { color: #a78bfa; }
+.memory-item .item-role.system    { color: #f59e0b; }
+
+.memory-item .item-index {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-item .item-content {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.memory-item .item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ── Shared memory entries ───────────────────────────────────── */
+.shared-memory-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.shared-entry {
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-card-bg);
+  -webkit-backdrop-filter: var(--glass-card-filter);
+  backdrop-filter: var(--glass-card-filter);
+  border: 1px solid var(--glass-border);
+}
+
+.shared-entry .entry-key {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.shared-entry .entry-value {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--space-6) var(--space-4);
+  font-size: 0.9rem;
+}

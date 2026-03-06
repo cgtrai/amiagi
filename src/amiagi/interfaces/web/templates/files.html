@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Files — Amiagi{% endblock %}
+{% block title %}{{ _("files.title") }} — Amiagi{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/files-page.css"/>
@@ -9,7 +9,7 @@
 {% block content %}
 <div class="files-layout">
   <div class="files-header">
-    <h1>📁 Files</h1>
+    <h1>📁 {{ _("files.title") }}</h1>
     <span id="file-count" class="meta"></span>
   </div>
 
@@ -18,14 +18,14 @@
        ondragover="event.preventDefault(); this.classList.add('dragover')"
        ondragleave="this.classList.remove('dragover')"
        ondrop="handleDrop(event)">
-    <p>Drag &amp; drop files here or <label for="file-input" class="file-browse-label">browse</label></p>
+    <p>{{ _("files.drag_drop") }} <label for="file-input" class="file-browse-label">{{ _("files.browse") }}</label></p>
     <input type="file" id="file-input" multiple hidden onchange="handleFiles(this.files)"/>
   </div>
   <div id="upload-status"></div>
 
   <!-- File list -->
   <ul class="file-list" id="file-list">
-    <li class="empty-state" id="empty-msg">Loading…</li>
+    <li class="empty-state" id="empty-msg">{{ _("files.loading") }}</li>
   </ul>
 </div>
 {% endblock %}
@@ -50,7 +50,7 @@
     list.innerHTML = '';
     countEl.textContent = files.length + ' file(s)';
     if (files.length === 0) {
-      list.innerHTML = '<li class="empty-state">No files yet. Upload something!</li>';
+      list.innerHTML = '<li class="empty-state">{{ _("files.empty") }}</li>';
       return;
     }
     files.forEach(function(f) {
@@ -61,7 +61,7 @@
         '<span class="icon">📄</span>' +
         '<span class="name">' + _esc(name) + '</span>' +
         '<span class="actions">' +
-          '<a href="/workspace/file?path=' + encodeURIComponent(name) + '&workspace=' + encodeURIComponent(workspace) + '" target="_blank">View</a>' +
+          '<a href="/workspace/file?path=' + encodeURIComponent(name) + '&workspace=' + encodeURIComponent(workspace) + '" target="_blank">{{ _("files.view") }}</a>' +
         '</span>';
       list.appendChild(li);
     });
@@ -86,11 +86,11 @@
     Array.from(fileList).forEach(function(file) {
       var fd = new FormData();
       fd.append('file', file);
-      status.textContent = 'Uploading ' + file.name + '…';
+      status.textContent = '{{ _("files.uploading") }} ' + file.name + '…';
       fetch('/files/upload', { method: 'POST', body: fd })
         .then(function(r) {
           if (r.ok) {
-            status.textContent = file.name + ' uploaded ✓';
+            status.textContent = file.name + ' {{ _("files.uploaded") }}';
             loadFiles();
           } else {
             return r.json().then(function(d) { status.textContent = 'Error: ' + (d.error || r.statusText); });

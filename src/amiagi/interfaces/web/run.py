@@ -76,6 +76,9 @@ def run_web(
     team_composer: "TeamComposer | None" = None,
     skill_catalog: "SkillCatalog | None" = None,
     team_dashboard: "TeamDashboard | None" = None,
+    eval_runner: Any = None,
+    benchmark_suite: Any = None,
+    regression_detector: Any = None,
 ) -> None:
     """Wire up and start the web interface (blocking)."""
     import uvicorn
@@ -139,10 +142,29 @@ def run_web(
         team_composer=team_composer,
         skill_catalog=skill_catalog,
         team_dashboard=team_dashboard,
+        workflow_engine=workflow_engine,
+        secret_vault=secret_vault,
+        audit_chain=audit_chain,
+        eval_runner=eval_runner,
+        benchmark_suite=benchmark_suite,
+        regression_detector=regression_detector,
     )
 
     # -- Start Uvicorn ------------------------------------------------------
     port = settings.dashboard_port
-    logger.info("Starting amiagi web GUI on http://0.0.0.0:%d", port)
-    print(f"\n  🌐 amiagi Web GUI: http://localhost:{port}\n")
+    url = f"http://localhost:{port}"
+    logger.info("Starting amiagi web GUI on %s", url)
+    print(f"\n  🌐 amiagi Web GUI: {url}\n")
+
+    # Auto-open the browser after a short delay (non-blocking).
+    import threading
+    import webbrowser
+
+    def _open_browser() -> None:
+        import time
+        time.sleep(1.5)
+        webbrowser.open(url)
+
+    threading.Thread(target=_open_browser, daemon=True).start()
+
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

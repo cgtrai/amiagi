@@ -48,7 +48,12 @@ class AgentStream:
         app = self._ws.app
 
         # --- JWT auth ---
-        token = self._ws.query_params.get("token")
+        # Prefer query-param token; fall back to HttpOnly session cookie
+        # (the cookie is httponly so JS cannot read it, but the browser
+        # sends it along with the WebSocket handshake request).
+        token = self._ws.query_params.get("token") or ""
+        if not token:
+            token = self._ws.cookies.get("amiagi_session", "")
         if not token:
             await self._ws.close(code=4001, reason="Missing token")
             return
