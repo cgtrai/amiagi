@@ -76,3 +76,10 @@ class SandboxManager:
             for f in filenames:
                 total += (Path(dirpath) / f).stat().st_size
         return total
+
+    def list_files(self, agent_id: str) -> list[Path]:
+        """Return top-level files and folders for *agent_id* sorted by name."""
+        sandbox = self._sandboxes.get(agent_id)
+        if sandbox is None or not sandbox.exists():
+            return []
+        return sorted(sandbox.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))

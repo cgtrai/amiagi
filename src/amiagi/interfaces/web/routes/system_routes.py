@@ -9,14 +9,79 @@ Endpoints:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from io import StringIO
 import logging
 import time
+from contextlib import redirect_stdout
+from pathlib import Path
 
+from amiagi.domain.task import TaskStatus
+from amiagi.interfaces.cli import HELP_TEXT
+from amiagi.interfaces.cli_commands import CliContext, collect_capabilities, dispatch_cli_command
+from amiagi.interfaces.shared_cli_helpers import _build_operator_command_catalog, _web_command_support
+from amiagi.application.shell_policy import default_shell_policy, load_shell_policy
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
+
+
+def _list_tasks(task_queue) -> list:
+    if task_queue is None:
+        return []
+    if hasattr(task_queue, "list_all"):
+        return task_queue.list_all()
+    if hasattr(task_queue, "_tasks") and isinstance(task_queue._tasks, dict):
+        return list(task_queue._tasks.values())
+    return []
+
+
+def _find_running_task(task_queue):
+    tasks = _list_tasks(task_queue)
+    running = [
+        t for t in tasks
+        if str(getattr(getattr(t, "status", ""), "value", getattr(t, "status", ""))).lower() in ("in_progress", "running")
+    ]
+    return running[0] if running else None
+
+
+def _current_task_payload(task, model_name: str | None = None) -> dict | None:
+    if not task:
+        return None
+    return {
+        "task_id": task.task_id,
+        "title": getattr(task, "title", ""),
+        "agent_id": getattr(task, "assigned_agent_id", None),
+        "model_name": model_name,
+        "progress_pct": getattr(task, "progress_pct", 0),
+        "steps_done": getattr(task, "steps_done", 0),
+        "steps_total": getattr(task, "steps_total", 0),
+    }
+
+
+def _operator_dispatch_payload(message: str, target_agent: str | None, submitted_message: str) -> dict:
+    normalized_target = str(target_agent or "").strip() or None
+    return {
+        "channel": "user",
+        "actor": "operator",
+        "target_agent": normalized_target,
+        "target_scope": "agent" if normalized_target else "broadcast",
+        "message": message,
+        "submitted_message": submitted_message,
+        "summary": (
+            f"Operator → {normalized_target}: {message}"
+            if normalized_target
+            else f"Operator → all: {message}"
+        ),
+    }
+
+
+async def _broadcast_if_available(request: Request, event_type: str, payload: dict) -> None:
+    hub = getattr(request.app.state, "event_hub", None)
+    if hub is not None:
+        await hub.broadcast(event_type, payload)
 
 
 # ── GET /api/system/state ────────────────────────────────────
@@ -50,16 +115,19 @@ async def system_state(request: Request) -> JSONResponse:
 
     # Tasks
     task_queue = getattr(state, "task_queue", None)
+    current_task = _find_running_task(task_queue)
     if task_queue is not None:
         try:
+            task_stats = task_queue.stats() if hasattr(task_queue, "stats") else {}
             result["tasks"] = {
                 "pending": task_queue.pending_count(),
                 "total": task_queue.total_count() if hasattr(task_queue, "total_count") else task_queue.pending_count(),
+                "running": int(task_stats.get("in_progress", 0)) + int(task_stats.get("running", 0)) if isinstance(task_stats, dict) else 0,
             }
         except Exception:
-            result["tasks"] = {"pending": 0, "total": 0}
+            result["tasks"] = {"pending": 0, "total": 0, "running": 0}
     else:
-        result["tasks"] = {"pending": 0, "total": 0}
+        result["tasks"] = {"pending": 0, "total": 0, "running": 0}
 
     # Inbox
     inbox_svc = getattr(state, "inbox_service", None)
@@ -120,7 +188,225 @@ async def system_state(request: Request) -> JSONResponse:
     else:
         result["workflows"] = {"active_runs": 0}
 
+    # Extended fields (S4)
+    budget_manager = getattr(state, "budget_manager", None)
+    result["cycle"] = getattr(state, "cycle_count", 0)
+    result["tokens_session"] = budget_manager.session_budget.tokens_used if budget_manager and hasattr(budget_manager, "session_budget") else 0
+    result["cost_session"] = float(budget_manager.session_budget.spent_usd) if budget_manager and hasattr(budget_manager, "session_budget") else 0.0
+    result["error_count"] = getattr(state, "error_count", 0)
+    result["queue_length"] = task_queue.pending_count() if task_queue and hasattr(task_queue, "pending_count") else 0
+
+    agent_id = getattr(current_task, "assigned_agent_id", None) if current_task else None
+    model_name = None
+    if agent_id:
+        registry = getattr(state, "agent_registry", None)
+        if registry:
+            try:
+                agent = registry.get(agent_id)
+                if agent:
+                    model_name = getattr(agent, "model_name", None)
+            except Exception:
+                model_name = None
+    result["current_task"] = _current_task_payload(current_task, model_name)
+
     return JSONResponse(result)
+
+
+# ── GET /api/system/current-task (S3, S8) ────────────────────
+
+async def system_current_task(request: Request) -> JSONResponse:
+    """Return the currently running task, if any."""
+    state = request.app.state
+    task_queue = getattr(state, "task_queue", None)
+    if task_queue is None:
+        return JSONResponse(None)
+
+    task = _find_running_task(task_queue)
+    if not task:
+        return JSONResponse(None)
+
+    agent_id = getattr(task, "assigned_agent_id", None)
+    model_name = None
+    if agent_id:
+        registry = getattr(state, "agent_registry", None)
+        if registry:
+            agent = registry.get(agent_id)
+            if agent:
+                model_name = getattr(agent, "model_name", None)
+
+    return JSONResponse(_current_task_payload(task, model_name))
+
+
+# ── GET /api/system/commands ────────────────────────────────
+
+async def system_commands(request: Request) -> JSONResponse:
+    """Return the shared operator command catalog for Supervisor WWW."""
+    return JSONResponse({"commands": _build_operator_command_catalog()})
+
+
+def _build_web_cli_context(request: Request) -> CliContext:
+    adapter = getattr(request.app.state, "web_adapter", None)
+    router_engine = getattr(adapter, "router_engine", None)
+    if router_engine is None:
+        raise RuntimeError("router_engine unavailable")
+
+    shell_policy = getattr(request.app.state, "shell_policy", None)
+    if shell_policy is None:
+        shell_policy_path = getattr(router_engine, "shell_policy_path", None)
+        try:
+            shell_policy = load_shell_policy(shell_policy_path) if shell_policy_path else default_shell_policy()
+        except Exception:
+            shell_policy = default_shell_policy()
+
+    def _log_action(*_args, **_kwargs) -> None:
+        return None
+
+    return CliContext(
+        chat_service=router_engine.chat_service,
+        permission_manager=router_engine.permission_manager,
+        script_executor=router_engine.script_executor,
+        work_dir=Path(router_engine.work_dir),
+        workspace_root=Path.cwd(),
+        shell_policy=shell_policy,
+        autonomous_mode=bool(getattr(router_engine, "autonomous_mode", False)),
+        log_action=_log_action,
+        collect_capabilities=lambda **kwargs: collect_capabilities(
+            permission_manager=router_engine.permission_manager,
+            autonomous_mode=bool(getattr(router_engine, "autonomous_mode", False)),
+            check_network=bool(kwargs.get("check_network", False)),
+        ),
+    )
+
+
+async def system_command_execute(request: Request) -> JSONResponse:
+    """Execute supported CLI/TUI slash commands from Supervisor WWW."""
+    body = await request.json()
+    command = str(body.get("command") or "").strip()
+    if not command:
+        return JSONResponse({"error": "command required"}, status_code=400)
+    if not command.startswith("/"):
+        return JSONResponse({"error": "slash command required"}, status_code=400)
+
+    support = _web_command_support(command)
+    if support != "run":
+        return JSONResponse({
+            "error": "command not supported in WWW before UAT",
+            "command": command,
+            "web_support": support,
+        }, status_code=409)
+
+    adapter = getattr(request.app.state, "web_adapter", None)
+    router_engine = getattr(adapter, "router_engine", None)
+    if router_engine is None:
+        return JSONResponse({"error": "router_engine unavailable"}, status_code=503)
+
+    ctx = _build_web_cli_context(request)
+    stdout = StringIO()
+    try:
+        with redirect_stdout(stdout):
+            result = dispatch_cli_command(command, ctx, router_engine=router_engine, help_text=HELP_TEXT)
+    except Exception as exc:
+        logger.exception("system command execute failed")
+        return JSONResponse({"error": str(exc), "command": command}, status_code=500)
+
+    output = stdout.getvalue().strip()
+    if not result.handled:
+        return JSONResponse({"error": "unsupported command", "command": command}, status_code=400)
+
+    await _broadcast_if_available(request, "operator.command.executed", {
+        "channel": "user",
+        "actor": "operator",
+        "source_label": "Operator",
+        "command": command,
+        "summary": f"Operator command executed: {command}",
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "command": command,
+        "output": output,
+        "should_exit": bool(result.should_exit),
+        "web_support": support,
+    })
+
+
+# ── POST /api/system/current-task/{action} ────────────────────
+
+async def system_current_task_pause(request: Request) -> JSONResponse:
+    """Pause the currently running task if the queue supports it.
+
+    Fallback behavior: move the running task back to ASSIGNED state.
+    """
+    task_queue = getattr(request.app.state, "task_queue", None)
+    task = _find_running_task(task_queue)
+    if task is None:
+        return JSONResponse({"error": "no current task"}, status_code=404)
+
+    task.status = TaskStatus.ASSIGNED
+    await _broadcast_if_available(request, "system.current_task.paused", {"task_id": task.task_id})
+    return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
+
+
+async def system_current_task_stop(request: Request) -> JSONResponse:
+    """Stop the currently running task by cancelling it."""
+    task_queue = getattr(request.app.state, "task_queue", None)
+    task = _find_running_task(task_queue)
+    if task is None:
+        return JSONResponse({"error": "no current task"}, status_code=404)
+
+    if hasattr(task, "cancel"):
+        task.cancel()
+    else:
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = datetime.now(timezone.utc)
+
+    await _broadcast_if_available(request, "system.current_task.stopped", {"task_id": task.task_id})
+    return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
+
+
+async def system_current_task_retry(request: Request) -> JSONResponse:
+    """Retry the currently selected task by moving it back to pending."""
+    task_queue = getattr(request.app.state, "task_queue", None)
+    task = _find_running_task(task_queue)
+    if task is None:
+        tasks = _list_tasks(task_queue)
+        retryable = [
+            t for t in tasks
+            if str(getattr(getattr(t, "status", ""), "value", getattr(t, "status", ""))).lower() in ("failed", "cancelled")
+        ]
+        task = retryable[0] if retryable else None
+    if task is None:
+        return JSONResponse({"error": "no task available for retry"}, status_code=404)
+
+    task.status = TaskStatus.PENDING
+    task.assigned_agent_id = None
+    task.started_at = None
+    task.completed_at = None
+    task.result = ""
+
+    await _broadcast_if_available(request, "system.current_task.retried", {"task_id": task.task_id})
+    return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
+
+
+# ── POST /api/system/reset (S7) ─────────────────────────────
+
+async def system_reset(request: Request) -> JSONResponse:
+    """Reset session — clear budget counters and optionally router state."""
+    state = request.app.state
+
+    budget = getattr(state, "budget_manager", None)
+    if budget and hasattr(budget, "reset_all"):
+        budget.reset_all()
+
+    # Reset cycle counter
+    if hasattr(state, "cycle_count"):
+        state.cycle_count = 0
+    if hasattr(state, "error_count"):
+        state.error_count = 0
+
+    from amiagi.interfaces.web.audit.log_helpers import log_action
+    await log_action(request, "system.reset", {})
+    return JSONResponse({"ok": True, "message": "Session reset"})
 
 
 # ── POST /api/system/input ───────────────────────────────────
@@ -141,20 +427,15 @@ async def system_input(request: Request) -> JSONResponse:
     if adapter is None:
         return JSONResponse({"error": "web_adapter unavailable"}, status_code=503)
 
-    engine = getattr(adapter, "router_engine", None)
-    if engine is None:
-        return JSONResponse({"error": "router_engine unavailable"}, status_code=503)
-
     try:
-        # RouterEngine.handle_input() accepts user message + optional target
-        handle = getattr(engine, "handle_input", None) or getattr(engine, "send_message", None)
-        if handle is None:
-            return JSONResponse({"error": "router_engine has no input handler"}, status_code=501)
+        submitted_message = message
+        if target_agent and not message.startswith("["):
+            submitted_message = f"[Sponsor -> {target_agent}] {message}"
 
-        if target_agent:
-            result = handle(message, target_agent=target_agent)
-        else:
-            result = handle(message)
+        dispatch_payload = _operator_dispatch_payload(message, target_agent, submitted_message)
+
+        adapter.submit_user_turn(submitted_message)
+        await _broadcast_if_available(request, "operator.input.accepted", dispatch_payload)
 
         # Log the operator action
         from amiagi.interfaces.web.audit.log_helpers import log_action
@@ -165,7 +446,9 @@ async def system_input(request: Request) -> JSONResponse:
 
         return JSONResponse({
             "ok": True,
-            "response": str(result) if result else "accepted",
+            "response": "accepted",
+            "submitted_message": submitted_message,
+            "dispatch": dispatch_payload,
         })
 
     except Exception as exc:
@@ -186,7 +469,7 @@ async def inbox_delegate(request: Request) -> JSONResponse:
 
     item_id = request.path_params["item_id"]
     body = await request.json()
-    agent_id = (body.get("agent_id") or "").strip()
+    agent_id = (body.get("agent_id") or body.get("delegate_to") or "").strip()
     instructions = body.get("instructions", "")
 
     if not agent_id:
@@ -221,13 +504,11 @@ async def inbox_delegate(request: Request) -> JSONResponse:
     )
 
     # Broadcast
-    hub = getattr(request.app.state, "event_hub", None)
-    if hub is not None:
-        hub.broadcast("inbox.delegated", {
-            "original_item_id": item_id,
-            "new_item_id": delegated_item.id,
-            "agent_id": agent_id,
-        })
+    await _broadcast_if_available(request, "inbox.delegated", {
+        "original_item_id": item_id,
+        "new_item_id": delegated_item.id,
+        "agent_id": agent_id,
+    })
 
     from amiagi.interfaces.web.audit.log_helpers import log_action
     await log_action(request, "inbox.delegate", {
@@ -278,13 +559,11 @@ async def agent_spawn(request: Request) -> JSONResponse:
         agent_id = getattr(agent, "agent_id", None) or getattr(agent, "id", str(agent))
 
         # Broadcast
-        hub = getattr(request.app.state, "event_hub", None)
-        if hub is not None:
-            hub.broadcast("agent.spawned", {
-                "agent_id": str(agent_id),
-                "name": name,
-                "role": role,
-            })
+        await _broadcast_if_available(request, "agent.spawned", {
+            "agent_id": str(agent_id),
+            "name": name,
+            "role": role,
+        })
 
         from amiagi.interfaces.web.audit.log_helpers import log_action
         await log_action(request, "agent.spawn", {
@@ -309,6 +588,13 @@ async def agent_spawn(request: Request) -> JSONResponse:
 
 system_routes: list[Route] = [
     Route("/api/system/state", system_state, methods=["GET"]),
+    Route("/api/system/current-task", system_current_task, methods=["GET"]),
+    Route("/api/system/commands", system_commands, methods=["GET"]),
+    Route("/api/system/commands/execute", system_command_execute, methods=["POST"]),
+    Route("/api/system/current-task/pause", system_current_task_pause, methods=["POST"]),
+    Route("/api/system/current-task/stop", system_current_task_stop, methods=["POST"]),
+    Route("/api/system/current-task/retry", system_current_task_retry, methods=["POST"]),
+    Route("/api/system/reset", system_reset, methods=["POST"]),
     Route("/api/system/input", system_input, methods=["POST"]),
     Route("/api/inbox/{item_id}/delegate", inbox_delegate, methods=["POST"]),
     Route("/api/agents/spawn", agent_spawn, methods=["POST"]),

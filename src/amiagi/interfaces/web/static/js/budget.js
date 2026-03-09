@@ -16,11 +16,17 @@
   const qLimitInput    = document.getElementById("quota-session-limit");
   const qWarnInput     = document.getElementById("quota-warning-pct");
   const qBlockedInput  = document.getElementById("quota-blocked-pct");
+  const qWarnAction    = document.getElementById("quota-warning-action");
+  const qBlockedAction = document.getElementById("quota-blocked-action");
+  const qApprovalInput = document.getElementById("quota-approval-threshold");
   const quotaStatus    = document.getElementById("quota-status");
   const resetSessionBtn = document.getElementById("btn-reset-session");
+  const policySummary  = document.getElementById("budget-policy-summary");
+  const taskTable      = document.getElementById("budget-task-table");
   // Chart
   const chartCanvas    = document.getElementById("budget-history-chart");
   const chartEmpty     = document.getElementById("budget-chart-empty");
+  let taskSort = { key: "cost", direction: "desc" };
 
   /* ── Helpers ───────────────────────────────────────────────── */
   function esc(s) {
@@ -50,14 +56,27 @@
     } catch { return null; }
   }
 
+  async function fetchQuotas() {
+    try {
+      const r = await fetch("/api/budget/quotas");
+      return r.ok ? r.json() : null;
+    } catch { return null; }
+  }
+
+  function mapFromObject(obj, mapper) {
+    return Object.entries(obj || {}).map(function (entry) {
+      return mapper(entry[0], entry[1] || {});
+    });
+  }
+
   /* ── Render ────────────────────────────────────────────────── */
   function renderOverview(data) {
     if (!data) return;
     const session = data.session || {};
-    const spent   = session.total_cost || 0;
-    const limit   = session.session_limit || session.limit || 50;
-    const tokens  = session.total_tokens || 0;
-    const reqs    = session.total_requests || 0;
+    const spent   = session.spent_usd || session.total_cost || 0;
+    const limit   = session.limit_usd || session.session_limit || session.limit || 50;
+    const tokens  = session.tokens_used || session.total_tokens || 0;
+    const reqs    = session.requests_count || session.total_requests || 0;
     const usage   = pct(spent, limit);
 
     spentEl.textContent    = fmtCost(spent);
@@ -72,16 +91,39 @@
       barEl.classList.toggle("--danger", usage >= 90);
     }
 
+    // B1: Energy cost estimate (GPU kWh)
+    var energyEl = document.getElementById("budget-energy-cost");
+    if (energyEl) {
+      var gpuKwh = session.gpu_kwh || (tokens * 0.0000005); // rough estimate
+      var energyCost = session.energy_cost_usd || (gpuKwh * 0.12); // avg $/kWh
+      energyEl.innerHTML = '<strong>' + gpuKwh.toFixed(4) + ' kWh</strong> ≈ $' + energyCost.toFixed(4);
+    }
+
+    // B2: Daily quota
+    var dailyEl = document.getElementById("budget-daily-quota");
+    if (dailyEl) {
+      var dailySpent = session.daily_spent_usd || spent;
+      var dailyLimit = session.daily_limit_usd || limit;
+      var dailyPct = pct(dailySpent, dailyLimit);
+      dailyEl.innerHTML = fmtCost(dailySpent) + ' / ' + fmtCost(dailyLimit) + ' (' + dailyPct.toFixed(1) + '%)';
+    }
+
     // Populate quotas form defaults
     if (qLimitInput && !qLimitInput.dataset.touched) qLimitInput.value = limit;
-    if (qWarnInput && !qWarnInput.dataset.touched) qWarnInput.value = session.warning_pct || 70;
-    if (qBlockedInput && !qBlockedInput.dataset.touched) qBlockedInput.value = session.blocked_pct || 100;
   }
 
   function renderAgents(data) {
     if (!agentGrid) return;
     agentGrid.innerHTML = "";
-    const agents = data && data.agents ? data.agents : [];
+    const agents = mapFromObject(data && data.agents, function (agentId, info) {
+      return {
+        agent_id: agentId,
+        limit_usd: info.limit_usd,
+        spent_usd: info.spent_usd,
+        tokens_used: info.tokens_used,
+        requests_count: info.requests_count,
+      };
+    });
     if (agents.length === 0) {
       agentGrid.innerHTML = '<p class="budget-empty">No agent costs yet.</p>';
       return;
@@ -100,8 +142,8 @@
         '</div>' +
         '<div class="budget-agent-meta">' +
           "<span>" + fmtCost(spentVal) + "</span>" +
-          "<span>" + fmtNum(a.total_tokens || a.tokens) + " tok</span>" +
-          "<span>" + fmtNum(a.requests || 0) + " req</span>" +
+          "<span>" + fmtNum(a.tokens_used || a.total_tokens || a.tokens) + " tok</span>" +
+          "<span>" + fmtNum(a.requests_count || a.requests || 0) + " req</span>" +
         "</div>" +
         '<div class="budget-agent-bar-wrap"><div class="budget-agent-bar" style="width:' + Math.min(usage, 100) + '%"></div></div>' +
         '<div class="budget-agent-limit">' +
@@ -116,23 +158,84 @@
   function renderTasks(tasks) {
     if (!taskGrid) return;
     taskGrid.innerHTML = "";
-    const items = tasks && tasks.tasks ? tasks.tasks : (Array.isArray(tasks) ? tasks : []);
+    let items = tasks && tasks.tasks && !Array.isArray(tasks.tasks)
+      ? mapFromObject(tasks.tasks, function (taskId, info) {
+          return {
+            task_id: taskId,
+            total_cost: info.spent_usd,
+            total_tokens: info.tokens_used,
+            requests_count: info.requests_count,
+            limit_usd: info.limit_usd,
+          };
+        })
+      : (tasks && tasks.tasks ? tasks.tasks : (Array.isArray(tasks) ? tasks : []));
     if (items.length === 0) {
-      if (taskEmpty) taskEmpty.style.display = "";
+      taskGrid.innerHTML = '<tr><td class="budget-empty" colspan="5">' + esc(window.t("budget.no_tasks", "No task costs yet")) + '</td></tr>';
       return;
     }
-    if (taskEmpty) taskEmpty.style.display = "none";
-    for (const t of items) {
-      const card = document.createElement("div");
-      card.className = "glass-card budget-task-card";
-      card.innerHTML =
-        '<div class="budget-task-name">' + esc(t.task_id || t.id || "—") + "</div>" +
-        '<div class="budget-task-meta">' +
-          "<span>" + fmtCost(t.total_cost || t.cost) + "</span>" +
-          "<span>" + fmtNum(t.total_tokens || t.tokens) + " tok</span>" +
-        "</div>";
-      taskGrid.appendChild(card);
-    }
+    items = items.map(function (t) {
+      var taskCost = t.total_cost || t.cost || t.spent_usd || 0;
+      var taskTokens = t.total_tokens || t.tokens || t.tokens_used || 0;
+      var taskReqs = t.requests_count || 0;
+      var costPer1k = taskTokens > 0 ? ((taskCost / taskTokens) * 1000) : 0;
+      return Object.assign({}, t, {
+        _title: t.title || t.task_id || t.id || "—",
+        _cost: taskCost,
+        _tokens: taskTokens,
+        _requests: taskReqs,
+        _costPer1k: costPer1k,
+      });
+    });
+    var keyMap = {
+      title: "_title",
+      cost: "_cost",
+      tokens: "_tokens",
+      requests: "_requests",
+      costPer1k: "_costPer1k",
+    };
+    var key = keyMap[taskSort.key] || "_cost";
+    items.sort(function (a, b) {
+      var av = a[key];
+      var bv = b[key];
+      if (typeof av === "string" || typeof bv === "string") {
+        return taskSort.direction === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      }
+      return taskSort.direction === "asc" ? (av - bv) : (bv - av);
+    });
+    taskGrid.innerHTML = items.map(function (t) {
+      return '<tr>' +
+        '<td><div class="budget-task-name">' + esc(t._title) + '</div></td>' +
+        '<td>' + fmtCost(t._cost) + '</td>' +
+        '<td>' + fmtNum(t._tokens) + '</td>' +
+        '<td>' + fmtNum(t._requests) + '</td>' +
+        '<td>$' + t._costPer1k.toFixed(4) + '</td>' +
+      '</tr>';
+    }).join("");
+  }
+
+  function renderPolicySummary(config) {
+    if (!policySummary) return;
+    const thresholds = (config && config.thresholds) || {};
+    policySummary.innerHTML = '<div class="budget-policy-grid">'
+      + '<div class="budget-policy-item"><div class="budget-policy-label">Warning</div><div class="budget-policy-value">'
+      + fmtNum(thresholds.warning_pct || 80) + '% → ' + esc(thresholds.warning_action || 'notify') + '</div></div>'
+      + '<div class="budget-policy-item"><div class="budget-policy-label">Blocked</div><div class="budget-policy-value">'
+      + fmtNum(thresholds.blocked_pct || 100) + '% → ' + esc(thresholds.blocked_action || 'block') + '</div></div>'
+      + '<div class="budget-policy-item"><div class="budget-policy-label">Approval</div><div class="budget-policy-value">'
+      + fmtCost(thresholds.approval_threshold_usd || 0) + '</div></div>'
+      + '</div>';
+  }
+
+  function populateQuotaForm(config) {
+    const thresholds = (config && config.thresholds) || {};
+    const session = (config && config.session) || {};
+    if (qLimitInput && !qLimitInput.dataset.touched) qLimitInput.value = session.limit_usd || 50;
+    if (qWarnInput && !qWarnInput.dataset.touched) qWarnInput.value = thresholds.warning_pct || 80;
+    if (qBlockedInput && !qBlockedInput.dataset.touched) qBlockedInput.value = thresholds.blocked_pct || 100;
+    if (qWarnAction && !qWarnAction.dataset.touched) qWarnAction.value = thresholds.warning_action || 'notify';
+    if (qBlockedAction && !qBlockedAction.dataset.touched) qBlockedAction.value = thresholds.blocked_action || 'block';
+    if (qApprovalInput && !qApprovalInput.dataset.touched) qApprovalInput.value = thresholds.approval_threshold_usd || 10;
+    renderPolicySummary(config);
   }
 
   /* ── History Chart (lightweight Canvas) ──────────────────── */
@@ -227,6 +330,9 @@
         session_limit_usd: parseFloat(qLimitInput.value) || 50,
         warning_pct: parseInt(qWarnInput.value, 10) || 70,
         blocked_pct: parseInt(qBlockedInput ? qBlockedInput.value : "100", 10) || 100,
+        warning_action: qWarnAction ? qWarnAction.value : 'notify',
+        blocked_action: qBlockedAction ? qBlockedAction.value : 'block',
+        approval_threshold_usd: qApprovalInput ? (parseFloat(qApprovalInput.value) || 0) : 0,
       };
       const r = await fetch("/api/budget/quotas", {
         method: "PUT",
@@ -294,6 +400,9 @@
   if (qLimitInput) qLimitInput.addEventListener("input", function () { this.dataset.touched = "1"; });
   if (qWarnInput)  qWarnInput.addEventListener("input", function () { this.dataset.touched = "1"; });
   if (qBlockedInput) qBlockedInput.addEventListener("input", function () { this.dataset.touched = "1"; });
+  if (qWarnAction) qWarnAction.addEventListener("change", function () { this.dataset.touched = "1"; });
+  if (qBlockedAction) qBlockedAction.addEventListener("change", function () { this.dataset.touched = "1"; });
+  if (qApprovalInput) qApprovalInput.addEventListener("input", function () { this.dataset.touched = "1"; });
 
   // Per-agent reset buttons (delegated on grid)
   if (agentGrid) {
@@ -307,14 +416,29 @@
       if (input) saveAgentLimit(input.dataset.agent, input.value);
     });
   }
+  if (taskTable) {
+    taskTable.addEventListener("click", function (e) {
+      var btn = e.target.closest(".budget-sort-btn");
+      if (!btn) return;
+      var nextKey = btn.dataset.sort || "cost";
+      if (taskSort.key === nextKey) {
+        taskSort.direction = taskSort.direction === "asc" ? "desc" : "asc";
+      } else {
+        taskSort.key = nextKey;
+        taskSort.direction = nextKey === "title" ? "asc" : "desc";
+      }
+      load();
+    });
+  }
 
   /* ── Load ──────────────────────────────────────────────────── */
   async function load() {
-    const [budget, tasks, history] = await Promise.all([fetchBudget(), fetchTasks(), fetchHistory()]);
+    const [budget, tasks, history, quotas] = await Promise.all([fetchBudget(), fetchTasks(), fetchHistory(), fetchQuotas()]);
     renderOverview(budget);
     renderAgents(budget);
     renderTasks(tasks);
     renderChart(history || budget);
+    populateQuotaForm(quotas && quotas.config);
   }
 
   load();

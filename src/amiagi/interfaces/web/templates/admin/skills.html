@@ -1,65 +1,129 @@
 {% extends "base.html" %}
 {% block title %}Amiagi — {{ _("admin.skills") }}{% endblock %}
+{% block head %}
+<style>
+.skills-toolbar,.traits-toolbar{display:flex;justify-content:space-between;gap:var(--space-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-4)}
+.skills-filters{display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center}
+.skills-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-4)}
+.skill-card{padding:var(--space-4);display:grid;gap:var(--space-3)}
+.skill-card--dragging{opacity:.58;transform:scale(.985)}
+.skill-card--drop-target{border-color:rgba(96,165,250,.45);box-shadow:0 0 0 1px rgba(96,165,250,.25),0 18px 40px rgba(59,130,246,.12)}
+.skill-card__header{display:flex;justify-content:space-between;gap:var(--space-2);align-items:flex-start}
+.skill-card__title-row{display:flex;gap:var(--space-2);align-items:flex-start}
+.skill-card__title{margin:0;font-size:1rem}
+.skill-card__meta,.skill-card__footer{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.skill-card__content{color:var(--text-secondary);font-size:var(--font-size-sm);white-space:pre-wrap}
+.skill-card__drag{cursor:grab;touch-action:none}
+.skill-card__drag:active{cursor:grabbing}
+.skill-order-hint{display:flex;align-items:center;gap:var(--space-2);color:var(--text-secondary);font-size:var(--font-size-sm)}
+.tab-strip{display:flex;gap:var(--space-2);margin-bottom:var(--space-4)}
+.tab-strip a{padding:.55rem .9rem;border:1px solid var(--glass-border);border-radius:999px;text-decoration:none;color:var(--text-primary)}
+.tab-strip a.active{background:rgba(96,165,250,.14);box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+.skill-usage-map{display:grid;gap:var(--space-3)}
+.skill-usage-row{padding:var(--space-3);border:1px solid var(--glass-border);border-radius:var(--glass-radius-sm)}
+.markdown-preview{background:rgba(15,23,42,.4);border:1px solid var(--glass-border);border-radius:var(--glass-radius-sm);padding:var(--space-3);white-space:pre-wrap;color:var(--text-secondary);min-height:120px}
+.section-card{padding:var(--space-4)}
+.section-card--spaced{margin-bottom:var(--space-4)}
+.toolbar-tight{margin-bottom:0}
+.heading-reset{margin:0}
+.heading-top-reset{margin-top:0}
+.stack-grid{display:grid;gap:var(--space-4)}
+.modal-card--narrow{width:min(760px,92vw)}
+.modal-overlay[hidden]{display:none!important}
+.modal-overlay{position:fixed;inset:0;background:rgba(2,6,23,.72);display:grid;place-items:center;z-index:1000}
+.modal-card{width:min(900px,92vw);max-height:88vh;overflow:auto;padding:var(--space-5);display:grid;gap:var(--space-4)}
+.modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.field{display:grid;gap:.4rem}.field input,.field textarea,.field select{width:100%}
+.btn-row{display:flex;justify-content:flex-end;gap:var(--space-2)}
+.context-preview{display:grid;gap:var(--space-3)}
+.context-preview__agents{display:flex;gap:var(--space-2);flex-wrap:wrap}
+@media (max-width: 900px){.modal-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
 {% block content %}
 <div class="container">
   {% include "partials/admin_nav.html" %}
-  <div class="page-header">
-    <h1>{{ _("admin.skills") }}</h1>
-    <button class="btn btn-primary" onclick="openCreateSkill()">+ {{ _("agents.create") }}</button>
+  <div class="tab-strip">
+    <a href="/admin/skills" class="active">{{ _("admin.skills") }}</a>
+    <a href="/admin/traits">{{ _("admin.traits") }}</a>
   </div>
 
-  <div class="glass-card">
-    <table class="table" id="skills-table">
-      <thead>
-        <tr>
-          <th>{{ _("admin.name") }}</th>
-          <th>Display Name</th>
-          <th>Keywords</th>
-          <th>Token Cost</th>
-          <th>Priority</th>
-          <th>{{ _("admin.active") }}</th>
-          <th>{{ _("admin.actions") }}</th>
-        </tr>
-      </thead>
-      <tbody id="skills-body">
-        <tr><td colspan="7">{{ _("common.loading") }}</td></tr>
-      </tbody>
-    </table>
+  <div class="skills-toolbar">
+    <div>
+      <h1>{{ _("admin.skills") }}</h1>
+      <p class="text-muted">Card grid with filters, stats and preview in context.</p>
+    </div>
+    <div class="skills-filters">
+      <span class="skill-order-hint">↕ Drag cards to reorder</span>
+      <select class="glass-input" id="skill-category-filter" title="Filter skills by category" aria-label="Filter skills by category">
+        <option value="">All categories</option>
+      </select>
+      <select class="glass-input" id="skill-role-filter" title="Filter skills by role" aria-label="Filter skills by role">
+        <option value="">All roles</option>
+      </select>
+      <select class="glass-input" id="skill-status-filter" title="Filter skills by status" aria-label="Filter skills by status">
+        <option value="all">All statuses</option>
+        <option value="active" selected>Active</option>
+        <option value="inactive">Inactive</option>
+      </select>
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="openImportSkills()">Import</button>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="openCreateSkill()">+ {{ _("agents.create") }}</button>
+    </div>
+  </div>
+
+  <section class="glass-card section-card section-card--spaced">
+    <h2 class="heading-top-reset">{{ _("admin.skill_usage") }}</h2>
+    <div id="skill-usage-map" class="skill-usage-map">
+      <p class="text-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+
+  <section class="glass-card section-card">
+    <div id="skills-body" class="skills-grid">
+      <p class="text-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+</div>
+
+<div class="modal-overlay" id="create-modal" hidden>
+  <div class="glass-card modal-card">
+    <div class="skills-toolbar toolbar-tight">
+      <h2 class="heading-reset">New Skill</h2>
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="closeCreateModal()">{{ _("common.close") }}</button>
+    </div>
+    <div class="modal-grid">
+      <div class="stack-grid">
+        <div class="field"><label for="sk-name">Name (slug)</label><input class="glass-input" id="sk-name" placeholder="python-expert"></div>
+        <div class="field"><label for="sk-display">Display name</label><input class="glass-input" id="sk-display" placeholder="Python Expert"></div>
+        <div class="field"><label for="sk-category">Category</label><input class="glass-input" id="sk-category" placeholder="coding"></div>
+        <div class="field"><label for="sk-keywords">Keywords</label><input class="glass-input" id="sk-keywords" placeholder="python, code, automation"></div>
+        <div class="field"><label for="sk-tools">Compatible tools</label><input class="glass-input" id="sk-tools" placeholder="shell, search"></div>
+        <div class="field"><label for="sk-roles">Compatible roles</label><input class="glass-input" id="sk-roles" placeholder="executor, supervisor"></div>
+        <div class="modal-grid">
+          <div class="field"><label for="sk-cost">Token cost</label><input class="glass-input" id="sk-cost" type="number" value="100"></div>
+          <div class="field"><label for="sk-priority">Priority</label><input class="glass-input" id="sk-priority" type="number" value="50"></div>
+        </div>
+      </div>
+      <div class="stack-grid">
+        <div class="field"><label for="sk-content">Content</label><textarea class="glass-input" id="sk-content" rows="10" placeholder="Skill prompt / description"></textarea></div>
+        <div>
+          <label>Markdown preview</label>
+          <div class="markdown-preview" id="sk-markdown-preview"></div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="closeCreateModal()">{{ _("common.cancel") }}</button>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="createSkill()">{{ _("common.save") }}</button>
+    </div>
   </div>
 </div>
 
-<!-- Create modal -->
-<div class="modal-overlay" id="create-modal" hidden>
-  <div class="glass-card modal-card">
-    <h2>New Skill</h2>
-    <div class="field">
-      <label for="sk-name">Name (slug)</label>
-      <input id="sk-name" placeholder="e.g. python-expert">
-    </div>
-    <div class="field">
-      <label for="sk-display">Display Name</label>
-      <input id="sk-display" placeholder="e.g. Python Expert">
-    </div>
-    <div class="field">
-      <label for="sk-content">Content</label>
-      <textarea id="sk-content" rows="6" placeholder="Skill prompt / description"></textarea>
-    </div>
-    <div class="field">
-      <label for="sk-keywords">Keywords (comma-separated)</label>
-      <input id="sk-keywords" placeholder="python, code, automation">
-    </div>
-    <div class="field">
-      <label for="sk-cost">Token Cost</label>
-      <input id="sk-cost" type="number" value="100">
-    </div>
-    <div class="field">
-      <label for="sk-priority">Priority</label>
-      <input id="sk-priority" type="number" value="50">
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="closeCreateModal()">{{ _("common.cancel") }}</button>
-      <button class="btn btn-primary" onclick="createSkill()">{{ _("common.save") }}</button>
-    </div>
+<div class="modal-overlay" id="import-modal" hidden>
+  <div class="glass-card modal-card modal-card--narrow">
+    <div class="skills-toolbar toolbar-tight"><h2 class="heading-reset">Import skills</h2><button class="glass-btn glass-btn--ghost" type="button" onclick="closeImportSkills()">{{ _("common.close") }}</button></div>
+    <div class="field"><label for="import-body">JSON or YAML payload</label><textarea class="glass-input" id="import-body" rows="14" placeholder='[{"name":"python-expert","content":"..."}]'></textarea></div>
+    <div class="btn-row"><button class="glass-btn glass-btn--primary" type="button" onclick="submitImportSkills()">Import</button></div>
   </div>
 </div>
 {% endblock %}
@@ -67,72 +131,353 @@
 {% block scripts %}
 <script>
 (function() {
-  function load() {
-    fetch('/admin/skills')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var skills = data.skills || [];
-        var tbody = document.getElementById('skills-body');
-        if (skills.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7">No skills defined yet.</td></tr>';
-          return;
-        }
-        tbody.innerHTML = skills.map(function(s) {
-          var kw = (s.trigger_keywords || []).join(', ');
-          return '<tr>'
-            + '<td>' + esc(s.name) + '</td>'
-            + '<td>' + esc(s.display_name) + '</td>'
-            + '<td>' + esc(kw) + '</td>'
-            + '<td>' + s.token_cost + '</td>'
-            + '<td>' + s.priority + '</td>'
-            + '<td>' + (s.is_active ? '✓' : '✗') + '</td>'
-            + '<td>'
-            + '  <a href="/admin/skills/' + s.id + '/edit" class="btn btn-xs">Edit</a> '
-            + '  <button class="btn btn-xs btn-danger" onclick="delSkill(\'' + s.id + '\')">Delete</button>'
-            + '</td>'
-            + '</tr>';
-        }).join('');
+  let allSkills = [];
+  let usageMap = [];
+  let draggedSkillId = null;
+  let dropSkillId = null;
+
+  function esc(value) {
+    const d = document.createElement('div');
+    d.textContent = value || '';
+    return d.innerHTML;
+  }
+
+  function csv(value) {
+    return String(value || '').split(',').map(v => v.trim()).filter(Boolean);
+  }
+
+  function compareSkills(left, right) {
+    const priorityDiff = (Number(right?.priority) || 0) - (Number(left?.priority) || 0);
+    if (priorityDiff !== 0) return priorityDiff;
+    return String(left?.display_name || left?.name || '').localeCompare(String(right?.display_name || right?.name || ''));
+  }
+
+  function syncSkillPriorities() {
+    const total = allSkills.length;
+    allSkills = allSkills.map((skill, index) => ({
+      ...skill,
+      priority: Math.max(10, (total - index) * 10),
+    }));
+  }
+
+  function moveSkillBeforeTarget(skillId, targetId) {
+    if (!skillId || !targetId || skillId === targetId) return false;
+    const sourceIndex = allSkills.findIndex(skill => skill.id === skillId);
+    const targetIndex = allSkills.findIndex(skill => skill.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return false;
+    const [moved] = allSkills.splice(sourceIndex, 1);
+    const insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    allSkills.splice(insertionIndex, 0, moved);
+    syncSkillPriorities();
+    return true;
+  }
+
+  function clearDragState() {
+    draggedSkillId = null;
+    dropSkillId = null;
+    document.querySelectorAll('.skill-card--dragging,.skill-card--drop-target').forEach(card => {
+      card.classList.remove('skill-card--dragging', 'skill-card--drop-target');
+    });
+  }
+
+  function persistSkillOrdering() {
+    return Promise.all(allSkills.map(skill => fetch('/admin/skills/' + skill.id, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({priority: skill.priority}),
+    }))).then(async responses => {
+      const failed = [];
+      for (const response of responses) {
+        if (!response.ok) failed.push(response.status);
+      }
+      if (failed.length) throw new Error('skill_order_save_failed');
+      if (typeof showToast === 'function') showToast('Skill order updated.', 'success');
+    }).catch(error => {
+      if (typeof showToast === 'function') showToast('Could not save skill order.', 'error');
+      console.error(error);
+      return loadSkills();
+    });
+  }
+
+  function renderMarkdownPreview() {
+    const text = document.getElementById('sk-content')?.value || '';
+    document.getElementById('sk-markdown-preview').innerHTML = esc(text);
+  }
+
+  function currentFilters() {
+    return {
+      category: document.getElementById('skill-category-filter')?.value || '',
+      role: document.getElementById('skill-role-filter')?.value || '',
+      status: document.getElementById('skill-status-filter')?.value || 'active',
+    };
+  }
+
+  function skillUsageFor(skillId) {
+    return usageMap.find(item => item.skill_id === skillId) || null;
+  }
+
+  function fillFilterOptions(skills) {
+    const categories = [...new Set(skills.map(skill => skill.category || 'general'))].sort();
+    const roles = [...new Set(skills.flatMap(skill => skill.compatible_roles || []))].sort();
+    document.getElementById('skill-category-filter').innerHTML = '<option value="">All categories</option>' + categories.map(category => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+    document.getElementById('skill-role-filter').innerHTML = '<option value="">All roles</option>' + roles.map(role => `<option value="${esc(role)}">${esc(role)}</option>`).join('');
+  }
+
+  function renderUsageMap(items) {
+    const el = document.getElementById('skill-usage-map');
+    if (!items.length) {
+      el.innerHTML = '<p class="text-muted">{{ _("admin.no_skill_usage") }}</p>';
+      return;
+    }
+    const maxUses = items.reduce((max, item) => Math.max(max, item.total_uses || 0), 1);
+    el.innerHTML = items.slice(0, 8).map(item => {
+      const width = Math.max(8, Math.round(((item.total_uses || 0) / maxUses) * 100));
+      return `<div class="skill-usage-row">
+        <div class="skills-toolbar" style="margin-bottom:.4rem">
+          <strong>${esc(item.display_name || item.name)}</strong>
+          <span class="text-muted">${item.total_uses || 0} uses · ${item.total_tokens || 0} tokens</span>
+        </div>
+        <div style="height:10px;background:rgba(148,163,184,.12);border-radius:999px;overflow:hidden;margin-bottom:.55rem"><div style="height:100%;width:${width}%;background:linear-gradient(90deg,#60a5fa,#a78bfa)"></div></div>
+        <div class="skill-card__footer">${(item.agents || []).map(agent => `<span class="glass-badge badge-idle">${esc(agent.agent_role)} · ${agent.total_uses || 0}</span>`).join('') || '<span class="text-muted">—</span>'}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderSkills() {
+    const filters = currentFilters();
+    const skills = allSkills.filter(skill => {
+      if (filters.category && skill.category !== filters.category) return false;
+      if (filters.role && !(skill.compatible_roles || []).includes(filters.role)) return false;
+      if (filters.status === 'active' && skill.is_active === false) return false;
+      if (filters.status === 'inactive' && skill.is_active !== false) return false;
+      return true;
+    }).sort(compareSkills);
+    const grid = document.getElementById('skills-body');
+    if (!skills.length) {
+      grid.innerHTML = '<p class="text-muted">No skills match current filters.</p>';
+      return;
+    }
+    grid.innerHTML = skills.map(skill => {
+      const usage = skillUsageFor(skill.id);
+      const statusBadge = skill.is_active === false
+        ? '<span class="glass-badge badge-muted">Inactive</span>'
+        : '<span class="glass-badge badge-success">Active</span>';
+      const agents = (usage && usage.agents || []).map(agent => `<span class="glass-badge badge-idle">${esc(agent.agent_role)}</span>`).join('') || '<span class="text-muted">No linked agents</span>';
+      return `<article class="glass-card skill-card" data-skill-id="${skill.id}">
+        <div class="skill-card__header">
+          <div class="skill-card__title-row">
+            <button class="glass-btn glass-btn--xs skill-card__drag" type="button" draggable="true" data-drag-handle="true" aria-label="Drag to reorder">↕</button>
+            <div>
+              <h3 class="skill-card__title">${esc(skill.display_name || skill.name)}</h3>
+              <div class="text-muted">${esc(skill.category || 'general')}</div>
+            </div>
+          </div>
+          ${statusBadge}
+        </div>
+        <div class="skill-card__content">${esc((skill.content || '').slice(0, 220))}${skill.content && skill.content.length > 220 ? '…' : ''}</div>
+        <div class="skill-card__meta">
+          <span class="glass-badge badge-idle">${esc((skill.compatible_roles || []).join(', ') || 'all roles')}</span>
+          <span class="glass-badge badge-idle">Cost ${skill.token_cost || 0}</span>
+          <span class="glass-badge badge-idle">Priority ${skill.priority || 0}</span>
+          <span class="glass-badge badge-idle">v${skill.version || 1}</span>
+        </div>
+        <div><strong>Agents using this skill</strong><div class="skill-card__footer">${agents}</div></div>
+        <div class="skill-card__footer">
+          <button class="glass-btn glass-btn--xs" type="button" onclick="openSkillPreview('${skill.id}')">Preview</button>
+          <button class="glass-btn glass-btn--xs" type="button" onclick="openSkillStats('${skill.id}')">Stats</button>
+          <a href="/admin/skills/${skill.id}/edit" class="glass-btn glass-btn--xs">Edit</a>
+          <button class="glass-btn glass-btn--xs glass-btn--danger" type="button" onclick="delSkill('${skill.id}')">Delete</button>
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function loadUsageMap() {
+    return fetch('/admin/skills/usage-map').then(r => r.json()).then(data => {
+      usageMap = data.skills || [];
+      renderUsageMap(usageMap);
+    }).catch(() => {
+      usageMap = [];
+      renderUsageMap([]);
+    });
+  }
+
+  function loadSkills() {
+    const status = document.getElementById('skill-status-filter')?.value || 'active';
+    const params = new URLSearchParams();
+    if (status !== 'all') params.set('active', status === 'active' ? 'true' : 'false');
+    return fetch('/admin/skills?' + params.toString())
+      .then(r => r.json())
+      .then(data => {
+        allSkills = (data.skills || []).slice().sort(compareSkills);
+        fillFilterOptions(allSkills);
+        renderSkills();
       });
+  }
+
+  function handleSkillDragStart(event) {
+    const handle = event.target.closest('[data-drag-handle="true"]');
+    if (!handle) return;
+    const card = handle.closest('.skill-card');
+    const skillId = card?.dataset.skillId || '';
+    if (!skillId) return;
+    draggedSkillId = skillId;
+    card.classList.add('skill-card--dragging');
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', skillId);
+      event.dataTransfer.setDragImage(card, 24, 24);
+    }
+  }
+
+  function handleSkillDragOver(event) {
+    if (!draggedSkillId) return;
+    const card = event.target.closest('.skill-card');
+    if (!card || card.dataset.skillId === draggedSkillId) return;
+    event.preventDefault();
+    if (dropSkillId && dropSkillId !== card.dataset.skillId) {
+      document.querySelector(`.skill-card[data-skill-id="${dropSkillId}"]`)?.classList.remove('skill-card--drop-target');
+    }
+    dropSkillId = card.dataset.skillId;
+    card.classList.add('skill-card--drop-target');
+  }
+
+  function handleSkillDragLeave(event) {
+    const card = event.target.closest('.skill-card');
+    if (!card) return;
+    const related = event.relatedTarget;
+    if (related && card.contains(related)) return;
+    card.classList.remove('skill-card--drop-target');
+    if (dropSkillId === card.dataset.skillId) dropSkillId = null;
+  }
+
+  function handleSkillDrop(event) {
+    if (!draggedSkillId) return;
+    const card = event.target.closest('.skill-card');
+    const targetSkillId = card?.dataset.skillId || event.dataTransfer?.getData('text/plain') || '';
+    if (!card || !targetSkillId || targetSkillId === draggedSkillId) {
+      clearDragState();
+      return;
+    }
+    event.preventDefault();
+    const moved = moveSkillBeforeTarget(draggedSkillId, targetSkillId);
+    clearDragState();
+    if (!moved) return;
+    renderSkills();
+    persistSkillOrdering();
   }
 
   window.openCreateSkill = function() {
     document.getElementById('create-modal').hidden = false;
+    renderMarkdownPreview();
   };
+
   window.closeCreateModal = function() {
     document.getElementById('create-modal').hidden = true;
   };
 
+  window.openImportSkills = function() {
+    document.getElementById('import-modal').hidden = false;
+  };
+
+  window.closeImportSkills = function() {
+    document.getElementById('import-modal').hidden = true;
+  };
+
+  window.submitImportSkills = function() {
+    const body = document.getElementById('import-body').value;
+    const trimmed = body.trim();
+    const contentType = trimmed.startsWith('[') || trimmed.startsWith('{') ? 'application/json' : 'application/x-yaml';
+    fetch('/admin/skills/import', {
+      method: 'POST',
+      headers: {'Content-Type': contentType},
+      body: body,
+    }).then(r => {
+      if (r.ok) {
+        closeImportSkills();
+        loadSkills();
+        loadUsageMap();
+      }
+    });
+  };
+
   window.createSkill = function() {
-    var body = {
+    const body = {
       name: document.getElementById('sk-name').value,
       display_name: document.getElementById('sk-display').value,
+      category: document.getElementById('sk-category').value || 'general',
       content: document.getElementById('sk-content').value,
-      trigger_keywords: document.getElementById('sk-keywords').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+      description: document.getElementById('sk-content').value,
+      trigger_keywords: csv(document.getElementById('sk-keywords').value),
+      compatible_tools: csv(document.getElementById('sk-tools').value),
+      compatible_roles: csv(document.getElementById('sk-roles').value),
       token_cost: parseInt(document.getElementById('sk-cost').value, 10) || 100,
       priority: parseInt(document.getElementById('sk-priority').value, 10) || 50,
     };
     fetch('/admin/skills', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
-    }).then(function(r) {
-      if (r.ok) { closeCreateModal(); load(); }
+    }).then(r => {
+      if (r.ok) {
+        closeCreateModal();
+        loadSkills();
+        loadUsageMap();
+      }
     });
+  };
+
+  window.openSkillStats = function(skillId) {
+    Promise.all([
+      fetch('/admin/skills/' + skillId + '/stats').then(r => r.json()),
+      fetch('/admin/skills/' + skillId).then(r => r.json()),
+    ]).then(([stats, skill]) => {
+      const html = `<div style="display:grid;gap:var(--space-3)">
+        <h3 style="margin:0">${esc(skill.display_name || skill.name)}</h3>
+        <div class="context-preview__agents">
+          <span class="glass-badge badge-idle">Uses ${stats.total_uses || 0}</span>
+          <span class="glass-badge badge-idle">Useful ${stats.useful_count || 0}</span>
+          <span class="glass-badge badge-idle">Tokens ${stats.total_tokens || 0}</span>
+        </div>
+      </div>`;
+      if (typeof openDetailDrawer === 'function') openDetailDrawer('Skill stats', html);
+    });
+  };
+
+  window.openSkillPreview = function(skillId) {
+    fetch('/admin/skills/' + skillId + '/preview')
+      .then(r => r.json())
+      .then(data => {
+        const agents = (data.linked_agents || []).map(agent => `<span class="glass-badge badge-idle">${esc(agent.agent_role)} · ${agent.total_uses || 0}</span>`).join('') || '<span class="text-muted">No linked agents</span>';
+        const html = `<div class="context-preview">
+          <div><strong>${esc(data.skill.display_name || data.skill.name)}</strong></div>
+          <div class="markdown-preview">${esc(data.prompt_preview || '')}</div>
+          <div><strong>Linked agents</strong><div class="context-preview__agents">${agents}</div></div>
+        </div>`;
+        if (typeof openDetailDrawer === 'function') openDetailDrawer('Preview in context', html);
+      });
   };
 
   window.delSkill = function(id) {
     if (!confirm('Delete this skill?')) return;
-    fetch('/admin/skills/' + id, { method: 'DELETE' })
-      .then(function() { load(); });
+    fetch('/admin/skills/' + id, { method: 'DELETE' }).then(() => {
+      loadSkills();
+      loadUsageMap();
+    });
   };
 
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
-  }
+  document.getElementById('skills-body')?.addEventListener('dragstart', handleSkillDragStart);
+  document.getElementById('skills-body')?.addEventListener('dragover', handleSkillDragOver);
+  document.getElementById('skills-body')?.addEventListener('dragleave', handleSkillDragLeave);
+  document.getElementById('skills-body')?.addEventListener('drop', handleSkillDrop);
+  document.getElementById('skills-body')?.addEventListener('dragend', clearDragState);
+  document.getElementById('sk-content')?.addEventListener('input', renderMarkdownPreview);
+  document.getElementById('skill-category-filter')?.addEventListener('change', renderSkills);
+  document.getElementById('skill-role-filter')?.addEventListener('change', renderSkills);
+  document.getElementById('skill-status-filter')?.addEventListener('change', function() { loadSkills(); });
 
-  load();
+  loadUsageMap();
+  loadSkills();
 })();
 </script>
 {% endblock %}

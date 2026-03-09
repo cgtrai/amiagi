@@ -12,12 +12,21 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from amiagi.interfaces.web.stream_contract import (
+    infer_agent_id,
+    stream_meta_for_actor,
+    stream_meta_for_panel,
+    summarize_actor_state,
+    summarize_log_event,
+)
+
 if TYPE_CHECKING:
     from amiagi.application.event_bus import EventBus
     from amiagi.application.router_engine import RouterEngine
     from amiagi.interfaces.web.ws.event_hub import EventHub
 
 logger = logging.getLogger(__name__)
+
 
 
 class WebAdapter:
@@ -92,34 +101,65 @@ class WebAdapter:
     # ------------------------------------------------------------------
 
     def _on_log(self, event: Any) -> None:
-        self._schedule_broadcast("log", {
+        stream_meta = self._stream_meta_for_panel(event.panel)
+        payload = {
             "panel": event.panel,
             "message": event.message,
-        })
+            "channel": event.channel or stream_meta.get("channel"),
+            "source_kind": event.source_kind or stream_meta.get("source_kind"),
+            "source_label": event.source_label or stream_meta.get("source_label"),
+            "summary": event.summary or summarize_log_event(event.panel, event.message, event.source_label or stream_meta.get("source_label")),
+        }
+        agent_id = event.agent_id or stream_meta.get("agent_id")
+        if agent_id is not None:
+            payload["agent_id"] = agent_id
+        self._schedule_broadcast("log", payload)
 
     def _on_actor_state(self, event: Any) -> None:
-        self._schedule_broadcast("actor_state", {
+        stream_meta = self._stream_meta_for_actor(event.actor)
+        payload = {
             "actor": event.actor,
             "state": event.state,
             "event": event.event,
-        })
+            "channel": event.channel or stream_meta.get("channel"),
+            "source_kind": event.source_kind or stream_meta.get("source_kind"),
+            "source_label": event.source_label or stream_meta.get("source_label"),
+            "summary": event.summary or summarize_actor_state(event.actor, event.state, event.event, event.source_label or stream_meta.get("source_label")),
+        }
+        agent_id = event.agent_id or stream_meta.get("agent_id")
+        if agent_id is not None:
+            payload["agent_id"] = agent_id
+        self._schedule_broadcast("actor_state", payload)
 
     def _on_cycle(self, event: Any) -> None:
         self._schedule_broadcast("cycle_finished", {
             "event": event.event,
+            "channel": "system",
+            "source_kind": "system",
+            "source_label": "Router",
+            "summary": f"Cycle finished · {event.event}",
         })
 
     def _on_supervisor(self, event: Any) -> None:
         self._schedule_broadcast("supervisor_message", {
+            "channel": "supervisor",
+            "agent_id": "kastor",
+            "source_kind": "agent",
+            "source_label": "Kastor",
             "stage": event.stage,
             "reason_code": event.reason_code,
             "notes": event.notes,
             "answer": event.answer,
+            "summary": event.notes or event.answer or event.reason_code or event.stage,
         })
 
     def _on_error(self, event: Any) -> None:
         self._schedule_broadcast("error", {
+            "channel": "system",
+            "source_kind": "system",
+            "source_label": "System",
             "message": event.message,
+            "summary": event.message,
         })
 
     # ------------------------------------------------------------------
@@ -136,3 +176,17 @@ class WebAdapter:
             hub.broadcast(event_type, payload),
             self._loop,
         )
+
+    def _infer_agent_id(
+        self,
+        *,
+        panel: str | None = None,
+        actor: str | None = None,
+    ) -> str | None:
+        return infer_agent_id(panel=panel, actor=actor)
+
+    def _stream_meta_for_panel(self, panel: str | None) -> dict[str, Any]:
+        return stream_meta_for_panel(panel)
+
+    def _stream_meta_for_actor(self, actor: str | None) -> dict[str, Any]:
+        return stream_meta_for_actor(actor)

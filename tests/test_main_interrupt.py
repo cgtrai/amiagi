@@ -290,6 +290,7 @@ def test_main_auto_flag_works_with_frozen_settings_dataclass(tmp_path: Path, mon
         model_io_log_path=tmp_path / "model_io.jsonl",
         activity_log_path=tmp_path / "activity.jsonl",
         shell_policy_path=tmp_path / "shell_allowlist.json",
+        model_config_path=tmp_path / "model_config.json",
         supervisor_enabled=False,
         autonomous_mode=False,
     )
@@ -324,6 +325,7 @@ def test_main_vram_off_disables_runtime_queue_policy(tmp_path: Path, monkeypatch
         model_io_log_path=tmp_path / "model_io.jsonl",
         activity_log_path=tmp_path / "activity.jsonl",
         shell_policy_path=tmp_path / "shell_allowlist.json",
+        model_config_path=tmp_path / "model_config.json",
         supervisor_enabled=False,
         autonomous_mode=False,
     )
@@ -364,6 +366,7 @@ def test_main_cold_start_clears_supervision_dialogue_log(tmp_path: Path, monkeyp
         model_io_log_path=tmp_path / "model_io.jsonl",
         activity_log_path=tmp_path / "activity.jsonl",
         shell_policy_path=tmp_path / "shell_allowlist.json",
+        model_config_path=tmp_path / "model_config.json",
         supervisor_enabled=False,
         autonomous_mode=False,
     )
@@ -399,6 +402,7 @@ def test_main_ui_textual_dispatches_to_textual_runner(tmp_path: Path, monkeypatc
         model_io_log_path=tmp_path / "model_io.jsonl",
         activity_log_path=tmp_path / "activity.jsonl",
         shell_policy_path=tmp_path / "shell_allowlist.json",
+        model_config_path=tmp_path / "model_config.json",
         supervisor_enabled=False,
         autonomous_mode=False,
     )

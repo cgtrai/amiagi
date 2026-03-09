@@ -112,6 +112,23 @@
     <div class="pipeline-status glass-pill" id="pipeline-status">
       {{ _("knowledge.pipeline_idle") }}
     </div>
+    <div class="glass-card u-mt-1">
+      <h4>{{ _("knowledge.refresh_schedule") }}</h4>
+      <div class="u-flex-center u-gap-3 u-flex-wrap u-mt-1">
+        <select class="glass-input u-w-auto" id="kb-refresh-freq">
+          <option value="manual">Manual only</option>
+          <option value="hourly">Every hour</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+        <button class="glass-btn glass-btn--sm glass-btn--primary" id="btn-save-schedule">{{ _("common.save") }}</button>
+        <button class="glass-btn glass-btn--sm" id="btn-refresh-now">{{ _("knowledge.refresh_now") }}</button>
+      </div>
+      <div class="u-mt-1">
+        <span class="meta-tag">Last refresh: <span id="kb-last-refresh">—</span></span>
+        <span class="meta-tag u-ml-2">Next: <span id="kb-next-refresh">—</span></span>
+      </div>
+    </div>
   </div>
 </section>
 

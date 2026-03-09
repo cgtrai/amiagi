@@ -47,6 +47,19 @@
           <label for="vault-value">{{ _("vault.value") }}</label>
           <input type="password" id="vault-value" class="vault-input" required placeholder="••••••••" />
         </div>
+        <div class="vault-form-row">
+          <label for="vault-type">{{ _("vault.type") }}</label>
+          <select id="vault-type" class="vault-input">
+            <option value="api_key">API Key</option>
+            <option value="token">Token</option>
+            <option value="password">Password</option>
+            <option value="certificate">Certificate</option>
+          </select>
+        </div>
+        <div class="vault-form-row">
+          <label for="vault-expires-at">{{ _("vault.expires_at") }}</label>
+          <input type="datetime-local" id="vault-expires-at" class="vault-input" />
+        </div>
         <div class="vault-form-actions">
           <button type="submit" class="glass-btn glass-btn--primary">{{ _("vault.save") }}</button>
           <button type="button" class="glass-btn glass-btn--ghost" id="btn-cancel-secret">{{ _("vault.cancel") }}</button>
@@ -68,6 +81,29 @@
     <h3>{{ _("vault.access_log") }}</h3>
     <div class="vault-log" id="vault-access-log">
       <div class="vault-empty">{{ _("vault.no_logs") }}</div>
+    </div>
+  </div>
+
+  <div class="vault-section">
+    <h3>{{ _("vault.rotation_workflow") }}</h3>
+    <p class="vault-empty" id="vault-rotation-empty">{{ _("vault.rotation_select_secret") }}</p>
+    <div id="vault-rotation-panel" hidden>
+      <div class="vault-log-entry">
+        <span class="vault-log-target" id="vault-rotation-secret-label">—</span>
+      </div>
+      <form id="vault-rotation-form" class="vault-form">
+        <div class="vault-form-row">
+          <label for="vault-rotation-cron">{{ _("vault.rotation_cron") }}</label>
+          <input type="text" id="vault-rotation-cron" class="vault-input" placeholder="0 9 * * 1" required />
+        </div>
+        <div class="vault-form-actions">
+          <button type="submit" class="glass-btn glass-btn--primary">{{ _("vault.rotation_save") }}</button>
+        </div>
+        <div class="vault-form-status" id="vault-rotation-status"></div>
+      </form>
+      <div class="vault-log" id="vault-rotation-list">
+        <div class="vault-empty">{{ _("vault.no_rotation_jobs") }}</div>
+      </div>
     </div>
   </div>
 

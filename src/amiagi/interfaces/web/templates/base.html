@@ -42,6 +42,12 @@
   }
   </script>
 
+  <!-- i18n runtime for vanilla-JS components -->
+  <script>
+  window._i18n = {{ translations_json|safe }};
+  window.t = function(key, fallback) { return window._i18n[key] || fallback || key; };
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,572 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("cron.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.cron-page { padding: var(--space-6); display: grid; gap: var(--space-6); }
+.cron-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); flex-wrap: wrap; }
+.cron-header-copy { display: grid; gap: var(--space-2); }
+.cron-header h2 { margin: 0; color: var(--text-primary); }
+.cron-subtitle { margin: 0; color: var(--text-secondary); max-width: 78ch; }
+.cron-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.cron-overview { display: grid; grid-template-columns: minmax(320px, 1.4fr) minmax(300px, 1fr); gap: var(--space-5); }
+.cron-card, .cron-summary-card, .cron-preset-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius); padding: var(--space-5); -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+.cron-card, .cron-summary-card { display: grid; gap: var(--space-4); }
+.cron-preset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.cron-preset-card { display: grid; gap: var(--space-2); cursor: pointer; transition: transform var(--transition-fast), border-color var(--transition-fast); }
+.cron-preset-card:hover { transform: translateY(-1px); border-color: var(--accent-blue); }
+.cron-preset-card strong { color: var(--text-primary); }
+.cron-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.cron-field-group, .cron-summary-list, .cron-weekday-row, .cron-frequency-row, .cron-table-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.cron-field-stack, .cron-mode-panel, .cron-history-empty { display: grid; gap: var(--space-3); }
+.cron-mode-panel[hidden] { display: none; }
+.cron-frequency-chip, .cron-weekday-chip { border: 1px solid var(--glass-border); border-radius: 999px; padding: .45rem .85rem; background: rgba(15, 23, 42, 0.32); color: var(--text-secondary); cursor: pointer; }
+.cron-frequency-chip.active, .cron-weekday-chip.active { color: var(--text-primary); border-color: rgba(96, 165, 250, 0.45); background: rgba(59, 130, 246, 0.14); }
+.cron-summary-hero { display: grid; gap: var(--space-2); padding: var(--space-4); border-radius: var(--glass-radius); border: 1px solid rgba(96, 165, 250, 0.22); background: rgba(15, 23, 42, 0.35); }
+.cron-summary-hero strong { font-size: 1.1rem; color: var(--text-primary); }
+.cron-summary-list > div { min-width: 140px; padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(15, 23, 42, 0.28); }
+.cron-table-wrap { overflow-x: auto; }
+.cron-table { width: 100%; }
+.cron-table .cron-human { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.cron-table td { vertical-align: top; }
+.cron-empty { text-align: center; padding: var(--space-6); color: var(--text-muted); }
+.cron-inline-link { color: var(--accent-blue); text-decoration: none; }
+.cron-inline-link:hover { text-decoration: underline; }
+.cron-dialog { max-width: 900px; width: min(900px, 94vw); }
+.cron-dialog form { display: grid; gap: var(--space-4); }
+.cron-dialog-actions { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.cron-dialog-main { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr); gap: var(--space-4); }
+.cron-history-row { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(15, 23, 42, 0.28); }
+@media (max-width: 980px) {
+  .cron-overview, .cron-dialog-main, .cron-form-grid { grid-template-columns: 1fr; }
+  .cron-header { flex-direction: column; align-items: stretch; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cron-page">
+  <div class="cron-header">
+    <div class="cron-header-copy">
+      <h2>⏰ {{ _("cron.title") }}</h2>
+      <p class="cron-subtitle">Build recurring jobs like setting a reminder: choose how often, pick days on a calendar-like row, set the time, and only use raw cron when you really need advanced rules.</p>
+    </div>
+    <div class="cron-actions">
+      <a class="glass-btn glass-btn--ghost" href="/settings#sect-cron">Settings summary</a>
+      <button class="glass-btn glass-btn--primary" id="btn-new-job" type="button">+ New Reminder</button>
+    </div>
+  </div>
+
+  <div class="cron-overview">
+    <section class="cron-card">
+      <div>
+        <strong>{{ _("settings.scheduled_tasks") }}</strong>
+        <p class="cron-subtitle">Start from a familiar repeat pattern. You can fine-tune the reminder before saving it.</p>
+      </div>
+      <div class="cron-preset-grid">
+        <button class="cron-preset-card" type="button" data-preset="daily">
+          <strong>Daily check-in</strong>
+          <span class="cron-human">Every day at 09:00</span>
+        </button>
+        <button class="cron-preset-card" type="button" data-preset="weekdays">
+          <strong>Weekdays only</strong>
+          <span class="cron-human">Mon–Fri at 08:30</span>
+        </button>
+        <button class="cron-preset-card" type="button" data-preset="weekly">
+          <strong>Weekly review</strong>
+          <span class="cron-human">Every Monday at 10:00</span>
+        </button>
+        <button class="cron-preset-card" type="button" data-preset="monthly">
+          <strong>Monthly report</strong>
+          <span class="cron-human">1st day of month at 07:30</span>
+        </button>
+        <button class="cron-preset-card" type="button" data-preset="hourly">
+          <strong>Hourly sync</strong>
+          <span class="cron-human">Every hour at :00</span>
+        </button>
+        <button class="cron-preset-card" type="button" data-preset="custom">
+          <strong>Advanced cron</strong>
+          <span class="cron-human">Expert mode with raw expression</span>
+        </button>
+      </div>
+    </section>
+
+    <aside class="cron-summary-card">
+      <strong>How this planner works</strong>
+      <div class="cron-summary-list">
+        <div><strong>1.</strong><br>Pick repeat type</div>
+        <div><strong>2.</strong><br>Pick time or days</div>
+        <div><strong>3.</strong><br>Preview next run</div>
+      </div>
+      <div class="cron-summary-hero">
+        <span class="glass-badge badge-idle">Human-first scheduling</span>
+        <strong id="cron-overview-summary">Use presets or open the planner to configure a reminder-like schedule.</strong>
+        <span class="cron-human" id="cron-overview-next">The planner will show the next exact execution time before saving.</span>
+      </div>
+    </aside>
+  </div>
+
+  <div class="cron-card cron-table-wrap">
+    <table class="glass-table cron-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Repeat</th>
+          <th>Task</th>
+          <th>Next Run</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cron-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<dialog id="cron-dialog" class="glass-dialog cron-dialog">
+  <form id="cron-form" method="dialog">
+    <div>
+      <h3 id="cron-dialog-title">New Reminder</h3>
+      <p class="cron-subtitle">Describe the task, then configure the repeat pattern the same way you would in a calendar or reminder app.</p>
+    </div>
+
+    <div class="cron-dialog-main">
+      <div class="cron-field-stack">
+        <div class="cron-form-grid">
+          <label>
+            Name
+            <input class="glass-input" id="cron-name" required placeholder="Morning standup reminder">
+          </label>
+          <label>
+            {{ _("settings.task_title") }}
+            <input class="glass-input" id="cron-task-title" placeholder="Create status summary task">
+          </label>
+        </div>
+
+        <label>
+          Task Description
+          <textarea class="glass-input" id="cron-task-desc" rows="3" placeholder="Optional details for the generated task"></textarea>
+        </label>
+
+        <div class="cron-field-stack">
+          <strong>Repeat</strong>
+          <div class="cron-frequency-row" id="cron-frequency-row">
+            <button class="cron-frequency-chip active" type="button" data-mode="daily">Daily</button>
+            <button class="cron-frequency-chip" type="button" data-mode="weekdays">Weekdays</button>
+            <button class="cron-frequency-chip" type="button" data-mode="weekly">Weekly</button>
+            <button class="cron-frequency-chip" type="button" data-mode="monthly">Monthly</button>
+            <button class="cron-frequency-chip" type="button" data-mode="hourly">Hourly</button>
+            <button class="cron-frequency-chip" type="button" data-mode="custom">Advanced</button>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="daily">
+          <div class="cron-form-grid">
+            <label>
+              Time of day
+              <input class="glass-input" id="cron-time-daily" type="time" value="09:00">
+            </label>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="weekdays" hidden>
+          <div class="cron-form-grid">
+            <label>
+              Time of day
+              <input class="glass-input" id="cron-time-weekdays" type="time" value="08:30">
+            </label>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="weekly" hidden>
+          <div class="cron-form-grid">
+            <label>
+              Time of day
+              <input class="glass-input" id="cron-time-weekly" type="time" value="10:00">
+            </label>
+          </div>
+          <div class="cron-field-stack">
+            <span>Select weekdays</span>
+            <div class="cron-weekday-row" id="cron-weekdays">
+              <button class="cron-weekday-chip active" type="button" data-day="0">Mon</button>
+              <button class="cron-weekday-chip" type="button" data-day="1">Tue</button>
+              <button class="cron-weekday-chip" type="button" data-day="2">Wed</button>
+              <button class="cron-weekday-chip" type="button" data-day="3">Thu</button>
+              <button class="cron-weekday-chip" type="button" data-day="4">Fri</button>
+              <button class="cron-weekday-chip" type="button" data-day="5">Sat</button>
+              <button class="cron-weekday-chip" type="button" data-day="6">Sun</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="monthly" hidden>
+          <div class="cron-form-grid">
+            <label>
+              Day of month
+              <input class="glass-input" id="cron-day-of-month" type="number" min="1" max="31" value="1">
+            </label>
+            <label>
+              Time of day
+              <input class="glass-input" id="cron-time-monthly" type="time" value="07:30">
+            </label>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="hourly" hidden>
+          <div class="cron-form-grid">
+            <label>
+              Repeat every
+              <select class="glass-input" id="cron-interval-hours">
+                <option value="1">1 hour</option>
+                <option value="2">2 hours</option>
+                <option value="4">4 hours</option>
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+              </select>
+            </label>
+            <label>
+              Minute past the hour
+              <input class="glass-input" id="cron-minute-hourly" type="number" min="0" max="59" value="0">
+            </label>
+          </div>
+        </div>
+
+        <div class="cron-mode-panel" data-mode-panel="custom" hidden>
+          <label>
+            Advanced cron expression
+            <input class="glass-input" id="cron-expr" placeholder="0 2 * * *">
+          </label>
+          <span class="cron-human">Use this only for expert rules. The human summary and next run still update below.</span>
+        </div>
+      </div>
+
+      <aside class="cron-summary-card">
+        <span class="glass-badge badge-working">Live preview</span>
+        <div class="cron-summary-hero">
+          <strong id="cron-summary-human">Every day at 09:00</strong>
+          <span class="cron-human" id="cron-summary-next">Checking the next matching time…</span>
+        </div>
+        <div class="cron-summary-list">
+          <div>
+            <span class="text-muted">Expression</span><br>
+            <strong id="cron-summary-expr">0 9 * * *</strong>
+          </div>
+          <div>
+            <span class="text-muted">Mode</span><br>
+            <strong id="cron-summary-mode">Daily</strong>
+          </div>
+        </div>
+        <label>
+          <input type="checkbox" id="cron-enabled" checked>
+          Start enabled
+        </label>
+      </aside>
+    </div>
+
+    <div class="cron-dialog-actions">
+      <div class="cron-human" id="cron-save-status">Review the preview before saving.</div>
+      <div class="cron-table-actions">
+        <button type="button" class="glass-btn glass-btn--secondary" id="btn-cancel-cron">Cancel</button>
+        <button type="submit" class="glass-btn glass-btn--primary">Save reminder</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+
+  var state = {
+    mode: 'daily',
+    weeklyDays: [0],
+  };
+
+  function esc(s) {
+    var d = document.createElement('span');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '—';
+    var date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  }
+
+  function setOverview(summary, nextRun) {
+    var summaryEl = document.getElementById('cron-overview-summary');
+    var nextEl = document.getElementById('cron-overview-next');
+    if (summaryEl) summaryEl.textContent = summary;
+    if (nextEl) nextEl.textContent = nextRun ? ('Next run: ' + formatDateTime(nextRun)) : 'The planner will show the next exact execution time before saving.';
+  }
+
+  function getModeLabel(mode) {
+    return {
+      daily: 'Daily',
+      weekdays: 'Weekdays',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      hourly: 'Hourly',
+      custom: 'Advanced',
+    }[mode] || 'Daily';
+  }
+
+  function getSchedulePayload() {
+    if (state.mode === 'custom') {
+      return {
+        mode: 'custom',
+        cron_expr: document.getElementById('cron-expr').value.trim(),
+      };
+    }
+    if (state.mode === 'hourly') {
+      return {
+        mode: 'hourly',
+        interval_hours: Number(document.getElementById('cron-interval-hours').value || 1),
+        minute: Number(document.getElementById('cron-minute-hourly').value || 0),
+      };
+    }
+    if (state.mode === 'monthly') {
+      return {
+        mode: 'monthly',
+        day_of_month: Number(document.getElementById('cron-day-of-month').value || 1),
+        time: document.getElementById('cron-time-monthly').value || '07:30',
+      };
+    }
+    if (state.mode === 'weekly') {
+      return {
+        mode: 'weekly',
+        weekdays: state.weeklyDays.slice(),
+        time: document.getElementById('cron-time-weekly').value || '10:00',
+      };
+    }
+    if (state.mode === 'weekdays') {
+      return {
+        mode: 'weekdays',
+        time: document.getElementById('cron-time-weekdays').value || '08:30',
+      };
+    }
+    return {
+      mode: 'daily',
+      time: document.getElementById('cron-time-daily').value || '09:00',
+    };
+  }
+
+  async function refreshSchedulePreview() {
+    var summaryHuman = document.getElementById('cron-summary-human');
+    var summaryExpr = document.getElementById('cron-summary-expr');
+    var summaryNext = document.getElementById('cron-summary-next');
+    var summaryMode = document.getElementById('cron-summary-mode');
+    var saveStatus = document.getElementById('cron-save-status');
+    var payload = { schedule: getSchedulePayload() };
+    summaryMode.textContent = getModeLabel(state.mode);
+    summaryNext.textContent = 'Checking the next matching time…';
+    saveStatus.textContent = 'Review the preview before saving.';
+    try {
+      var res = await fetch('/api/cron/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      var data = await res.json();
+      if (!res.ok || data.valid === false) {
+        summaryHuman.textContent = 'Invalid schedule';
+        summaryExpr.textContent = payload.schedule.cron_expr || '—';
+        summaryNext.textContent = data.error || 'Could not preview schedule';
+        saveStatus.textContent = data.error || 'Could not preview schedule';
+        return;
+      }
+      summaryHuman.textContent = data.human_readable || 'Scheduled reminder';
+      summaryExpr.textContent = data.cron_expr || '—';
+      summaryNext.textContent = 'Next run: ' + formatDateTime(data.next_run);
+      setOverview(data.human_readable || 'Scheduled reminder', data.next_run || '');
+    } catch (_) {
+      summaryHuman.textContent = 'Preview unavailable';
+      summaryNext.textContent = 'Could not reach preview endpoint';
+    }
+  }
+
+  function applyMode(mode) {
+    state.mode = mode;
+    document.querySelectorAll('.cron-frequency-chip').forEach(function(chip) {
+      chip.classList.toggle('active', chip.getAttribute('data-mode') === mode);
+    });
+    document.querySelectorAll('.cron-mode-panel').forEach(function(panel) {
+      panel.hidden = panel.getAttribute('data-mode-panel') !== mode;
+    });
+    refreshSchedulePreview();
+  }
+
+  function openPlanner(seed) {
+    var dialog = document.getElementById('cron-dialog');
+    document.getElementById('cron-form').reset();
+    state.weeklyDays = [0];
+    document.querySelectorAll('.cron-weekday-chip').forEach(function(chip) {
+      chip.classList.toggle('active', chip.getAttribute('data-day') === '0');
+    });
+    document.getElementById('cron-enabled').checked = true;
+    if (seed === 'weekdays') {
+      document.getElementById('cron-time-weekdays').value = '08:30';
+    } else if (seed === 'weekly') {
+      document.getElementById('cron-time-weekly').value = '10:00';
+      state.weeklyDays = [0];
+    } else if (seed === 'monthly') {
+      document.getElementById('cron-day-of-month').value = '1';
+      document.getElementById('cron-time-monthly').value = '07:30';
+    } else if (seed === 'hourly') {
+      document.getElementById('cron-interval-hours').value = '1';
+      document.getElementById('cron-minute-hourly').value = '0';
+    } else if (seed === 'custom') {
+      document.getElementById('cron-expr').value = '0 2 * * *';
+    } else {
+      document.getElementById('cron-time-daily').value = '09:00';
+    }
+    applyMode(seed || 'daily');
+    dialog.showModal();
+  }
+
+  async function loadJobs() {
+    try {
+      var r = await fetch('/api/cron');
+      var jobs = await r.json();
+      var tbody = document.getElementById('cron-tbody');
+      if (!jobs.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="cron-empty">No scheduled jobs yet. Start with a daily or weekly reminder.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = jobs.map(function(j) {
+        var statusBadge = j.enabled
+          ? '<span class="glass-badge badge-success">Active</span>'
+          : '<span class="glass-badge badge-muted">Disabled</span>';
+        return '<tr>'
+          + '<td><strong>' + esc(j.name || j.id || '') + '</strong><div class="text-muted">' + esc(j.cron_expr || '') + '</div></td>'
+          + '<td><div class="cron-human">' + esc(j.human_readable || '') + '</div></td>'
+          + '<td>' + esc(j.task_title || j.action || '') + (j.task_description ? '<div class="text-muted">' + esc(j.task_description) + '</div>' : '') + '</td>'
+          + '<td>' + esc(formatDateTime(j.next_run || '')) + '</td>'
+          + '<td>' + statusBadge + '</td>'
+          + '<td><div class="cron-table-actions">'
+          + '<button class="glass-btn glass-btn--xs glass-btn--ghost" type="button" onclick="showCronHistory(\'' + esc(j.id || j.job_id) + '\')">📜 History</button>'
+          + '<button class="glass-btn glass-btn--xs" type="button" onclick="toggleJob(\'' + esc(j.id || j.job_id) + '\')">' + (j.enabled ? '⏸ Pause' : '▶ Resume') + '</button>'
+          + '<button class="glass-btn glass-btn--xs glass-btn--danger" type="button" onclick="deleteJob(\'' + esc(j.id || j.job_id) + '\')">✕ Delete</button>'
+          + '</div></td>'
+          + '</tr>';
+      }).join('');
+    } catch (_) {
+      document.getElementById('cron-tbody').innerHTML = '<tr><td colspan="6" class="cron-empty">Error loading scheduled jobs.</td></tr>';
+    }
+  }
+
+  window.showCronHistory = async function(jobId) {
+    try {
+      var r = await fetch('/api/cron/' + encodeURIComponent(jobId) + '/history');
+      var data = await r.json();
+      var runs = data.runs || [];
+      var html = runs.map(function(run) {
+        return '<div class="cron-history-row">'
+          + '<span class="glass-badge ' + (run.status === 'success' ? 'badge-success' : 'badge-error') + '">' + esc(run.status || 'unknown') + '</span>'
+          + '<div><strong>' + esc(run.job_name || jobId) + '</strong><div class="text-muted">' + esc(formatDateTime(run.triggered_at || '')) + '</div>' + (run.message ? '<div class="text-muted">' + esc(run.message) + '</div>' : '') + '</div>'
+          + '</div>';
+      }).join('');
+      if (typeof openDetailDrawer === 'function') {
+        openDetailDrawer('Execution History: ' + jobId, html || '<div class="cron-history-empty"><p>No runs yet.</p></div>');
+      }
+    } catch (_) {}
+  };
+
+  window.toggleJob = async function(jobId) {
+    try {
+      await fetch('/api/cron/' + encodeURIComponent(jobId) + '/toggle', { method: 'PUT' });
+      loadJobs();
+    } catch (_) {}
+  };
+
+  window.deleteJob = async function(jobId) {
+    if (!confirm('Delete this job?')) return;
+    try {
+      await fetch('/api/cron/' + encodeURIComponent(jobId), { method: 'DELETE' });
+      loadJobs();
+    } catch (_) {}
+  };
+
+  document.querySelectorAll('.cron-preset-card').forEach(function(card) {
+    card.addEventListener('click', function() {
+      openPlanner(card.getAttribute('data-preset'));
+    });
+  });
+
+  document.querySelectorAll('.cron-frequency-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      applyMode(chip.getAttribute('data-mode'));
+    });
+  });
+
+  document.querySelectorAll('.cron-weekday-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      var day = Number(chip.getAttribute('data-day'));
+      if (chip.classList.contains('active')) {
+        if (state.weeklyDays.length === 1) return;
+        chip.classList.remove('active');
+        state.weeklyDays = state.weeklyDays.filter(function(item) { return item !== day; });
+      } else {
+        chip.classList.add('active');
+        state.weeklyDays.push(day);
+        state.weeklyDays.sort();
+      }
+      refreshSchedulePreview();
+    });
+  });
+
+  ['cron-time-daily', 'cron-time-weekdays', 'cron-time-weekly', 'cron-time-monthly', 'cron-day-of-month', 'cron-interval-hours', 'cron-minute-hourly', 'cron-expr'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', refreshSchedulePreview);
+    if (el) el.addEventListener('change', refreshSchedulePreview);
+  });
+
+  document.getElementById('btn-new-job').addEventListener('click', function() {
+    openPlanner('daily');
+  });
+  document.getElementById('btn-cancel-cron').addEventListener('click', function() {
+    document.getElementById('cron-dialog').close();
+  });
+
+  document.getElementById('cron-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var schedule = getSchedulePayload();
+    var body = {
+      name: document.getElementById('cron-name').value.trim(),
+      task_title: document.getElementById('cron-task-title').value.trim(),
+      task_description: document.getElementById('cron-task-desc').value.trim(),
+      enabled: document.getElementById('cron-enabled').checked,
+      schedule: schedule,
+    };
+    var saveStatus = document.getElementById('cron-save-status');
+    try {
+      var res = await fetch('/api/cron', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        saveStatus.textContent = data.error || 'Could not save reminder';
+        return;
+      }
+      document.getElementById('cron-dialog').close();
+      saveStatus.textContent = 'Reminder saved';
+      if (typeof showToast === 'function') showToast('Reminder saved', 'success');
+      setOverview(data.human_readable || 'Reminder saved', data.next_run || '');
+      loadJobs();
+    } catch (_) {
+      saveStatus.textContent = 'Could not save reminder';
+    }
+  });
+
+  loadJobs();
+  refreshSchedulePreview();
+})();
+</script>
+{% endblock %}

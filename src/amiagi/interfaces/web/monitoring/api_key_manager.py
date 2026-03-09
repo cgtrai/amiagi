@@ -31,6 +31,7 @@ class ApiKeyRecord:
     expires_at: datetime | None
     is_active: bool
     last_used_at: datetime | None
+    rate_limit_per_min: int | None
     created_at: datetime | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,10 +39,12 @@ class ApiKeyRecord:
             "id": self.id,
             "user_id": self.user_id,
             "name": self.name,
+            "prefix": self.id[:8],
             "scopes": self.scopes,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "is_active": self.is_active,
             "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+            "rate_limit_per_min": self.rate_limit_per_min,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -55,6 +58,7 @@ def _row_to_key(row) -> ApiKeyRecord:
         expires_at=row.get("expires_at"),
         is_active=row["is_active"],
         last_used_at=row.get("last_used_at"),
+        rate_limit_per_min=row.get("rate_limit_per_min"),
         created_at=row.get("created_at"),
     )
 
@@ -78,17 +82,18 @@ class ApiKeyManager:
         self, user_id: str, name: str,
         scopes: list[str] | None = None,
         expires_at: datetime | None = None,
+        rate_limit_per_min: int | None = None,
     ) -> tuple[str, ApiKeyRecord]:
         """Create a new API key. Returns (raw_key, record)."""
         raw_key = generate_api_key()
         key_hash = _hash_key(raw_key)
         row = await self._pool.fetchrow(
             """
-            INSERT INTO dbo.api_keys (user_id, name, key_hash, scopes, expires_at)
-            VALUES ($1::uuid, $2, $3, $4, $5)
+            INSERT INTO dbo.api_keys (user_id, name, key_hash, scopes, expires_at, rate_limit_per_min)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6)
             RETURNING *
             """,
-            user_id, name, key_hash, scopes or [], expires_at,
+            user_id, name, key_hash, scopes or [], expires_at, rate_limit_per_min,
         )
         return raw_key, _row_to_key(row)
 

@@ -5,12 +5,15 @@
 {% block head %}
 <link rel="stylesheet" href="/static/css/dashboard.css"/>
 <style>
-.teams-page { padding: var(--space-6); }
+.teams-page { padding: var(--space-6); display: grid; gap: var(--space-6); }
 .teams-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: var(--space-6);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--space-4); flex-wrap: wrap;
 }
+.teams-header-copy { display: grid; gap: var(--space-2); }
+.teams-actions { display:flex; gap: var(--space-3); flex-wrap: wrap; }
 .teams-header h2 { margin: 0; color: var(--text-primary); }
+.teams-subtitle { margin: 0; color: var(--text-secondary); max-width: 72ch; }
 .teams-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -22,10 +25,15 @@
   -webkit-backdrop-filter: blur(var(--glass-blur));
   backdrop-filter: blur(var(--glass-blur));
   transition: border-color var(--transition-fast);
+  display: grid; gap: var(--space-3);
 }
 .team-card:hover { border-color: var(--accent-blue); }
-.team-card h3 { margin: 0 0 var(--space-3); color: var(--text-primary); }
-.team-card .team-desc { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-4); }
+.team-card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); }
+.team-card h3 { margin: 0; color: var(--text-primary); }
+.team-card .team-desc { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.team-card-actions, .team-card-meta, .team-members, .wizard-chip-list, .recommend-actions, .org-chart-toolbar { display:flex; gap: var(--space-2); flex-wrap: wrap; }
+.team-card-insights, .recommend-form, .recommend-review, .wizard-panel, .wizard-member-assignment { display:grid; gap: var(--space-3); }
+.team-insight { display:flex; gap: var(--space-2); flex-wrap: wrap; font-size: var(--font-size-xs); color: var(--text-secondary); }
 .team-members { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .team-member {
   font-size: var(--font-size-xs); padding: 2px var(--space-2);
@@ -33,30 +41,335 @@
 }
 .team-member--lead { background: rgba(99,102,241,0.15); color: var(--accent-purple); }
 .teams-empty { text-align: center; padding: var(--space-10); color: var(--text-muted); font-size: var(--font-size-lg); }
+.teams-dialog { max-width: 720px; width: min(720px, 92vw); }
+.teams-dialog form { display:flex; flex-direction:column; gap: var(--space-3); }
+.teams-dialog textarea { min-height: 110px; }
+.teams-member-editor { display:flex; flex-direction:column; gap: var(--space-2); }
+.teams-member-row { display:grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-2); }
+.teams-member-label { color: var(--text-primary); font-weight: 600; }
+.wizard-stepper { display:flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.wizard-step { padding: .4rem .75rem; border-radius: 999px; border:1px solid var(--glass-border); color: var(--text-secondary); }
+.wizard-step.active { color: var(--text-primary); background: rgba(99,102,241,0.14); border-color: rgba(99,102,241,0.32); }
+.wizard-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.wizard-card, .team-recommendation-card, .org-chart-shell { padding: var(--space-4); border-radius: var(--glass-radius); border:1px solid var(--glass-border); background: rgba(15,23,42,.35); }
+.wizard-chip { padding:.3rem .65rem; border-radius:999px; background: rgba(96,165,250,.12); color: var(--text-primary); font-size: var(--font-size-xs); }
+.wizard-member-assignment-row { display:grid; grid-template-columns: minmax(110px, 150px) 1fr; gap: var(--space-2); align-items:center; }
+.wizard-list { margin: 0; padding-left: 1.1rem; color: var(--text-secondary); }
+.org-chart-shell team-org-chart { display:block; min-height: 220px; }
+@media (max-width: 860px) {
+  .wizard-grid { grid-template-columns: 1fr; }
+  .teams-header { flex-direction: column; align-items: stretch; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="teams-page">
   <div class="teams-header">
-    <h2>👥 {{ _("teams.title") }}</h2>
+    <div class="teams-header-copy">
+      <h2>👥 {{ _("teams.title") }}</h2>
+      <p class="teams-subtitle">Create, recommend, preview and deploy team compositions with org-chart visibility and a structured wizard flow.</p>
+    </div>
+    <div class="teams-actions">
+      <button class="glass-btn glass-btn--secondary" id="btn-refresh-teams" type="button">Odśwież</button>
+      <button class="glass-btn glass-btn--ghost" id="btn-org-chart" type="button">🗺️ Org Chart</button>
+      <button class="glass-btn glass-btn--secondary" id="btn-recommend-team" type="button">✨ Recommend</button>
+      <button class="glass-btn glass-btn--secondary" id="btn-wizard-team" type="button">🧙 Wizard</button>
+      <button class="glass-btn glass-btn--primary" id="btn-create-team" type="button">+ Zespół</button>
+    </div>
   </div>
   <div class="teams-grid" id="teams-grid">
     <div class="teams-empty">{{ _("teams.loading") }}</div>
   </div>
 </div>
+
+<dialog id="team-dialog" class="glass-dialog teams-dialog">
+  <form id="team-form" method="dialog">
+    <h3 id="team-dialog-title">Nowy zespół</h3>
+    <input type="hidden" id="team-id" />
+    <label>
+      Nazwa
+      <input class="glass-input" id="team-name" required />
+    </label>
+    <label>
+      Opis
+      <textarea class="glass-input" id="team-description"></textarea>
+    </label>
+    <label>
+      Szablon
+      <select class="glass-input" id="team-template">
+        <option value="">— brak —</option>
+      </select>
+    </label>
+    <label>
+      Kontekst projektu
+      <textarea class="glass-input" id="team-project-context"></textarea>
+    </label>
+    <div>
+      <div class="teams-member-label">Członkowie</div>
+      <div id="teams-member-editor" class="teams-member-editor"></div>
+      <button type="button" class="glass-btn glass-btn--secondary" id="btn-add-member">+ Członek</button>
+    </div>
+    <label>
+      Lead role
+      <input class="glass-input" id="team-lead" placeholder="lead / architect / backend_developer" />
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="glass-btn glass-btn--secondary" id="btn-cancel-team">Anuluj</button>
+      <button type="submit" class="glass-btn glass-btn--primary">Zapisz</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/components/team-org-chart.js"></script>
 <script>
 (function() {
   'use strict';
+
+  var _teams = [];
+  var _templates = [];
+  var _agents = [];
+  var _wizard = null;
+
+  function esc(s) {
+    var d = document.createElement('span');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  function badge(label, kind) {
+    return '<span class="glass-badge ' + (kind || 'badge-idle') + '">' + esc(label) + '</span>';
+  }
+
+  function teamStatusBadge(team) {
+    var status = (team.status || (team.metadata && team.metadata.status) || 'draft').toLowerCase();
+    if (status === 'deployed' || status === 'active') return badge('Deployed', 'badge-success');
+    if (status === 'deploying') return badge('Deploying', 'badge-working');
+    if (status === 'saved_only' || status === 'not_supported') return badge('Saved only', 'badge-idle');
+    return badge('Draft', 'badge-muted');
+  }
+
+  function memberRowHtml(role, name) {
+    return '<div class="teams-member-row">'
+      + '<input class="glass-input member-role" placeholder="role" value="' + esc(role || '') + '" />'
+      + '<input class="glass-input member-name" placeholder="name" value="' + esc(name || '') + '" />'
+      + '<button type="button" class="glass-btn glass-btn--danger remove-member">✕</button>'
+      + '</div>';
+  }
+
+  function bindMemberEditor() {
+    document.querySelectorAll('.remove-member').forEach(function(btn) {
+      btn.onclick = function() {
+        btn.closest('.teams-member-row').remove();
+      };
+    });
+  }
+
+  function fillTemplateOptions() {
+    var select = document.getElementById('team-template');
+    select.innerHTML = '<option value="">— brak —</option>' + _templates.map(function(t) {
+      return '<option value="' + esc(t.template_id) + '">' + esc(t.name || t.template_id) + '</option>';
+    }).join('');
+  }
+
+  async function loadTemplates() {
+    try {
+      var res = await fetch('/api/teams/templates');
+      var data = await res.json();
+      _templates = data.templates || [];
+      fillTemplateOptions();
+    } catch(e) {
+      _templates = [];
+      fillTemplateOptions();
+    }
+  }
+
+  function ensureAgents() {
+    if (_agents.length) return Promise.resolve(_agents);
+    return fetch('/api/agents').then(function(r) { return r.json(); }).then(function(d) {
+      _agents = d.agents || d.items || [];
+      return _agents;
+    }).catch(function() {
+      _agents = [];
+      return _agents;
+    });
+  }
+
+  function openOrgChart(teamId) {
+    var shell = '<div class="org-chart-shell"><div class="org-chart-toolbar"><strong>Org chart</strong><span class="text-muted">Team hierarchy preview</span></div><team-org-chart id="org-chart-el"></team-org-chart></div>';
+    openDetailDrawer('Org Chart', shell);
+    var request = teamId
+      ? fetch('/api/teams/' + encodeURIComponent(teamId) + '/org').then(function(r) { return r.json(); }).then(function(chart) {
+          return chart.error ? [] : [{ team_id: chart.team_id, name: chart.name, lead_agent_id: chart.lead, members: chart.members || [] }];
+        })
+      : fetch('/api/teams').then(function(r) { return r.json(); }).then(function(data) { return data.teams || []; });
+    request.then(function(teams) {
+      var el = document.getElementById('org-chart-el');
+      if (el) el.setTeams(teams || []);
+    }).catch(function() {
+      var el = document.getElementById('org-chart-el');
+      if (el) el.setTeams([]);
+      notifyTeam('Could not load org chart', 'error');
+    });
+  }
+
+  async function fetchRecommendation(projectContext) {
+    var res = await fetch('/api/teams/recommend?project_context=' + encodeURIComponent(projectContext || 'general'));
+    return res.ok ? res.json() : { error: 'recommendation_failed' };
+  }
+
+  function normalizeRecommendedMembers(payload) {
+    var previewTeam = payload && payload.preview_team;
+    if (previewTeam && previewTeam.members && previewTeam.members.length) {
+      return previewTeam.members.map(function(member) {
+        return {
+          role: member.role || '',
+          name: member.name || member.agent_id || '',
+          agent_id: member.agent_id || member.name || '',
+        };
+      });
+    }
+    var recommendation = (payload && payload.recommendation) || {};
+    return (recommendation.recommended_roles || []).map(function(role) {
+      return { role: role, name: '', agent_id: '' };
+    });
+  }
+
+  function openRecommendDrawer(initialContext) {
+    var html = '<div class="recommend-form">'
+      + '<label>Project context<textarea class="glass-input" id="recommend-context" rows="6" placeholder="Describe the project scope, constraints and expected outcome">' + esc(initialContext || '') + '</textarea></label>'
+      + '<div class="recommend-actions"><button class="glass-btn glass-btn--primary" type="button" onclick="loadTeamRecommendation()">Recommend team</button></div>'
+      + '<div id="team-recommend-output" class="recommend-review"><div class="text-muted">Recommendation preview will appear here.</div></div>'
+      + '</div>';
+    openDetailDrawer('Team Recommendation', html);
+  }
+
+  function notifyTeam(message, level) {
+    if (typeof showToast === 'function') {
+      showToast(message, level || 'info');
+      return;
+    }
+    if (message) alert(message);
+  }
+
+  async function responseErrorMessage(res, fallback) {
+    var payload = await res.json().catch(function() { return {}; });
+    return payload.error || fallback;
+  }
+
+  window.loadTeamRecommendation = async function() {
+    var context = (document.getElementById('recommend-context') || {}).value || 'general';
+    var target = document.getElementById('team-recommend-output');
+    if (target) target.innerHTML = '<div class="text-muted">Loading recommendation…</div>';
+    var payload = await fetchRecommendation(context);
+    window.__lastTeamRecommendation = payload;
+    if (!target) return;
+    if (payload.error) {
+      target.innerHTML = '<div class="text-muted">Could not load recommendation.</div>';
+      return;
+    }
+    var recommendation = payload.recommendation || {};
+    target.innerHTML = '<div class="team-recommendation-card recommend-review">'
+      + '<strong>Recommended roles</strong>'
+      + '<div class="wizard-chip-list">' + ((recommendation.recommended_roles || []).map(function(role) { return '<span class="wizard-chip">' + esc(role) + '</span>'; }).join('') || '<span class="text-muted">No roles</span>') + '</div>'
+      + '<div class="text-muted">' + esc(recommendation.reasoning || '') + '</div>'
+      + '<div class="team-insight"><span>Confidence:</span><strong>' + esc(String(recommendation.confidence || 0)) + '</strong></div>'
+      + '<div class="recommend-actions"><button class="glass-btn glass-btn--secondary" type="button" onclick="useRecommendationInWizard()">Open in wizard</button></div>'
+      + '</div>';
+  };
+
+  window.useRecommendationInWizard = function() {
+    var payload = window.__lastTeamRecommendation || null;
+    if (!payload) return;
+    openTeamWizard({
+      projectContext: payload.project_context || '',
+      recommendation: payload.recommendation || null,
+      previewTeam: payload.preview_team || null,
+      members: normalizeRecommendedMembers(payload),
+      name: payload.preview_team && payload.preview_team.name || '',
+    });
+  };
+
+  function renderWizard() {
+    if (!_wizard) return;
+    var steps = ['Describe', 'Recommend', 'Assign', 'Review'];
+    var stepper = steps.map(function(label, idx) {
+      return '<div class="wizard-step ' + (_wizard.step === idx + 1 ? 'active' : '') + '">' + (idx + 1) + '. ' + esc(label) + '</div>';
+    }).join('');
+    var html = '<div class="wizard-stepper">' + stepper + '</div>';
+    if (_wizard.step === 1) {
+      html += '<div class="wizard-panel">'
+        + '<label>Team name<input class="glass-input" id="wiz-name" value="' + esc(_wizard.name || '') + '" placeholder="Platform Engineering Squad"></label>'
+        + '<label>Project context<textarea class="glass-input" id="wiz-context" rows="6" placeholder="Describe the project, expected deliverables and constraints">' + esc(_wizard.projectContext || '') + '</textarea></label>'
+        + '<label>Workflow strategy<select class="glass-input" id="wiz-strategy"><option value="collaborative"' + (_wizard.strategy === 'collaborative' ? ' selected' : '') + '>Collaborative</option><option value="sequential"' + (_wizard.strategy === 'sequential' ? ' selected' : '') + '>Sequential</option><option value="competitive"' + (_wizard.strategy === 'competitive' ? ' selected' : '') + '>Competitive</option></select></label>'
+        + '<div class="team-card-actions"><button class="glass-btn glass-btn--primary" type="button" onclick="wizStep(2)">Next →</button></div>'
+        + '</div>';
+    } else if (_wizard.step === 2) {
+      var recommendation = _wizard.recommendation || {};
+      var previewTeam = _wizard.previewTeam || null;
+      html += '<div class="wizard-grid">'
+        + '<div class="team-recommendation-card recommend-review">'
+        + '<strong>Recommendation</strong>'
+        + '<div class="wizard-chip-list">' + ((recommendation.recommended_roles || []).map(function(role) { return '<span class="wizard-chip">' + esc(role) + '</span>'; }).join('') || '<span class="text-muted">No recommended roles</span>') + '</div>'
+        + '<div class="text-muted">' + esc(recommendation.reasoning || 'No reasoning provided.') + '</div>'
+        + '<div class="team-insight"><span>Confidence:</span><strong>' + esc(String(recommendation.confidence || 0)) + '</strong></div>'
+        + '</div>'
+        + '<div class="wizard-card recommend-review">'
+        + '<strong>Suggested team</strong>'
+        + '<div class="wizard-chip-list">' + (((previewTeam && previewTeam.member_roles) || []).map(function(role) { return '<span class="wizard-chip">' + esc(role) + '</span>'; }).join('') || '<span class="text-muted">No preview available</span>') + '</div>'
+        + '<div class="text-muted">' + esc((previewTeam && previewTeam.project_context) || _wizard.projectContext || '') + '</div>'
+        + '</div>'
+        + '</div>'
+        + '<div class="team-card-actions"><button class="glass-btn glass-btn--secondary" type="button" onclick="wizStep(1)">← Back</button><button class="glass-btn glass-btn--primary" type="button" onclick="wizStep(3)">Next →</button></div>';
+    } else if (_wizard.step === 3) {
+      var rows = (_wizard.members || []).map(function(member, idx) {
+        var selectedAgent = member.agent_id || '';
+        var options = ['<option value="">— choose agent —</option>'].concat(_agents.map(function(agent) {
+          var aid = agent.agent_id || agent.id || '';
+          return '<option value="' + esc(aid) + '"' + (aid === selectedAgent ? ' selected' : '') + '>' + esc(agent.name || aid) + '</option>';
+        })).join('');
+        return '<div class="wizard-member-assignment-row">'
+          + '<div>' + badge(member.role || 'member', 'badge-idle') + '</div>'
+          + '<select class="glass-input wiz-agent-select" data-index="' + idx + '">' + options + '</select>'
+          + '</div>';
+      }).join('');
+      html += '<div class="wizard-panel">'
+        + '<div class="wizard-card"><strong>Assign agents to recommended roles</strong><div class="wizard-member-assignment">' + (rows || '<div class="text-muted">No suggested roles yet.</div>') + '</div></div>'
+        + '<div class="team-card-actions"><button class="glass-btn glass-btn--secondary" type="button" onclick="wizStep(2)">← Back</button><button class="glass-btn glass-btn--primary" type="button" onclick="wizStep(4)">Next →</button></div>'
+        + '</div>';
+    } else {
+      var reviewRows = (_wizard.members || []).map(function(member) {
+        return '<li>' + esc(member.role || 'member') + ' → ' + esc(member.agent_id || member.name || 'unassigned') + '</li>';
+      }).join('');
+      html += '<div class="wizard-panel">'
+        + '<div class="wizard-card"><strong>' + esc(_wizard.name || 'Untitled team') + '</strong><div class="text-muted">' + esc(_wizard.projectContext || '') + '</div><ul class="wizard-list">' + reviewRows + '</ul></div>'
+        + '<div class="team-card-actions"><button class="glass-btn glass-btn--secondary" type="button" onclick="wizStep(3)">← Back</button><button class="glass-btn glass-btn--primary" type="button" onclick="wizSubmit()">Create team</button></div>'
+        + '</div>';
+    }
+    openDetailDrawer('Team Wizard', html);
+  }
+
+  function openTeamWizard(seed) {
+    _wizard = {
+      step: 1,
+      name: seed && seed.name || '',
+      projectContext: seed && seed.projectContext || '',
+      strategy: seed && seed.strategy || 'collaborative',
+      recommendation: seed && seed.recommendation || null,
+      previewTeam: seed && seed.previewTeam || null,
+      members: seed && seed.members || [],
+    };
+    renderWizard();
+  }
 
   async function loadTeams() {
     try {
       var res = await fetch('/api/teams');
       var data = await res.json();
       var teams = data.teams || data || [];
+      _teams = teams;
       var grid = document.getElementById('teams-grid');
 
       if (!teams.length) {
@@ -69,25 +382,230 @@
           var cls = m.role === 'lead' || m.role === 'supervisor' ? 'team-member team-member--lead' : 'team-member';
           return '<span class="' + cls + '">' + esc(m.name || m.agent_id || m.id || '—') + '</span>';
         }).join('');
+        var meta = [
+          badge((team.size || (team.members || []).length || 0) + ' members', 'badge-idle'),
+          team.workflow ? badge(team.workflow, 'badge-idle') : '',
+          team.lead_agent_id ? badge('lead: ' + team.lead_agent_id, 'badge-idle') : ''
+        ].join('');
+        var metrics = team.metrics || (team.metadata && team.metadata.metrics) || {};
 
         return '<div class="team-card">'
-          + '<h3>' + esc(team.name || team.id || '—') + '</h3>'
+          + '<div class="team-card-top"><h3>' + esc(team.name || team.team_id || '—') + '</h3><div>' + teamStatusBadge(team) + '</div></div>'
           + (team.description ? '<div class="team-desc">' + esc(team.description) + '</div>' : '')
+          + '<div class="team-card-meta">' + meta + '</div>'
+          + '<div class="team-card-insights">'
+          + '<div class="team-insight"><span>Context:</span><strong>' + esc(team.project_context || '—') + '</strong></div>'
+          + '<div class="team-insight"><span>Pending:</span><strong>' + esc(String(metrics.tasks_pending || 0)) + '</strong><span>Completed:</span><strong>' + esc(String(metrics.tasks_completed || 0)) + '</strong></div>'
+          + '</div>'
           + '<div class="team-members">' + (members || '<span class="text-muted">—</span>') + '</div>'
+          + '<div class="team-card-actions">'
+          + '<button class="glass-btn glass-btn--ghost btn-org-team" data-team-id="' + esc(team.team_id) + '">Org chart</button>'
+          + '<button class="glass-btn glass-btn--secondary btn-edit-team" data-team-id="' + esc(team.team_id) + '">Edytuj</button>'
+          + '<button class="glass-btn glass-btn--primary glass-btn--sm btn-deploy-team" data-team-id="' + esc(team.team_id) + '">Deploy</button>'
+          + '<button class="glass-btn glass-btn--danger btn-delete-team" data-team-id="' + esc(team.team_id) + '">Usuń</button>'
+          + '</div>'
           + '</div>';
       }).join('');
+
+      grid.querySelectorAll('.btn-org-team').forEach(function(btn) {
+        btn.onclick = function() { openOrgChart(btn.getAttribute('data-team-id')); };
+      });
+      grid.querySelectorAll('.btn-edit-team').forEach(function(btn) {
+        btn.onclick = function() { openEditTeam(btn.getAttribute('data-team-id')); };
+      });
+      grid.querySelectorAll('.btn-deploy-team').forEach(function(btn) {
+        btn.onclick = function() { deployTeam(btn.getAttribute('data-team-id')); };
+      });
+      grid.querySelectorAll('.btn-delete-team').forEach(function(btn) {
+        btn.onclick = function() { deleteTeam(btn.getAttribute('data-team-id')); };
+      });
     } catch(e) {
       document.getElementById('teams-grid').innerHTML =
         '<div class="teams-empty">{{ _("common.error") }}</div>';
     }
   }
 
-  function esc(s) {
-    var d = document.createElement('span');
-    d.textContent = s || '';
-    return d.innerHTML;
+  function resetTeamForm() {
+    document.getElementById('team-form').reset();
+    document.getElementById('team-id').value = '';
+    document.getElementById('team-dialog-title').textContent = 'Nowy zespół';
+    document.getElementById('teams-member-editor').innerHTML = memberRowHtml('', '');
+    bindMemberEditor();
   }
 
+  function openEditTeam(teamId) {
+    var team = _teams.find(function(t) { return t.team_id === teamId; });
+    if (!team) return;
+    document.getElementById('team-id').value = team.team_id;
+    document.getElementById('team-name').value = team.name || '';
+    document.getElementById('team-description').value = team.description || '';
+    document.getElementById('team-project-context').value = team.project_context || '';
+    document.getElementById('team-lead').value = team.lead_agent_id || '';
+    document.getElementById('team-template').value = '';
+    document.getElementById('team-dialog-title').textContent = 'Edytuj zespół';
+    document.getElementById('teams-member-editor').innerHTML = (team.members || []).map(function(m) {
+      return memberRowHtml(m.role, m.name);
+    }).join('') || memberRowHtml('', '');
+    bindMemberEditor();
+    document.getElementById('team-dialog').showModal();
+  }
+
+  async function deleteTeam(teamId) {
+    if (!confirm('Usunąć zespół?')) return;
+    try {
+      var res = await fetch('/api/teams/' + encodeURIComponent(teamId), { method: 'DELETE' });
+      if (res.ok) {
+        notifyTeam('Team deleted', 'success');
+        loadTeams();
+      } else {
+        notifyTeam(await responseErrorMessage(res, 'Delete failed'), 'error');
+      }
+    } catch(e) {
+      notifyTeam('Delete failed', 'error');
+    }
+  }
+
+  document.getElementById('btn-refresh-teams').onclick = function() { loadTeams(); };
+  document.getElementById('btn-create-team').onclick = function() { resetTeamForm(); document.getElementById('team-dialog').showModal(); };
+  document.getElementById('btn-cancel-team').onclick = function() { document.getElementById('team-dialog').close(); };
+  document.getElementById('btn-org-chart').onclick = function() { openOrgChart(''); };
+  document.getElementById('btn-recommend-team').onclick = function() { openRecommendDrawer(''); };
+
+  async function deployTeam(teamId) {
+    if (!confirm('Deploy team ' + teamId + '?')) return;
+    try {
+      var res = await fetch('/api/teams/' + encodeURIComponent(teamId) + '/deploy', { method: 'POST' });
+      var data = await res.json();
+      if (res.ok) {
+        notifyTeam('Team deployed', 'success');
+        loadTeams();
+      } else if (data && data.error === 'deploy_not_supported') {
+        notifyTeam('Team saved, but runtime deploy is not available in this environment', 'warning');
+        loadTeams();
+      } else {
+        notifyTeam(data.error || 'Deploy failed', 'error');
+      }
+    } catch(e) {
+      notifyTeam('Deploy error', 'error');
+    }
+  }
+
+  document.getElementById('btn-wizard-team').onclick = async function() {
+    await ensureAgents();
+    openTeamWizard({ members: [] });
+  };
+
+  window.wizStep = async function(step) {
+    if (!_wizard) return;
+    if (step > 1) {
+      _wizard.name = (document.getElementById('wiz-name') || {}).value || _wizard.name;
+      _wizard.projectContext = (document.getElementById('wiz-context') || {}).value || _wizard.projectContext;
+      _wizard.strategy = (document.getElementById('wiz-strategy') || {}).value || _wizard.strategy;
+    }
+    if (step === 2 && !_wizard.recommendation) {
+      var payload = await fetchRecommendation(_wizard.projectContext || _wizard.name || 'general');
+      if (!payload.error) {
+        _wizard.recommendation = payload.recommendation || null;
+        _wizard.previewTeam = payload.preview_team || null;
+        _wizard.members = normalizeRecommendedMembers(payload);
+      }
+    }
+    if (step === 4) {
+      Array.from(document.querySelectorAll('.wiz-agent-select')).forEach(function(select) {
+        var idx = parseInt(select.dataset.index || '-1', 10);
+        if (idx >= 0 && _wizard.members[idx]) {
+          _wizard.members[idx].agent_id = select.value;
+          _wizard.members[idx].name = select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : '';
+        }
+      });
+    }
+    _wizard.step = step;
+    renderWizard();
+  };
+
+  window.wizSubmit = async function() {
+    if (!_wizard) return;
+    var members = (_wizard.members || []).map(function(member) {
+      return {
+        agent_id: member.agent_id || member.name || member.role,
+        role: member.role,
+        name: member.name || member.agent_id || member.role,
+      };
+    }).filter(function(member) { return member.role; });
+    if (!_wizard.name || !members.length) {
+      notifyTeam('Name and at least one member required', 'error');
+      return;
+    }
+    var lead = members.find(function(m) { return m.role === 'supervisor'; }) || members[0];
+    try {
+      var res = await fetch('/api/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: _wizard.name, workflow: _wizard.strategy, project_context: _wizard.projectContext || '', members: members, lead_agent_id: lead.role })
+      });
+      if (res.ok) {
+        if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+        notifyTeam('Team created', 'success');
+        loadTeams();
+      } else {
+        notifyTeam(await responseErrorMessage(res, 'Error creating team'), 'error');
+      }
+    } catch(e) {
+      notifyTeam('Error creating team', 'error');
+    }
+  };
+  document.getElementById('btn-add-member').onclick = function() {
+    document.getElementById('teams-member-editor').insertAdjacentHTML('beforeend', memberRowHtml('', ''));
+    bindMemberEditor();
+  };
+
+  document.getElementById('team-template').addEventListener('change', function() {
+    var templateId = this.value;
+    var template = _templates.find(function(t) { return t.template_id === templateId; });
+    if (!template) return;
+    document.getElementById('team-name').value = template.name || '';
+    document.getElementById('team-lead').value = template.lead_agent_id || '';
+    document.getElementById('teams-member-editor').innerHTML = (template.members || []).map(function(m) {
+      return memberRowHtml(m.role, m.name);
+    }).join('') || memberRowHtml('', '');
+    bindMemberEditor();
+  });
+
+  document.getElementById('team-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var teamId = document.getElementById('team-id').value;
+    var members = Array.from(document.querySelectorAll('.teams-member-row')).map(function(row) {
+      return {
+        role: row.querySelector('.member-role').value.trim(),
+        name: row.querySelector('.member-name').value.trim(),
+      };
+    }).filter(function(m) { return m.role; });
+    var body = {
+      name: document.getElementById('team-name').value.trim(),
+      description: document.getElementById('team-description').value.trim(),
+      template_id: document.getElementById('team-template').value || undefined,
+      project_context: document.getElementById('team-project-context').value.trim(),
+      lead_agent_id: document.getElementById('team-lead').value.trim(),
+      members: members,
+    };
+    var url = '/api/teams' + (teamId ? '/' + encodeURIComponent(teamId) : '');
+    var method = teamId ? 'PUT' : 'POST';
+    try {
+      var res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        notifyTeam(await responseErrorMessage(res, 'Błąd zapisu zespołu'), 'error');
+        return;
+      }
+      document.getElementById('team-dialog').close();
+      notifyTeam(teamId ? 'Team updated' : 'Team saved', 'success');
+      loadTeams();
+    } catch(e) {
+      notifyTeam('Błąd zapisu zespołu', 'error');
+    }
+  });
+
+  loadTemplates();
+  resetTeamForm();
   loadTeams();
 })();
 </script>

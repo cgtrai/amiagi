@@ -21,6 +21,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.testclient import TestClient
 
 _WEB_ROOT = Path(__file__).parent.parent / "src/amiagi/interfaces/web"
 
@@ -43,6 +46,7 @@ class TestPromptRepository:
         assert d["id"] == "p1"
         assert d["is_public"] is True
         assert d["parameters"] == ["filename", "aspect"]
+        assert d["usage_count"] == 5
 
     def test_prompt_parameters_extraction(self):
         from amiagi.interfaces.web.productivity.prompt_repository import PromptRecord
@@ -135,6 +139,25 @@ class TestPromptRepository:
         sql = pool.fetch.call_args[0][0]
         assert "ANY(tags)" in sql
 
+    @pytest.mark.asyncio
+    async def test_record_prompt_use_tracks_agent(self):
+        from amiagi.interfaces.web.productivity.prompt_repository import PromptRepository
+        pool = MagicMock()
+        pool.execute = AsyncMock()
+        repo = PromptRepository(pool)
+        await repo.record_prompt_use("p1", agent_id="polluks")
+        assert pool.execute.await_count == 2
+        assert "prompt_usage" in pool.execute.await_args_list[1].args[0]
+
+    @pytest.mark.asyncio
+    async def test_get_prompt_stats(self):
+        from amiagi.interfaces.web.productivity.prompt_repository import PromptRepository
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={"total_uses": 7, "agent_count": 2, "avg_rating": None})
+        repo = PromptRepository(pool)
+        stats = await repo.get_prompt_stats("p1")
+        assert stats == {"total_uses": 7, "agent_count": 2, "avg_rating": None}
+
 
 # ═══════════════════════════════════════════════════════════════
 # 12.2 — Template parameters  (covered above by render tests)
@@ -217,6 +240,7 @@ class TestSearchService:
         d = r.to_dict()
         assert d["entity_type"] == "agent"
         assert d["rank"] == 0.5
+        assert d["url"] == "/agents/a1"
 
     @pytest.mark.asyncio
     async def test_search_empty_query(self):
@@ -290,6 +314,321 @@ class TestSearchService:
         result = await svc.search("   ")
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_search_tracks_recent_queries(self):
+        from amiagi.interfaces.web.productivity.search_service import SearchService
+        pool = MagicMock()
+        pool.fetch = AsyncMock(return_value=[])
+        svc = SearchService(pool)
+        await svc.search("session replay")
+        assert svc.get_recent_queries(limit=1) == ["session replay"]
+
+    @pytest.mark.asyncio
+    async def test_search_suggestions_do_not_pollute_recent_history(self):
+        from amiagi.interfaces.web.productivity.search_service import SearchService
+        pool = MagicMock()
+        pool.fetch = AsyncMock(return_value=[])
+        svc = SearchService(pool)
+        await svc.search("workflow gate")
+        await svc.search("wo", remember=False)
+        assert svc.get_recent_queries(limit=5) == ["workflow gate"]
+
+    def test_search_frequent_queries_prioritize_popular_prefix_matches(self):
+        from amiagi.interfaces.web.productivity.search_service import SearchService
+        svc = SearchService(MagicMock())
+        svc.remember_query("workflow gate")
+        svc.remember_query("workflow gate")
+        svc.remember_query("workflow review")
+        svc.remember_query("session replay")
+        assert svc.get_frequent_queries("wo", limit=2) == ["workflow gate", "workflow review"]
+
+
+class _FakeSessionRecorder:
+    async def list_sessions(self, *, limit: int = 50, agent_id: str | None = None):
+        return [{"session_id": "sess-1", "agent_id": "polluks", "event_count": 4}]
+
+
+class _FakeInboxItem:
+    id = "ibox-1"
+    title = "Review deployment"
+    body = "Needs approval"
+    agent_id = "kastor"
+    status = "pending"
+    item_type = "gate"
+
+
+class _FakeInboxService:
+    async def list_items(self, *, status: str | None = None, limit: int = 50, offset: int = 0):
+        return [_FakeInboxItem()]
+
+
+class _FakeUser:
+    def __init__(self):
+        self.user_id = "u1"
+        self.permissions = ["admin.users", "admin.roles", "admin.settings"]
+
+
+class _FakeRbacRepo:
+    async def list_users(self, page: int = 1, per_page: int = 20, search: str | None = None):
+        return type("Page", (), {
+            "items": [type("User", (), {"id": "u1", "email": "alice@example.com", "display_name": "Alice"})()],
+        })()
+
+    async def list_roles(self):
+        return [type("Role", (), {"id": "r1", "name": "Operator", "description": "Ops"})()]
+
+
+class _FakeWorkflow:
+    def __init__(self, name: str, description: str = ""):
+        self.name = name
+        self.description = description
+
+
+class _FakeRun:
+    def __init__(self):
+        self.run_id = "run-1"
+        self.workflow = _FakeWorkflow("Deploy Flow")
+        self.status = "running"
+
+
+class _FakeWorkflowEngine:
+    def list_runs(self):
+        return [_FakeRun()]
+
+
+class _FakePool:
+    async def fetch(self, query: str, *args):
+        if "vault_secrets" in query:
+            return [{"agent_id": "polluks", "key": "OPENAI_API_KEY", "updated_at": None}]
+        return []
+
+
+def test_api_search_merges_federated_results_with_urls():
+    from amiagi.interfaces.web.routes.search_routes import search_routes
+
+    app = Starlette(routes=list(search_routes))
+    app.state.search_service = type("Svc", (), {
+        "search": AsyncMock(return_value=[]),
+        "get_recent_queries": lambda self=None, limit=5: [],
+    })()
+    app.state.session_recorder = _FakeSessionRecorder()
+    app.state.inbox_service = _FakeInboxService()
+    app.state.rbac_repo = _FakeRbacRepo()
+    app.state.workflow_engine = _FakeWorkflowEngine()
+    app.state._workflow_definitions = {"wf-1": _FakeWorkflow("Deploy Flow", "Pipeline")}
+    app.state.db_pool = _FakePool()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/api/search?q=deploy")
+    assert response.status_code == 200
+    payload = response.json()
+    types = {item["entity_type"] for item in payload}
+    assert "workflow" in types
+    assert "workflow_run" in types
+    assert any(item["url"] == "/workflows?run_id=run-1" for item in payload)
+
+
+def test_api_search_type_filter_returns_session_results():
+    from amiagi.interfaces.web.routes.search_routes import search_routes
+
+    app = Starlette(routes=list(search_routes))
+    app.state.search_service = type("Svc", (), {
+        "search": AsyncMock(return_value=[]),
+        "get_recent_queries": lambda self=None, limit=5: [],
+    })()
+    app.state.session_recorder = _FakeSessionRecorder()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/api/search?q=sess-1&type=session")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["entity_type"] == "session"
+    assert payload[0]["url"] == "/sessions?session_id=sess-1"
+
+
+def test_api_search_suggestions_include_recent_and_frequent_queries():
+    from amiagi.interfaces.web.routes.search_routes import search_routes
+
+    app = Starlette(routes=list(search_routes))
+    app.state.search_service = type("Svc", (), {
+        "search": AsyncMock(return_value=[type("R", (), {"to_dict": lambda self: {"title": "Workflow Deploy", "entity_type": "workflow"}})()]),
+        "get_recent_queries": lambda self=None, limit=5: ["workflow gate"],
+        "get_frequent_queries": lambda self=None, partial="", limit=5: ["workflow review"],
+    })()
+
+    client = TestClient(app)
+    response = client.get("/api/search/suggestions?q=wo")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recent"] == ["workflow gate"]
+    assert payload["queries"] == ["workflow review"]
+    assert payload["suggestions"][0]["title"] == "Workflow Deploy"
+
+
+class _FakePromptRepo:
+    def __init__(self):
+        from amiagi.interfaces.web.productivity.prompt_repository import PromptRecord
+        self.prompt = PromptRecord(
+            id="p1",
+            user_id="u1",
+            title="Deploy prompt",
+            template="Deploy {service}",
+            tags=["ops"],
+            is_public=True,
+            use_count=3,
+        )
+        self.used_agent_id = None
+
+    async def list_prompts(self, **kwargs):
+        prompt_list = [self.prompt]
+        tag = kwargs.get("tag")
+        query = kwargs.get("query")
+        if tag:
+            prompt_list = [prompt for prompt in prompt_list if tag in prompt.tags]
+        if query:
+            needle = query.casefold()
+            prompt_list = [
+                prompt for prompt in prompt_list
+                if needle in prompt.title.casefold()
+                or needle in prompt.template.casefold()
+                or any(needle in tag.casefold() for tag in prompt.tags)
+            ]
+        return prompt_list
+
+    async def get_prompt(self, prompt_id: str):
+        return self.prompt if prompt_id == "p1" else None
+
+    async def get_prompt_stats(self, prompt_id: str):
+        return {"total_uses": 3, "agent_count": 2, "avg_rating": None}
+
+    async def record_prompt_use(self, prompt_id: str, agent_id: str | None = None):
+        self.used_agent_id = agent_id
+
+
+class _FakeSnippetRepo:
+    def __init__(self):
+        from amiagi.interfaces.web.productivity.snippet_repository import SnippetRecord
+        self.snippet = SnippetRecord(
+            id="s1",
+            user_id="u1",
+            content="print('hello')",
+            tags=["python"],
+            source_agent="polluks",
+            source_task_id="t1",
+            pinned=False,
+        )
+
+    async def list_snippets(self, user_id: str, *, tag: str | None = None, query: str | None = None):
+        snippets = [self.snippet]
+        if tag:
+            snippets = [snippet for snippet in snippets if tag in snippet.tags]
+        if query:
+            needle = query.casefold()
+            snippets = [
+                snippet for snippet in snippets
+                if needle in snippet.content.casefold()
+                or needle in (snippet.source_agent or "").casefold()
+                or any(needle in tag.casefold() for tag in snippet.tags)
+            ]
+        return snippets
+
+    async def create_snippet(self, **kwargs):
+        return self.snippet
+
+    async def get_snippet(self, snippet_id: str):
+        return self.snippet if snippet_id == "s1" else None
+
+    async def update_snippet(self, snippet_id: str, **kwargs):
+        if snippet_id != "s1":
+            return None
+        if "content" in kwargs and kwargs["content"] is not None:
+            self.snippet.content = kwargs["content"]
+        if "tags" in kwargs and kwargs["tags"] is not None:
+            self.snippet.tags = list(kwargs["tags"])
+        if "source_agent" in kwargs and kwargs["source_agent"] is not None:
+            self.snippet.source_agent = kwargs["source_agent"]
+        if "source_task_id" in kwargs and kwargs["source_task_id"] is not None:
+            self.snippet.source_task_id = kwargs["source_task_id"]
+        if "pinned" in kwargs and kwargs["pinned"] is not None:
+            self.snippet.pinned = bool(kwargs["pinned"])
+        return self.snippet
+
+    async def toggle_pin(self, snippet_id: str, pinned: bool | None = None):
+        self.snippet.pinned = (not self.snippet.pinned) if pinned is None else bool(pinned)
+        return self.snippet.pinned
+
+    async def delete_snippet(self, snippet_id: str):
+        return snippet_id == "s1"
+
+
+def test_prompt_api_alias_list_includes_agent_stats():
+    from amiagi.interfaces.web.routes.prompt_routes import prompt_routes
+
+    app = Starlette(routes=list(prompt_routes))
+    app.state.prompt_repository = _FakePromptRepo()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/api/prompts")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["usage_count"] == 3
+    assert payload[0]["agent_count"] == 2
+
+
+def test_prompt_api_alias_supports_query_filter():
+    from amiagi.interfaces.web.routes.prompt_routes import prompt_routes
+
+    app = Starlette(routes=list(prompt_routes))
+    app.state.prompt_repository = _FakePromptRepo()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/api/prompts?q=deploy")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+    response = client.get("/api/prompts?q=security")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_prompt_use_api_alias_tracks_agent_id():
+    from amiagi.interfaces.web.routes.prompt_routes import prompt_routes
+
+    repo = _FakePromptRepo()
+    app = Starlette(routes=list(prompt_routes))
+    app.state.prompt_repository = repo
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post("/api/prompts/p1/use", json={"values": {"service": "api"}, "agent_id": "polluks"})
+    assert response.status_code == 200
+    assert response.json()["agent_id"] == "polluks"
+    assert repo.used_agent_id == "polluks"
+
 
 # ═══════════════════════════════════════════════════════════════
 # 12.5 + 12.6 — Snippets (tests ≥ 5)
@@ -307,6 +646,8 @@ class TestSnippetRepository:
         d = s.to_dict()
         assert d["source_agent"] == "executor"
         assert d["tags"] == ["python"]
+        assert d["title"] == "code"
+        assert d["pinned"] is False
 
     @pytest.mark.asyncio
     async def test_list_snippets(self):
@@ -359,12 +700,111 @@ class TestSnippetRepository:
         assert "ANY(tags)" in sql
 
     @pytest.mark.asyncio
+    async def test_list_snippets_with_query(self):
+        from amiagi.interfaces.web.productivity.snippet_repository import SnippetRepository
+        pool = MagicMock()
+        pool.fetch = AsyncMock(return_value=[])
+        repo = SnippetRepository(pool)
+        await repo.list_snippets("u1", query="executor")
+        sql = pool.fetch.call_args[0][0]
+        assert "ILIKE" in sql
+        assert "array_to_string(tags, ' ')" in sql
+
+    @pytest.mark.asyncio
     async def test_get_snippet(self):
         from amiagi.interfaces.web.productivity.snippet_repository import SnippetRepository
         pool = MagicMock()
         pool.fetchrow = AsyncMock(return_value=None)
         repo = SnippetRepository(pool)
         assert await repo.get_snippet("nope") is None
+
+    @pytest.mark.asyncio
+    async def test_toggle_pin(self):
+        from amiagi.interfaces.web.productivity.snippet_repository import SnippetRecord, SnippetRepository
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(side_effect=[
+            {
+                "id": "s1", "user_id": "u1", "content": "code", "tags": [],
+                "source_agent": None, "source_task_id": None, "pinned": False, "created_at": None,
+            },
+            {
+                "id": "s1", "user_id": "u1", "content": "code", "tags": [],
+                "source_agent": None, "source_task_id": None, "pinned": True, "created_at": None,
+            },
+        ])
+        repo = SnippetRepository(pool)
+        assert await repo.toggle_pin("s1") is True
+
+    @pytest.mark.asyncio
+    async def test_update_snippet_content(self):
+        from amiagi.interfaces.web.productivity.snippet_repository import SnippetRepository
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={
+            "id": "s1", "user_id": "u1", "content": "updated", "tags": ["python"],
+            "source_agent": "polluks", "source_task_id": "t1", "pinned": False, "created_at": None,
+        })
+        repo = SnippetRepository(pool)
+        snippet = await repo.update_snippet("s1", content="updated", tags=["python"])
+        assert snippet is not None
+        assert snippet.content == "updated"
+        sql = pool.fetchrow.call_args[0][0]
+        assert "content = $1" in sql
+        assert "tags = $2" in sql
+
+
+def test_snippet_api_alias_create_pin_and_export():
+    from amiagi.interfaces.web.routes.snippet_routes import snippet_routes
+
+    app = Starlette(routes=list(snippet_routes))
+    app.state.snippet_repository = _FakeSnippetRepo()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+
+    create_response = client.post("/api/snippets", json={"content": "print('hello')", "source": "stream"})
+    assert create_response.status_code == 201
+    assert create_response.json()["source"] == "polluks"
+
+    pin_response = client.put("/api/snippets/s1/pin", json={"pinned": True})
+    assert pin_response.status_code == 200
+    assert pin_response.json()["pinned"] is True
+
+    export_response = client.get("/api/snippets/export?format=markdown")
+    assert export_response.status_code == 200
+    assert "snippets.md" in export_response.headers.get("content-disposition", "")
+    assert "print('hello')" in export_response.text
+
+
+def test_snippet_api_alias_supports_query_and_update():
+    from amiagi.interfaces.web.routes.snippet_routes import snippet_routes
+
+    app = Starlette(routes=list(snippet_routes))
+    app.state.snippet_repository = _FakeSnippetRepo()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+
+    search_response = client.get("/api/snippets?q=hello")
+    assert search_response.status_code == 200
+    assert len(search_response.json()) == 1
+
+    update_response = client.put(
+        "/api/snippets/s1",
+        json={"content": "updated snippet", "tags": ["updated"], "source": "kastor"},
+    )
+    assert update_response.status_code == 200
+    payload = update_response.json()
+    assert payload["content"] == "updated snippet"
+    assert payload["tags"] == ["updated"]
+    assert payload["source_agent"] == "kastor"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -395,6 +835,15 @@ class TestMigrationAndWiring:
         sql = (_WEB_ROOT / "db/migrations/003_productivity.sql").read_text()
         assert "USING GIN(content_tsv)" in sql
 
+    def test_productivity_enhancement_migration_exists(self):
+        path = _WEB_ROOT / "db/migrations/014_productivity_enhancements.sql"
+        assert path.exists()
+
+    def test_productivity_enhancement_migration_adds_prompt_usage_and_pinned(self):
+        sql = (_WEB_ROOT / "db/migrations/014_productivity_enhancements.sql").read_text()
+        assert "prompt_usage" in sql
+        assert "ADD COLUMN IF NOT EXISTS pinned" in sql
+
     def test_routes_wired_in_app(self):
         import inspect
         from amiagi.interfaces.web.app import create_app
@@ -412,6 +861,7 @@ class TestMigrationAndWiring:
         assert "/prompts" in paths
         assert "/prompts/{id}" in paths
         assert "/prompts/{id}/use" in paths
+        assert "/api/prompts/{id}/stats" in paths
 
     def test_search_routes_exist(self):
         from amiagi.interfaces.web.routes.search_routes import search_routes
@@ -423,3 +873,4 @@ class TestMigrationAndWiring:
         paths = [r.path for r in snippet_routes]
         assert "/snippets" in paths
         assert "/snippets/{id}" in paths
+        assert "/api/snippets/{id}/pin" in paths

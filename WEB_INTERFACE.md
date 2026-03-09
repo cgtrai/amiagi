@@ -1,14 +1,16 @@
 # amiagi Web Interface
 
-> Full documentation for the amiagi Web GUI — version 1.1.0
+> Full documentation for the amiagi Web GUI — version 1.3.0
 
 ## Overview
 
 The amiagi web interface provides a browser-based dashboard for managing
 multi-agent AI workflows. It is built on **Starlette** (ASGI), uses
 **PostgreSQL** (with SQLite fallback) for persistence, and communicates in
-real time via WebSockets. The interface implements 29 management tools
-across 11+ screens.
+real time via WebSockets. The interface implements an operator-ready
+management surface across Supervisor, Agents, Teams, Tasks, Models,
+Evaluations, Knowledge, Sessions, Metrics, Settings, Budget, Vault,
+Inbox, Files, Memory, Cron, Productivity, Sandboxes, and Admin views.
 
 ## Quick Start
 
@@ -28,7 +30,7 @@ src/amiagi/interfaces/web/
 ├── i18n_web.py               # Web-specific i18n (PL + EN, 490+ keys)
 ├── auth/                     # OAuth2 + JWT sessions + RBAC
 ├── rbac/                     # Role-Based Access Control
-├── db/                       # Database layer + migrations (001-012)
+├── db/                       # Database layer + migrations (001-016)
 ├── ws/                       # WebSocket layer (events + per-agent)
 ├── files/                    # File management (SHA-256 dedup, 50 MB)
 ├── audit/                    # Audit trail + workspace manager
@@ -205,7 +207,7 @@ src/amiagi/interfaces/web/
 
 - **PostgreSQL** via asyncpg (with SQLite fallback)
 - **Schema**: `dbo`
-- **Migrations**: Auto-run on startup (001–012)
+- **Migrations**: Auto-run on startup (001–016)
 - Key tables: `agents`, `tasks`, `sessions`, `prompts`, `vault_entries`,
   `search_index`, `shell_executions`, `sandbox_metadata`
 

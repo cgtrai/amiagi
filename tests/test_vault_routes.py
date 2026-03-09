@@ -20,6 +20,7 @@ from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from amiagi.interfaces.web.routes.vault_routes import vault_routes
+from amiagi.interfaces.web.scheduling.cron_scheduler import CronJob
 
 _LOG_ACTION = "amiagi.interfaces.web.audit.log_helpers.log_action"
 
@@ -72,9 +73,19 @@ def _mock_vault(
     }
     vault = MagicMock()
 
+    def _secret_meta(agent_id: str, key: str) -> dict[str, str | None]:
+        return {
+            "id": f"{agent_id}:{key}",
+            "key": key,
+            "type": "api_key",
+            "expires_at": None,
+            "last_access": None,
+            "status": "active",
+        }
+
     # Sync API (backward compat)
     vault.list_agents.return_value = [
-        {"agent_id": aid, "keys": list(secs.keys()), "count": len(secs)}
+        {"agent_id": aid, "keys": [_secret_meta(aid, key) for key in secs.keys()], "count": len(secs)}
         for aid, secs in data.items()
     ]
     vault.list_keys.side_effect = lambda agent_id: list(data.get(agent_id, {}).keys())
@@ -84,16 +95,17 @@ def _mock_vault(
 
     # Async API (DB-aware routes use these)
     vault.alist_agents = AsyncMock(return_value=[
-        {"agent_id": aid, "keys": list(secs.keys()), "count": len(secs)}
+        {"agent_id": aid, "keys": [_secret_meta(aid, key) for key in secs.keys()], "count": len(secs)}
         for aid, secs in data.items()
     ])
-    vault.alist_keys = AsyncMock(side_effect=lambda agent_id: list(data.get(agent_id, {}).keys()))
+    vault.alist_keys = AsyncMock(side_effect=lambda agent_id, include_metadata=False: [_secret_meta(agent_id, key) for key in data.get(agent_id, {}).keys()] if include_metadata else list(data.get(agent_id, {}).keys()))
     vault.aget_secret = AsyncMock(side_effect=lambda agent_id, key: data.get(agent_id, {}).get(key))
     vault.aset_secret = AsyncMock(return_value=None)
     vault.adelete_secret = AsyncMock(side_effect=lambda agent_id, key: key in data.get(agent_id, {}))
     vault.arotate_secret = AsyncMock(return_value=True)
     vault.alog_access = AsyncMock(return_value=None)
     vault.aget_access_log = AsyncMock(return_value=[])
+    vault.aget_secret_access_log = AsyncMock(return_value=[{"timestamp": "2024-01-01T00:00:00+00:00", "agent_id": "kastor", "key": "API_KEY", "action": "vault.set", "user": "test-admin"}])
 
     # DB status
     vault.has_db = False
@@ -106,6 +118,24 @@ def _mock_audit_chain() -> MagicMock:
     chain.record_action.return_value = None
     chain.query.return_value = []
     return chain
+
+
+class _FakeCronScheduler:
+    def __init__(self, jobs: list[CronJob] | None = None) -> None:
+        self.jobs = list(jobs or [])
+
+    def list_jobs(self) -> list[CronJob]:
+        return list(self.jobs)
+
+    async def create_job(self, job: CronJob) -> CronJob:
+        job.next_run = "2026-03-07T09:00:00"
+        self.jobs.append(job)
+        return job
+
+    async def delete_job(self, job_id: str) -> bool:
+        before = len(self.jobs)
+        self.jobs = [job for job in self.jobs if job.id != job_id]
+        return len(self.jobs) != before
 
 
 # ── GET /api/vault ───────────────────────────────────────────
@@ -146,8 +176,9 @@ class TestVaultAgentKeys:
         r = client.get("/api/vault/kastor")
         assert r.status_code == 200
         data = r.json()
-        assert "API_KEY" in data["keys"]
-        assert "DB_PASSWORD" in data["keys"]
+        key_names = [item["key"] for item in data["keys"]]
+        assert "API_KEY" in key_names
+        assert "DB_PASSWORD" in key_names
 
 
 # ── POST /api/vault/{agent_id} ───────────────────────────────
@@ -160,7 +191,15 @@ class TestVaultSetSecret:
         client = _make_app(secret_vault=vault, audit_chain=chain)
         r = client.post("/api/vault/kastor", json={"key": "NEW_KEY", "value": "new-val"})
         assert r.status_code == 201
-        vault.aset_secret.assert_called_once_with("kastor", "NEW_KEY", "new-val")
+        vault.aset_secret.assert_called_once_with("kastor", "NEW_KEY", "new-val", secret_type="api_key", expires_at=None)
+
+    @patch(_LOG_ACTION, new_callable=AsyncMock)
+    def test_create_secret_via_flat_endpoint(self, _mock_log) -> None:
+        vault = _mock_vault()
+        client = _make_app(secret_vault=vault, audit_chain=_mock_audit_chain())
+        r = client.post("/api/vault", json={"agent_id": "kastor", "key": "NEW_KEY", "value": "new-val", "type": "token"})
+        assert r.status_code == 201
+        vault.aset_secret.assert_called_once_with("kastor", "NEW_KEY", "new-val", secret_type="token", expires_at=None)
 
     def test_set_secret_missing_key(self) -> None:
         vault = _mock_vault()
@@ -212,6 +251,12 @@ class TestVaultRotate:
         assert r.json()["ok"] is True
         vault.arotate_secret.assert_called_once_with("kastor", "API_KEY", "new-sk-rotated")
 
+    def test_rotate_flat_id_alias(self) -> None:
+        vault = _mock_vault()
+        client = _make_app(secret_vault=vault, audit_chain=_mock_audit_chain())
+        r = client.put("/api/vault/kastor:API_KEY/rotate", json={"value": "new-sk-rotated"})
+        assert r.status_code == 200
+
     def test_rotate_empty_value_returns_400(self) -> None:
         vault = _mock_vault()
         client = _make_app(secret_vault=vault)
@@ -249,6 +294,15 @@ class TestVaultAccessLog:
         assert r.status_code == 200
         data = r.json()
         assert data["entries"] == []
+
+    def test_secret_access_log_alias(self) -> None:
+        vault = _mock_vault()
+        vault.has_db = True
+        client = _make_app(secret_vault=vault)
+        r = client.get("/api/vault/kastor:API_KEY/access-log")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["entries"][0]["key"] == "API_KEY"
 
 
 # ── GET /api/vault/{agent_id}/{key}/assignments ──────────────
@@ -302,6 +356,98 @@ class TestVaultUpdateAssignments:
             json={"assignments": "not-a-list"},
         )
         assert r.status_code == 400
+
+
+class TestVaultUpdateSecret:
+    def test_update_via_flat_id(self) -> None:
+        vault = _mock_vault()
+        client = _make_app(secret_vault=vault)
+        r = client.put(
+            "/api/vault/kastor:API_KEY",
+            json={"value": "new-val", "type": "password", "expires_at": "2025-01-01T12:00:00+00:00"},
+        )
+        assert r.status_code == 200
+        vault.aset_secret.assert_called_once()
+
+
+class TestVaultRotationSchedule:
+    def test_list_rotation_schedule_for_secret(self) -> None:
+        vault = _mock_vault()
+        scheduler = _FakeCronScheduler([
+            CronJob(
+                id="rot-1",
+                name="vault-rotation:kastor:API_KEY",
+                cron_expr="0 9 * * 1",
+                task_title="Rotate vault secret kastor/API_KEY",
+                task_description="[vault-rotation]\nvault_secret_id=kastor:API_KEY",
+            ),
+            CronJob(
+                id="rot-2",
+                name="vault-rotation:polluks:OPENAI_KEY",
+                cron_expr="0 10 * * 2",
+                task_title="Rotate vault secret polluks/OPENAI_KEY",
+                task_description="[vault-rotation]\nvault_secret_id=polluks:OPENAI_KEY",
+            ),
+        ])
+        client = _make_app(secret_vault=vault, cron_scheduler=scheduler)
+
+        r = client.get("/api/vault/kastor:API_KEY/rotation-schedule")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["total"] == 1
+        assert payload["jobs"][0]["id"] == "rot-1"
+        assert payload["jobs"][0]["human_readable"] == "Every Tuesday at 09:00"
+
+    @patch(_LOG_ACTION, new_callable=AsyncMock)
+    def test_create_rotation_schedule(self, _mock_log) -> None:
+        vault = _mock_vault()
+        scheduler = _FakeCronScheduler()
+        client = _make_app(secret_vault=vault, cron_scheduler=scheduler, audit_chain=_mock_audit_chain())
+
+        r = client.post("/api/vault/kastor:API_KEY/rotation-schedule", json={"cron_expr": "0 9 * * 1"})
+
+        assert r.status_code == 201
+        payload = r.json()
+        assert payload["job"]["name"] == "vault-rotation:kastor:API_KEY"
+        assert payload["job"]["cron_expr"] == "0 9 * * 1"
+        assert len(scheduler.jobs) == 1
+
+    def test_create_rotation_schedule_rejects_duplicate(self) -> None:
+        vault = _mock_vault()
+        scheduler = _FakeCronScheduler([
+            CronJob(
+                id="rot-1",
+                name="vault-rotation:kastor:API_KEY",
+                cron_expr="0 9 * * 1",
+                task_description="[vault-rotation]\nvault_secret_id=kastor:API_KEY",
+            )
+        ])
+        client = _make_app(secret_vault=vault, cron_scheduler=scheduler)
+
+        r = client.post("/api/vault/kastor:API_KEY/rotation-schedule", json={"cron_expr": "0 10 * * 2"})
+
+        assert r.status_code == 409
+        assert r.json()["error"] == "rotation_schedule_exists"
+
+    @patch(_LOG_ACTION, new_callable=AsyncMock)
+    def test_delete_rotation_schedule(self, _mock_log) -> None:
+        vault = _mock_vault()
+        scheduler = _FakeCronScheduler([
+            CronJob(
+                id="rot-1",
+                name="vault-rotation:kastor:API_KEY",
+                cron_expr="0 9 * * 1",
+                task_description="[vault-rotation]\nvault_secret_id=kastor:API_KEY",
+            )
+        ])
+        client = _make_app(secret_vault=vault, cron_scheduler=scheduler, audit_chain=_mock_audit_chain())
+
+        r = client.delete("/api/vault/kastor:API_KEY/rotation-schedule/rot-1")
+
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert scheduler.jobs == []
 
 
 # ── RBAC enforcement ─────────────────────────────────────────

@@ -73,7 +73,7 @@ class ApprovalCard extends HTMLElement {
   /* ── Render ──────────────────────────────────────────── */
   render() {
     const isPending = this.status === "pending";
-    const isQuestion = this.itemType === "ask_human";
+    const isQuestion = this.itemType === "ask_human" || this.itemType === "review_request";
     const resolved = !isPending;
 
     this.shadowRoot.innerHTML = `

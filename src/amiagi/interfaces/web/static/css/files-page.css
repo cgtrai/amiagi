@@ -2,16 +2,19 @@
    Files page styles — Liquid Glass v2
    ================================================================ */
 
+.files-shell,
 .files-layout {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  max-width: 960px;
+  max-width: 1200px;
 }
 .files-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 .files-header h1 {
   margin: 0;
@@ -19,9 +22,49 @@
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
 }
+.files-subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+}
+.files-header__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
 .files-header .meta {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+}
+
+.files-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.files-tab.active {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  background: rgba(78, 161, 255, 0.12);
+}
+
+.files-panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.panel-header h2 {
+  margin: 0;
 }
 
 /* ── Upload zone ─────────────────────────────────────────────── */
@@ -58,6 +101,202 @@
   font-size: var(--font-size-sm);
   position: relative;
   z-index: 1;
+}
+
+.upload-status-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.upload-progress {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-3);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.upload-progress__header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-2);
+}
+
+.upload-progress__bar {
+  height: 8px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.upload-progress__bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa);
+}
+
+.uploads-grid,
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.upload-card,
+.result-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--glass-radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.upload-card__header,
+.result-card__header {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.upload-card__meta,
+.result-card__meta,
+.result-card__path {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.workspace-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: var(--space-4);
+}
+
+.workspace-tree,
+.workspace-preview-hint {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.workspace-tree {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.tree-folder {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.tree-folder summary {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.tree-children {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-left: var(--space-3);
+}
+
+.tree-file {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.tree-file__main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.tree-icon {
+  font-size: 1rem;
+}
+
+.tree-link {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.tree-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.preview-stats {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.stat-chip {
+  padding: var(--space-2) var(--space-3);
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--text-secondary);
+  width: fit-content;
+}
+
+.file-preview-drawer {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.file-preview-title {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.file-preview-code {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 60vh;
+  padding: var(--space-3);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+}
+
+.file-send-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: .4rem;
+}
+
+.btn-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 /* ── File list ───────────────────────────────────────────────── */
@@ -156,4 +395,10 @@
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+@media (max-width: 960px) {
+  .workspace-browser {
+    grid-template-columns: 1fr;
+  }
 }

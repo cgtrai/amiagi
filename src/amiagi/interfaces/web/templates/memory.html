@@ -10,11 +10,14 @@
 <div class="page-header">
   <h1>{{ _("memory.title") }}</h1>
   <div class="page-actions">
+    <button class="glass-btn glass-btn--primary" id="btn-add-memory">+ {{ _("memory.add") or "Add Memory" }}</button>
     <button class="btn btn-outline active" data-tab="messages">{{ _("memory.tab_messages") }}</button>
     <button class="btn btn-outline" data-tab="shared">{{ _("memory.tab_shared") }}</button>
     <button class="btn btn-outline" data-tab="knowledge">{{ _("memory.tab_knowledge") }}</button>
   </div>
 </div>
+
+<p class="memory-page-copy">Curate cross-agent findings, classify them by type and jump directly to linked agents or tasks.</p>
 
 <div class="memory-layout">
   <!-- Agent sidebar -->
@@ -39,6 +42,15 @@
   <div class="memory-content">
     <!-- Messages tab -->
     <section id="tab-messages" class="memory-tab active">
+      <div class="memory-toolbar glass-card">
+        <div>
+          <strong>Memory entries</strong>
+          <p id="memory-selection-summary" class="memory-toolbar-copy">Showing all memory entries.</p>
+        </div>
+        <div class="memory-toolbar-actions">
+          <button class="btn btn-sm btn-outline" id="btn-refresh-memory">↻ {{ _("common.refresh") }}</button>
+        </div>
+      </div>
       <div id="memory-items" class="memory-items-list">
         <p class="empty-state">{{ _("memory.loading") }}</p>
       </div>

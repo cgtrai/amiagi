@@ -106,6 +106,9 @@ class TestWebAdapterBroadcast:
         assert call_args[0][0] == "log"
         assert call_args[0][1]["panel"] == "executor_log"
         assert call_args[0][1]["message"] == "hello"
+        assert call_args[0][1]["channel"] == "executor"
+        assert call_args[0][1]["source_label"] == "Polluks"
+        assert call_args[0][1]["summary"] == "Polluks: hello"
         loop.close()
 
     def test_actor_state_event(self, adapter, event_bus):
@@ -120,6 +123,100 @@ class TestWebAdapterBroadcast:
         loop.run_until_complete(asyncio.sleep(0.05))
         hub.broadcast.assert_called_once()
         assert hub.broadcast.call_args[0][0] == "actor_state"
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["channel"] == "supervisor"
+        assert payload["source_label"] == "Kastor"
+        assert payload["summary"] == "Kastor · ACTIVE · started"
+        loop.close()
+
+    def test_log_event_enriches_agent_id(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(LogEvent(panel="executor_log", message="hello"))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["agent_id"] == "polluks"
+        loop.close()
+
+    def test_log_event_prefers_explicit_metadata(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(LogEvent(
+            panel="executor_log",
+            message="hello",
+            agent_id="agent-custom",
+            channel="supervisor",
+            source_kind="agent",
+            source_label="Custom",
+            summary="Custom summary",
+        ))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["agent_id"] == "agent-custom"
+        assert payload["channel"] == "supervisor"
+        assert payload["source_label"] == "Custom"
+        assert payload["summary"] == "Custom summary"
+        loop.close()
+
+    def test_supervisor_event_targets_kastor(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(SupervisorMessageEvent(
+            stage="review",
+            reason_code="OK",
+            notes="note",
+            answer="answer",
+        ))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["agent_id"] == "kastor"
+        assert payload["channel"] == "supervisor"
+        assert payload["summary"] == "note"
+        loop.close()
+
+    def test_actor_state_prefers_explicit_metadata(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(ActorStateEvent(
+            actor="kastor",
+            state="ACTIVE",
+            event="started",
+            agent_id="agent-77",
+            channel="executor",
+            source_kind="agent",
+            source_label="Explicit",
+            summary="Explicit actor summary",
+        ))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["agent_id"] == "agent-77"
+        assert payload["channel"] == "executor"
+        assert payload["source_label"] == "Explicit"
+        assert payload["summary"] == "Explicit actor summary"
         loop.close()
 
     def test_error_event(self, adapter, event_bus):
@@ -134,6 +231,26 @@ class TestWebAdapterBroadcast:
         loop.run_until_complete(asyncio.sleep(0.05))
         hub.broadcast.assert_called_once()
         assert hub.broadcast.call_args[0][0] == "error"
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["channel"] == "system"
+        assert payload["summary"] == "something broke"
+        loop.close()
+
+    def test_cycle_event_carries_system_summary(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(CycleFinishedEvent(event="completed"))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert hub.broadcast.call_args[0][0] == "cycle_finished"
+        assert payload["channel"] == "system"
+        assert payload["summary"] == "Cycle finished · completed"
         loop.close()
 
     def test_no_broadcast_without_hub(self, adapter, event_bus):

@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("sessions.title") }} — amiagi{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css"/>
+<style>
+.sessions-page { padding: var(--space-6); }
+.sessions-page h2 { margin: 0 0 var(--space-6); color: var(--text-primary); }
+.sessions-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: var(--space-5);
+}
+@media (max-width: 980px) {
+  .sessions-layout { grid-template-columns: 1fr; }
+}
+.sessions-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-5);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+.sessions-panel h3 {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+}
+.sessions-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+.sessions-toolbar .glass-input { flex: 1; }
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.session-item {
+  width: 100%;
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.session-item:hover {
+  background: rgba(255,255,255,0.05);
+  transform: translateY(-1px);
+}
+.session-item.active {
+  border-color: var(--accent-primary);
+  background: rgba(99,102,241,0.12);
+}
+.session-item-title {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.session-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.sessions-empty,
+.sessions-error {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}
+.sessions-error { color: var(--state-error); }
+.session-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+.session-detail-title {
+  color: var(--text-primary);
+  margin: 0;
+}
+.session-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.meta-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-3);
+}
+.meta-card-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.meta-card-value {
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.session-timeline-wrap {
+  min-height: 520px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  overflow: hidden;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sessions-page">
+  <h2>🕘 {{ _("sessions.title") }}</h2>
+
+  <div class="sessions-layout">
+    <section class="sessions-panel">
+      <h3>{{ _("sessions.replay") }}</h3>
+      <div class="sessions-toolbar">
+        <input id="session-search" class="glass-input" type="search" placeholder="{{ _('sessions.search_placeholder') }}" autocomplete="off" />
+        <select id="session-agent-filter" class="glass-input session-agent-filter" title="{{ _('sessions.filter_agent') }}">
+          <option value="">{{ _('sessions.all_agents') }}</option>
+        </select>
+        <button id="session-refresh" class="glass-btn glass-btn--secondary">{{ _('common.refresh') }}</button>
+      </div>
+      <div id="sessions-list" class="sessions-list">
+        <div class="sessions-empty">{{ _('common.loading') }}</div>
+      </div>
+    </section>
+
+    <section class="sessions-panel">
+      <div class="session-detail-head">
+        <div>
+          <h3 class="session-detail-title" id="session-title">—</h3>
+          <div class="text-muted" id="session-subtitle">{{ _('sessions.select_session') }}</div>
+        <div class="u-flex u-gap-sm u-mt-sm" id="session-detail-actions" hidden>
+          <button class="glass-btn glass-btn--sm" id="btn-export-session">📤 {{ _('sessions.export') }}</button>
+          <button class="glass-btn glass-btn--sm" id="btn-share-session">🔗 {{ _('sessions.share') }}</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="session-detail-meta">
+        <div class="meta-card">
+          <div class="meta-card-label">{{ _("sessions.events") }}</div>
+          <div class="meta-card-value" id="session-event-count">0</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-card-label">{{ _('sessions.started') }}</div>
+          <div class="meta-card-value" id="session-started">—</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-card-label">{{ _('sessions.ended') }}</div>
+          <div class="meta-card-value" id="session-ended">—</div>
+        </div>
+      </div>
+
+      <div class="session-timeline-wrap">
+        <session-timeline id="session-timeline" auto-poll="15"></session-timeline>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  let sessions = [];
+  const urlParams = new URLSearchParams(window.location.search);
+  let selectedSessionId = urlParams.get('session_id');
+  const sessionTexts = {
+    empty: window.t('sessions.empty_saved', 'No saved sessions.'),
+    fetchFailed: window.t('sessions.fetch_failed', 'Failed to load session history.'),
+    select: window.t('sessions.select_session', 'Select a session from the list on the left.'),
+    subtitle: window.t('sessions.detail_subtitle', 'Timeline and event preview for the selected session.'),
+    started: window.t('sessions.started', 'Started'),
+    ended: window.t('sessions.ended', 'Ended'),
+    linkCopied: window.t('sessions.link_copied', 'Link copied'),
+  };
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return value;
+    return dt.toLocaleString();
+  }
+
+  function filteredSessions() {
+    const q = (document.getElementById('session-search').value || '').trim().toLowerCase();
+    const agentFilter = document.getElementById('session-agent-filter').value;
+    var list = sessions;
+    if (q) list = list.filter(s => String(s.session_id || '').toLowerCase().includes(q));
+    if (agentFilter) list = list.filter(s => String(s.agent_id || '').toLowerCase() === agentFilter);
+    return list;
+  }
+
+  function renderSessions() {
+    const root = document.getElementById('sessions-list');
+    const items = filteredSessions();
+    if (!items.length) {
+      root.innerHTML = '<div class="sessions-empty">' + escapeHtml(sessionTexts.empty) + '</div>';
+      return;
+    }
+
+    root.innerHTML = items.map(function(s) {
+      const active = s.session_id === selectedSessionId ? ' active' : '';
+      return '<button class="session-item' + active + '" data-session-id="' + escapeHtml(s.session_id || '') + '">'
+        + '<div class="session-item-title"><span>' + escapeHtml(s.session_id || '—') + '</span><span>' + escapeHtml(String(s.event_count || 0)) + '</span></div>'
+        + '<div class="session-item-meta">'
+        + '<span>' + escapeHtml(sessionTexts.started) + ': ' + escapeHtml(formatDate(s.started_at)) + '</span>'
+        + '<span>' + escapeHtml(sessionTexts.ended) + ': ' + escapeHtml(formatDate(s.ended_at)) + '</span>'
+        + '</div></button>';
+    }).join('');
+
+    root.querySelectorAll('.session-item').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        selectSession(btn.getAttribute('data-session-id'));
+      });
+    });
+  }
+
+  function updateDetail(session) {
+    document.getElementById('session-title').textContent = session ? (session.session_id || '—') : '—';
+    document.getElementById('session-subtitle').textContent = session
+      ? sessionTexts.subtitle
+      : sessionTexts.select;
+    document.getElementById('session-event-count').textContent = session ? (session.event_count || 0) : 0;
+    document.getElementById('session-started').textContent = session ? formatDate(session.started_at) : '—';
+    document.getElementById('session-ended').textContent = session ? formatDate(session.ended_at) : '—';
+
+    var actionsEl = document.getElementById('session-detail-actions');
+    if (actionsEl) actionsEl.hidden = !session;
+
+    const timeline = document.getElementById('session-timeline');
+    if (timeline) {
+      if (session && session.session_id) {
+        timeline.setAttribute('session-id', session.session_id);
+      } else {
+        timeline.removeAttribute('session-id');
+        timeline.clear();
+      }
+    }
+  }
+
+  function selectSession(sessionId) {
+    selectedSessionId = sessionId;
+    const nextUrl = new URL(window.location.href);
+    if (sessionId) {
+      nextUrl.searchParams.set('session_id', sessionId);
+    } else {
+      nextUrl.searchParams.delete('session_id');
+    }
+    window.history.replaceState({}, '', nextUrl);
+    const session = sessions.find(s => s.session_id === sessionId) || null;
+    renderSessions();
+    updateDetail(session);
+  }
+
+  async function loadSessions() {
+    const root = document.getElementById('sessions-list');
+    try {
+      const response = await fetch('/api/sessions');
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      sessions = Array.isArray(data) ? data : (data.sessions || []);
+      const hasSelection = selectedSessionId && sessions.some(s => s.session_id === selectedSessionId);
+      if (!hasSelection) {
+        selectedSessionId = sessions.length ? sessions[0].session_id : null;
+      }
+      renderSessions();
+      updateDetail(sessions.find(s => s.session_id === selectedSessionId) || null);
+    } catch (err) {
+      root.innerHTML = '<div class="sessions-error">' + escapeHtml(sessionTexts.fetchFailed) + '</div>';
+      updateDetail(null);
+    }
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+  }
+
+  document.getElementById('session-search').addEventListener('input', renderSessions);
+  document.getElementById('session-refresh').addEventListener('click', loadSessions);
+  document.getElementById('session-agent-filter').addEventListener('change', renderSessions);
+
+  document.getElementById('btn-export-session').addEventListener('click', function() {
+    if (selectedSessionId) window.location = '/api/sessions/' + encodeURIComponent(selectedSessionId) + '/export?format=html';
+  });
+  document.getElementById('btn-share-session').addEventListener('click', function() {
+    if (selectedSessionId) {
+      var url = window.location.origin + '/sessions?session_id=' + encodeURIComponent(selectedSessionId);
+      navigator.clipboard.writeText(url).then(function() {
+        if (typeof showToast === 'function') showToast(sessionTexts.linkCopied, 'success');
+      });
+    }
+  });
+
+  /* SR1 — Populate agent dropdown */
+  fetch('/api/agents').then(function(r) { return r.json(); }).then(function(data) {
+    var sel = document.getElementById('session-agent-filter');
+    var agents = data.agents || data.items || [];
+    agents.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = (a.agent_id || a.id || '').toLowerCase();
+      opt.textContent = a.name || a.agent_id || a.id;
+      sel.appendChild(opt);
+    });
+  }).catch(function() {});
+
+  loadSessions();
+})();
+</script>
+{% endblock %}

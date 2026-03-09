@@ -28,7 +28,7 @@ _SCHEDULER_INTERVAL_S = 86_400  # 24 hours
 class WebActivityLogger:
     """Logs user actions to the ``user_activity_log`` table."""
 
-    def __init__(self, pool: "asyncpg.Pool", retention_days: int = DEFAULT_RETENTION_DAYS) -> None:
+    def __init__(self, pool: "asyncpg.Pool", retention_days: int | None = DEFAULT_RETENTION_DAYS) -> None:
         self._pool = pool
         self._retention_days = retention_days
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -71,8 +71,12 @@ class WebActivityLogger:
         *,
         user_id: str | None = None,
         action: str | None = None,
+        action_match: str = "exact",
         since: datetime | None = None,
         until: datetime | None = None,
+        session_id: str | None = None,
+        search: str | None = None,
+        error_only: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -86,8 +90,12 @@ class WebActivityLogger:
             params.append(user_id)
             idx += 1
         if action:
-            conditions.append(f"action = ${idx}")
-            params.append(action)
+            if action_match == "contains":
+                conditions.append(f"LOWER(action) LIKE LOWER(${idx})")
+                params.append(f"%{action}%")
+            else:
+                conditions.append(f"action = ${idx}")
+                params.append(action)
             idx += 1
         if since:
             conditions.append(f"created_at >= ${idx}")
@@ -97,6 +105,31 @@ class WebActivityLogger:
             conditions.append(f"created_at <= ${idx}")
             params.append(until)
             idx += 1
+        if session_id:
+            conditions.append(f"session_id = ${idx}")
+            params.append(session_id)
+            idx += 1
+        if search:
+            conditions.append(
+                "(" 
+                f"CAST(user_id AS text) ILIKE ${idx} OR "
+                f"CAST(session_id AS text) ILIKE ${idx} OR "
+                f"action ILIKE ${idx} OR "
+                f"CAST(detail AS text) ILIKE ${idx} OR "
+                f"CAST(ip_address AS text) ILIKE ${idx}" 
+                ")"
+            )
+            params.append(f"%{search}%")
+            idx += 1
+        if error_only:
+            conditions.append(
+                "(" 
+                "LOWER(action) LIKE '%error%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%error%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%fail%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%exception%'"
+                ")"
+            )
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
         params.extend([limit, offset])
@@ -118,6 +151,12 @@ class WebActivityLogger:
         *,
         user_id: str | None = None,
         action: str | None = None,
+        action_match: str = "exact",
+        since: datetime | None = None,
+        until: datetime | None = None,
+        session_id: str | None = None,
+        search: str | None = None,
+        error_only: bool = False,
     ) -> int:
         conditions: list[str] = []
         params: list[Any] = []
@@ -127,9 +166,46 @@ class WebActivityLogger:
             params.append(user_id)
             idx += 1
         if action:
-            conditions.append(f"action = ${idx}")
-            params.append(action)
+            if action_match == "contains":
+                conditions.append(f"LOWER(action) LIKE LOWER(${idx})")
+                params.append(f"%{action}%")
+            else:
+                conditions.append(f"action = ${idx}")
+                params.append(action)
             idx += 1
+        if since:
+            conditions.append(f"created_at >= ${idx}")
+            params.append(since)
+            idx += 1
+        if until:
+            conditions.append(f"created_at <= ${idx}")
+            params.append(until)
+            idx += 1
+        if session_id:
+            conditions.append(f"session_id = ${idx}")
+            params.append(session_id)
+            idx += 1
+        if search:
+            conditions.append(
+                "(" 
+                f"CAST(user_id AS text) ILIKE ${idx} OR "
+                f"CAST(session_id AS text) ILIKE ${idx} OR "
+                f"action ILIKE ${idx} OR "
+                f"CAST(detail AS text) ILIKE ${idx} OR "
+                f"CAST(ip_address AS text) ILIKE ${idx}" 
+                ")"
+            )
+            params.append(f"%{search}%")
+            idx += 1
+        if error_only:
+            conditions.append(
+                "(" 
+                "LOWER(action) LIKE '%error%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%error%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%fail%' OR "
+                "LOWER(CAST(detail AS text)) LIKE '%exception%'"
+                ")"
+            )
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
         return await self._pool.fetchval(
             f"SELECT count(*) FROM dbo.user_activity_log {where}", *params,
@@ -169,6 +245,9 @@ class WebActivityLogger:
 
     async def cleanup_old_entries(self) -> int:
         """Delete entries older than retention period. Returns count deleted."""
+        if self._retention_days is None:
+            logger.info("Audit retention cleanup skipped (retention=forever)")
+            return 0
         cutoff = datetime.now(timezone.utc) - timedelta(days=self._retention_days)
         result = await self._pool.execute(
             "DELETE FROM dbo.user_activity_log WHERE created_at < $1", cutoff,
@@ -192,7 +271,7 @@ class WebActivityLogger:
             logger.info(
                 "Retention scheduler started (interval=%ds, retention=%dd)",
                 _SCHEDULER_INTERVAL_S,
-                self._retention_days,
+                self._retention_days if self._retention_days is not None else -1,
             )
 
     def stop_retention_scheduler(self) -> None:

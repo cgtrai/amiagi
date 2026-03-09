@@ -1,47 +1,64 @@
 {% extends "base.html" %}
 {% block title %}Amiagi — {{ _("common.edit") }}{% endblock %}
+{% block head %}
+<style>
+.skill-edit-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.markdown-preview{background:rgba(15,23,42,.4);border:1px solid var(--glass-border);border-radius:var(--glass-radius-sm);padding:var(--space-3);white-space:pre-wrap;color:var(--text-secondary);min-height:220px}
+@media (max-width: 900px){.skill-edit-layout{grid-template-columns:1fr}}
+</style>
+{% endblock %}
 {% block content %}
 <div class="container">
   {% include "partials/admin_nav.html" %}
   <h1>{{ _("common.edit") }} Skill</h1>
 
   <form class="glass-card" id="skill-form">
-    <div class="field">
-      <label for="sk-name">Name (slug)</label>
-      <input id="sk-name" readonly>
-    </div>
-    <div class="field">
-      <label for="sk-display">Display Name</label>
-      <input id="sk-display">
-    </div>
-    <div class="field">
-      <label for="sk-content">Content</label>
-      <textarea id="sk-content" rows="10"></textarea>
-    </div>
-    <div class="field">
-      <label for="sk-keywords">Keywords (comma-separated)</label>
-      <input id="sk-keywords">
-    </div>
-    <div class="field">
-      <label for="sk-tools">Compatible Tools (comma-separated)</label>
-      <input id="sk-tools">
-    </div>
-    <div class="field">
-      <label for="sk-roles">Compatible Roles (comma-separated)</label>
-      <input id="sk-roles">
-    </div>
-    <div class="field">
-      <label for="sk-cost">Token Cost</label>
-      <input id="sk-cost" type="number">
-    </div>
-    <div class="field">
-      <label for="sk-priority">Priority</label>
-      <input id="sk-priority" type="number">
-    </div>
-    <div class="field">
-      <label>
-        <input type="checkbox" id="sk-active"> Active
-      </label>
+    <div class="skill-edit-layout">
+      <div>
+        <div class="field">
+          <label for="sk-name">Name (slug)</label>
+          <input id="sk-name" readonly>
+        </div>
+        <div class="field">
+          <label for="sk-display">Display Name</label>
+          <input id="sk-display">
+        </div>
+        <div class="field">
+          <label for="sk-keywords">Keywords (comma-separated)</label>
+          <input id="sk-keywords">
+        </div>
+        <div class="field">
+          <label for="sk-tools">Compatible Tools (comma-separated)</label>
+          <input id="sk-tools">
+        </div>
+        <div class="field">
+          <label for="sk-roles">Compatible Roles (comma-separated)</label>
+          <input id="sk-roles">
+        </div>
+        <div class="field">
+          <label for="sk-cost">Token Cost</label>
+          <input id="sk-cost" type="number">
+        </div>
+        <div class="field">
+          <label for="sk-priority">Priority</label>
+          <input id="sk-priority" type="number">
+        </div>
+        <div class="field">
+          <label>
+            <input type="checkbox" id="sk-active"> Active
+          </label>
+        </div>
+      </div>
+      <div>
+        <div class="field">
+          <label for="sk-content">Content</label>
+          <textarea id="sk-content" rows="14"></textarea>
+        </div>
+        <div class="field">
+          <label>{{ _("prompts.preview") }}</label>
+          <div class="markdown-preview" id="sk-preview"></div>
+        </div>
+      </div>
     </div>
     <div class="btn-row">
       <a href="/admin/skills" class="btn">← {{ _("common.back") }}</a>
@@ -69,7 +86,12 @@
         document.getElementById('sk-cost').value = s.token_cost || 100;
         document.getElementById('sk-priority').value = s.priority || 50;
         document.getElementById('sk-active').checked = s.is_active !== false;
+        renderPreview();
       });
+  }
+
+  function renderPreview() {
+    document.getElementById('sk-preview').textContent = document.getElementById('sk-content').value || '';
   }
 
   window.saveSkill = function() {
@@ -91,6 +113,8 @@
       if (r.ok) window.location.href = '/admin/skills';
     });
   };
+
+  document.getElementById('sk-content').addEventListener('input', renderPreview);
 
   load();
 })();

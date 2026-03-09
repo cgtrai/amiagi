@@ -27,6 +27,49 @@
     }
   }
 
+  function esc(value) {
+    const div = document.createElement("div");
+    div.textContent = value == null ? "" : String(value);
+    return div.innerHTML;
+  }
+
+  function formatDateTime(ts) {
+    if (!ts) return "—";
+    const date = new Date(ts * 1000);
+    return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+  }
+
+  async function responseErrorMessage(res, fallback) {
+    try {
+      const data = await res.json();
+      return data.detail || data.error || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function notify(message, level) {
+    if (typeof showToast === "function") {
+      showToast(message, level || "info");
+      return;
+    }
+    if (message && typeof window !== "undefined" && typeof window["alert"] === "function") {
+      window["alert"](message);
+    }
+  }
+
+  function renderScenarioDetail(scenario) {
+    return `
+      <div class="glass-card" style="margin-top:1rem;padding:1rem">
+        <div style="font-weight:600;margin-bottom:.35rem">${esc(scenario.scenario_name || scenario.scenario_id || "—")}</div>
+        <div class="text-muted" style="margin-bottom:.5rem">Score: ${Number(scenario.aggregate || 0).toFixed(1)}%</div>
+        <pre style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere"><code>${esc(JSON.stringify({
+          scores: scenario.scores || {},
+          notes: scenario.notes || [],
+        }, null, 2))}</code></pre>
+      </div>`;
+  }
+
   // ── Dashboard ────────────────────────────────────────────
   async function loadDashboard() {
     try {
@@ -57,6 +100,21 @@
       document.getElementById("regressions-count").className =
         "eval-metric" + (regressions.length > 0 ? " text-danger" : "");
 
+      // EV4 — extended summary tiles
+      document.getElementById("total-runs-count").textContent = runs.length;
+      if (runs.length > 0) {
+        const totalPassed = runs.reduce((s, r) => s + (r.passed || 0), 0);
+        const totalScenarios = runs.reduce((s, r) => s + (r.scenarios_count || 0), 0);
+        const passRate = totalScenarios > 0 ? ((totalPassed / totalScenarios) * 100).toFixed(1) + "%" : "—";
+        document.getElementById("eval-pass-rate").textContent = passRate;
+
+        const avgScore = (runs.reduce((s, r) => s + (r.aggregate_score || 0), 0) / runs.length).toFixed(1) + "%";
+        document.getElementById("eval-avg-score").textContent = avgScore;
+
+        const lastDate = runs[0].started_at ? new Date(runs[0].started_at * 1000).toLocaleDateString() : "—";
+        document.getElementById("eval-last-run-date").textContent = "Last: " + lastDate;
+      }
+
       // Recent results table
       const tbody = document.getElementById("recent-results-body");
       if (runs.length === 0) {
@@ -73,13 +131,19 @@
     const date = run.started_at ? new Date(run.started_at * 1000).toLocaleTimeString() : "—";
     const score = (run.aggregate_score || 0).toFixed(1) + "%";
     const pf = `${run.passed || 0}/${run.scenarios_count || 0}`;
+    const delta = run.baseline_score != null
+      ? (run.aggregate_score || 0) - run.baseline_score
+      : 0;
+    const deltaHtml = run.baseline_score != null
+      ? `<regression-badge delta="${delta.toFixed(1)}" threshold="5"></regression-badge>`
+      : "—";
     return `<tr>
       <td>${date}</td>
       <td>${run.agent_id || "—"}</td>
       <td>${run.suite || "—"}</td>
       <td><strong>${score}</strong></td>
       <td>${pf}</td>
-      <td>—</td>
+      <td>${deltaHtml}</td>
     </tr>`;
   }
 
@@ -110,8 +174,87 @@
           <td><button class="btn btn-sm" data-run-id="${run.id}" data-action="detail">👁</button></td>
         </tr>`;
       }).join("");
+
+      tbody.querySelectorAll("[data-action='detail']").forEach((btn) => {
+        btn.addEventListener("click", () => openRunDetail(btn.dataset.runId));
+      });
     } catch (err) {
       console.error("History load failed:", err);
+    }
+  }
+
+  async function openRunDetail(runId) {
+    const dialog = document.getElementById("eval-detail-dialog");
+    const meta = document.getElementById("eval-detail-meta");
+    const body = document.getElementById("eval-detail-body");
+    const title = document.getElementById("eval-detail-title");
+    if (!dialog || !meta || !body || !title) return;
+
+    title.textContent = "{{ _('eval.run_details') }}";
+    meta.textContent = "{{ _('common.loading') }}";
+    body.innerHTML = "{{ _('common.loading') }}";
+    dialog.showModal();
+
+    try {
+      const res = await fetch(`/api/evaluations/${encodeURIComponent(runId)}`);
+      const data = await res.json();
+      const run = data.run || {};
+      const scenarios = run.results || [];
+      title.textContent = `${run.label || run.suite || run.id || runId}`;
+      meta.textContent = `${run.agent_id || '—'} · ${formatDateTime(run.started_at)} · ${(run.aggregate_score || 0).toFixed(1)}%`;
+
+      if (!scenarios.length) {
+        body.innerHTML = '<p class="empty-state">{{ _("eval.no_details") }}</p>';
+        return;
+      }
+
+      body.innerHTML = `
+        <eval-chart id="eval-detail-chart"></eval-chart>
+        <div id="eval-scenario-drilldown"></div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ _('eval.scenarios') }}</th>
+              <th>{{ _('eval.col_score') }}</th>
+              <th>{{ _('eval.col_pass_fail') }}</th>
+              <th>{{ _('admin.details') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${scenarios.map((scenario) => `
+              <tr>
+                <td>${esc(scenario.scenario_name || scenario.scenario_id || '—')}</td>
+                <td>${Number(scenario.aggregate || 0).toFixed(1)}%</td>
+                <td>${scenario.passed ? '✓' : '✗'}</td>
+                <td>${esc((scenario.notes || []).join('; ') || JSON.stringify(scenario.scores || {}))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        ${run.config ? `<details style="margin-top:1rem"><summary style="cursor:pointer;font-weight:600">⚙️ Config</summary><pre class="glass-card" style="margin-top:.5rem;font-size:.8rem;overflow-x:auto"><code>${esc(JSON.stringify(run.config, null, 2))}</code></pre></details>` : ''}`;
+
+      const chart = document.getElementById("eval-detail-chart");
+      const drilldown = document.getElementById("eval-scenario-drilldown");
+      if (chart && typeof chart.setData === "function") {
+        chart.setData(scenarios.map((scenario) => ({
+          scenario: scenario.scenario_name || scenario.scenario_id || "—",
+          score: Number(scenario.aggregate || 0),
+          max: 100,
+          run_id: run.id || runId,
+          item: scenario,
+        })));
+        chart.addEventListener("point-click", (event) => {
+          const point = event.detail || {};
+          const selectedScenario = scenarios[point.index] || point.item || scenarios[0];
+          if (!drilldown || !selectedScenario) return;
+          drilldown.innerHTML = renderScenarioDetail(selectedScenario);
+        });
+        if (drilldown && scenarios[0]) {
+          drilldown.innerHTML = renderScenarioDetail(scenarios[0]);
+        }
+      }
+    } catch (err) {
+      body.innerHTML = `<p class="error-state">${esc(err.message)}</p>`;
+      meta.textContent = "";
     }
   }
 
@@ -235,15 +378,26 @@
     newEvalDialog?.showModal();
   });
 
+  // EV1 — rubric dropdown: show/hide custom textarea
+  document.getElementById("eval-rubric")?.addEventListener("change", (e) => {
+    const wrap = document.getElementById("custom-rubric-wrap");
+    if (wrap) wrap.style.display = e.target.value === "custom" ? "" : "none";
+  });
+
   document.getElementById("new-eval-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.target;
+    const rubricVal = form.elements.rubric?.value || "default";
     const body = {
       agent_id: form.elements.agent_id.value,
       suite: form.elements.suite.value,
       scorer: form.elements.scorer.value,
       label: form.elements.label.value,
+      rubric: rubricVal,
     };
+    if (rubricVal === "custom") {
+      body.custom_rubric = form.elements.custom_rubric?.value || "";
+    }
     try {
       const res = await fetch("/api/evaluations/run", {
         method: "POST",
@@ -252,13 +406,13 @@
       });
       if (res.ok) {
         newEvalDialog.close();
+        notify("Evaluation started", "success");
         loadDashboard();
       } else {
-        const err = await res.json();
-        alert(err.error || "Failed to start evaluation");
+        notify(await responseErrorMessage(res, "Failed to start evaluation"), "error");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      notify("Failed to start evaluation", "error");
     }
   });
 
@@ -289,10 +443,13 @@
       });
       if (res.ok) {
         newABDialog.close();
+        notify("A/B test started", "success");
         loadABTests();
+      } else {
+        notify(await responseErrorMessage(res, "Failed to start A/B test"), "error");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      notify("Failed to start A/B test", "error");
     }
   });
 

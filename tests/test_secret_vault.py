@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,14 @@ class TestSecretVault:
         vault.set_secret("a1", "key2", "v2")
         keys = vault.list_keys("a1")
         assert set(keys) == {"key1", "key2"}
+
+    def test_list_keys_with_metadata(self, vault: SecretVault) -> None:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=3)
+        vault.set_secret("a1", "key1", "v1", secret_type="token", expires_at=expires_at)
+        keys = vault.list_keys("a1", include_metadata=True)
+        assert keys[0]["key"] == "key1"
+        assert keys[0]["type"] == "token"
+        assert keys[0]["status"] == "expiring"
 
     def test_list_keys_empty(self, vault: SecretVault) -> None:
         assert vault.list_keys("unknown") == []
@@ -76,6 +85,14 @@ class TestSecretVault:
         v.set_secret("a1", "password", "super_secret_pass")
         raw = path.read_text()
         assert "super_secret_pass" not in raw
+
+    def test_last_access_is_updated_on_read(self, vault: SecretVault) -> None:
+        vault.set_secret("a1", "password", "super_secret_pass")
+        before = vault.list_keys("a1", include_metadata=True)[0]["last_access"]
+        assert before is None
+        assert vault.get_secret("a1", "password") == "super_secret_pass"
+        after = vault.list_keys("a1", include_metadata=True)[0]["last_access"]
+        assert after is not None
 
     def test_unicode_secret(self, vault: SecretVault) -> None:
         vault.set_secret("a1", "greeting", "cześć świat 🌍")

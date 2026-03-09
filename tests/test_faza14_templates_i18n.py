@@ -21,6 +21,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.testclient import TestClient
 
 _WEB_ROOT = Path(__file__).parent.parent / "src/amiagi/interfaces/web"
 _I18N_LOCALES = Path(__file__).parent.parent / "src/amiagi/i18n/locales"
@@ -255,9 +258,207 @@ class TestTemplateRoutes:
         paths = [r.path for r in template_routes]
         assert "/templates/{id}/export" in paths
 
+    def test_stats_route_exists(self):
+        from amiagi.interfaces.web.routes.template_routes import template_routes
+        paths = [r.path for r in template_routes]
+        assert "/templates/stats" in paths
+
+    def test_pin_route_exists(self):
+        from amiagi.interfaces.web.routes.template_routes import template_routes
+        paths = [r.path for r in template_routes]
+        assert "/templates/{id}/pin" in paths
+
+    def test_preview_route_exists(self):
+        from amiagi.interfaces.web.routes.template_routes import template_routes
+        paths = [r.path for r in template_routes]
+        assert "/templates/{id}/preview" in paths
+
     def test_route_count_ge_7(self):
         from amiagi.interfaces.web.routes.template_routes import template_routes
         assert len(template_routes) >= 7
+
+
+class _FakeTemplate:
+    id = "t1"
+    name = "Code Review"
+    description = "Review source files"
+    tags = ["review"]
+    use_count = 3
+    steps = [{"agent": "executor", "prompt": "Review {file}", "type": "task"}]
+    parameters = [{"name": "file", "description": "Target file"}]
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "yaml_content": 'name: "Code Review"\nsteps: []',
+            "tags": self.tags,
+            "author_id": "u1",
+            "is_public": True,
+            "use_count": self.use_count,
+            "parameters": self.parameters,
+            "steps": self.steps,
+            "created_at": None,
+        }
+
+    def render_steps(self, values):
+        return [{"agent": "executor", "prompt": f"Review {values.get('file', '{file}')}", "type": "task"}]
+
+
+class _FakeTemplateRepo:
+    def __init__(self):
+        self.increment_use_count = AsyncMock()
+
+    async def list_templates(self, public_only=False):
+        return [_FakeTemplate()]
+
+    async def get(self, template_id):
+        return _FakeTemplate() if template_id == "t1" else None
+
+
+class _FakeUser:
+    user_id = "u1"
+
+
+class _FakeSettingsRepo:
+    def __init__(self):
+        self.data = {"template_preferences": {"pinned_ids": ["t1"]}}
+
+    async def get_for_user(self, user_id):
+        return json.loads(json.dumps(self.data))
+
+    async def save_for_user(self, user_id, settings):
+        self.data = json.loads(json.dumps(settings))
+        return settings
+
+
+class _TemplateTask:
+    def __init__(self, status="done"):
+        self.metadata = {"template_id": "t1", "template_execution_id": "exec-1"}
+        self.created_at = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
+        self.started_at = datetime(2025, 6, 1, 12, 1, tzinfo=timezone.utc)
+        self.completed_at = datetime(2025, 6, 1, 12, 3, tzinfo=timezone.utc)
+        self.status = status
+
+
+class _FakeTaskQueue:
+    def __init__(self):
+        self.enqueued = []
+
+    def list_all(self):
+        return [_TemplateTask()]
+
+    def enqueue(self, task):
+        self.enqueued.append(task)
+
+
+def test_preview_route_does_not_increment_use_count():
+    from amiagi.interfaces.web.routes.template_routes import template_routes
+
+    repo = _FakeTemplateRepo()
+    app = Starlette(routes=list(template_routes))
+    app.state.template_repository = repo
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post("/templates/t1/preview", json={"values": {"file": "main.py"}})
+    assert response.status_code == 200
+    assert response.json()["status"] == "preview"
+    repo.increment_use_count.assert_not_awaited()
+
+
+def test_execute_route_increments_use_count():
+    from amiagi.interfaces.web.routes.template_routes import template_routes
+
+    repo = _FakeTemplateRepo()
+    app = Starlette(routes=list(template_routes))
+    app.state.template_repository = repo
+    app.state.task_queue = _FakeTaskQueue()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post("/templates/t1/execute", json={"values": {"file": "main.py"}})
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+    repo.increment_use_count.assert_awaited_once_with("t1")
+    assert response.json()["created_task_ids"]
+    assert app.state.task_queue.enqueued[0].metadata["template_id"] == "t1"
+
+
+def test_list_templates_marks_pinned_and_includes_stats():
+    from amiagi.interfaces.web.routes.template_routes import template_routes
+
+    repo = _FakeTemplateRepo()
+    app = Starlette(routes=list(template_routes))
+    app.state.template_repository = repo
+    app.state.user_settings_repo = _FakeSettingsRepo()
+    app.state.task_queue = _FakeTaskQueue()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/templates")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["pinned"] is True
+    assert payload[0]["stats"]["use_count"] == 3
+    assert payload[0]["stats"]["avg_completion_time_label"] == "2m"
+
+
+def test_pin_route_persists_template_preference():
+    from amiagi.interfaces.web.routes.template_routes import template_routes
+
+    repo = _FakeTemplateRepo()
+    settings_repo = _FakeSettingsRepo()
+    app = Starlette(routes=list(template_routes))
+    app.state.template_repository = repo
+    app.state.user_settings_repo = settings_repo
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.put("/templates/t1/pin", json={"pinned": False})
+    assert response.status_code == 200
+    assert response.json()["pinned"] is False
+    assert settings_repo.data["template_preferences"]["pinned_ids"] == []
+
+
+def test_template_stats_route_returns_badge_data():
+    from amiagi.interfaces.web.routes.template_routes import template_routes
+
+    repo = _FakeTemplateRepo()
+    app = Starlette(routes=list(template_routes))
+    app.state.template_repository = repo
+    app.state.user_settings_repo = _FakeSettingsRepo()
+    app.state.task_queue = _FakeTaskQueue()
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.user = _FakeUser()
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/templates/stats")
+    assert response.status_code == 200
+    payload = response.json()["templates"][0]
+    assert payload["pinned"] is True
+    assert payload["avg_completion_time_label"] == "2m"
+    assert payload["step_count"] == 1
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -431,6 +632,40 @@ class TestI18nRoutes:
         assert "/api/lang" in paths
 
 
+class TestI18nTargetedHardcodedStrings:
+    """10.26: regression coverage for previously flagged hardcoded strings."""
+
+    def test_health_js_uses_translation_hooks(self):
+        content = (_WEB_ROOT / "static/js/health.js").read_text(encoding="utf-8")
+        assert 'window.t("health.status.ok"' in content
+        assert 'window.t("health.status.degraded"' in content
+        assert 'window.t("health.rate_limits.no_data"' in content
+
+    def test_session_timeline_uses_translation_hooks(self):
+        content = (_WEB_ROOT / "static/js/components/session-timeline.js").read_text(encoding="utf-8")
+        assert 'window.t("timeline.error.load_failed"' in content
+        assert 'window.t("timeline.controls.play"' in content
+        assert 'window.t("timeline.empty"' in content
+
+    def test_dashboard_js_uses_panel_translation_keys(self):
+        content = (_WEB_ROOT / "static/js/dashboard.js").read_text(encoding="utf-8")
+        assert 'window.t("dashboard.panel.agents_overview"' in content
+        assert 'window.t("dashboard.panel.task_board"' in content
+        assert 'window.t("dashboard.panel.system_health"' in content
+
+    def test_sandboxes_js_uses_translation_hooks(self):
+        content = (_WEB_ROOT / "static/js/sandboxes.js").read_text(encoding="utf-8")
+        assert 'window.t("sandboxes.list.load_failed"' in content
+        assert 'window.t("sandboxes.action.browse"' in content
+        assert 'window.t("sandboxes.drawer.log_title"' in content
+
+    def test_sessions_template_uses_translations_for_toolbar(self):
+        content = (_WEB_ROOT / "templates/sessions.html").read_text(encoding="utf-8")
+        assert "{{ _('sessions.search_placeholder') }}" in content
+        assert '{{ _("sessions.replay") }}' in content
+        assert "window.t('sessions.fetch_failed'" in content
+
+
 class TestMakeTranslator:
     """14.6: make_translator creates bound _() function."""
 
@@ -471,3 +706,11 @@ class TestAppWiringFaza14:
 
     def test_template_repository_wired(self, app_source):
         assert "template_repository" in app_source.lower()
+
+
+class TestTaskWizardTemplateEnhancements:
+    def test_task_wizard_contains_pin_and_stats_hooks(self):
+        template = (_WEB_ROOT / "templates/task_wizard.html").read_text()
+        assert "/templates/stats" in template
+        assert "toggleTemplatePin" in template
+        assert "tpl-stats" in template

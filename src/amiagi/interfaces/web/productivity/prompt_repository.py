@@ -41,6 +41,7 @@ class PromptRecord:
             "tags": self.tags,
             "is_public": self.is_public,
             "use_count": self.use_count,
+            "usage_count": self.use_count,
             "parameters": self.parameters,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -84,6 +85,7 @@ class PromptRepository:
         *,
         user_id: str | None = None,
         tag: str | None = None,
+        query: str | None = None,
         public_only: bool = False,
         limit: int = 50,
         offset: int = 0,
@@ -104,14 +106,24 @@ class PromptRepository:
             idx += 1
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        fetch_limit = max(limit, 50) if query else limit
         sql = f"""
             SELECT * FROM dbo.prompts {where}
             ORDER BY use_count DESC, created_at DESC
             LIMIT ${idx} OFFSET ${idx + 1}
         """
-        params.extend([limit, offset])
+        params.extend([fetch_limit, 0 if query else offset])
         rows = await self._pool.fetch(sql, *params)
-        return [_row_to_prompt(r) for r in rows]
+        prompts = [_row_to_prompt(r) for r in rows]
+        if query:
+            needle = query.strip().casefold()
+            prompts = [
+                prompt for prompt in prompts
+                if needle in prompt.title.casefold()
+                or needle in prompt.template.casefold()
+                or any(needle in str(tag).casefold() for tag in prompt.tags)
+            ]
+        return prompts[offset: offset + limit]
 
     async def get_prompt(self, prompt_id: str) -> PromptRecord | None:
         row = await self._pool.fetchrow(
@@ -168,3 +180,49 @@ class PromptRepository:
             "UPDATE dbo.prompts SET use_count = use_count + 1 WHERE id = $1::uuid",
             prompt_id,
         )
+
+    async def record_prompt_use(self, prompt_id: str, agent_id: str | None = None) -> None:
+        await self.increment_use_count(prompt_id)
+        if not agent_id:
+            return
+        await self._pool.execute(
+            """
+            INSERT INTO dbo.prompt_usage (prompt_id, agent_id, use_count, last_used_at)
+            VALUES ($1::uuid, $2, 1, now())
+            ON CONFLICT (prompt_id, agent_id)
+            DO UPDATE SET
+                use_count = dbo.prompt_usage.use_count + 1,
+                last_used_at = now()
+            """,
+            prompt_id,
+            agent_id,
+        )
+
+    async def get_usage_count(self, prompt_id: str) -> int:
+        row = await self._pool.fetchrow(
+            "SELECT COALESCE(use_count, 0) AS usage_count FROM dbo.prompts WHERE id = $1::uuid",
+            prompt_id,
+        )
+        return int((row or {}).get("usage_count") or 0)
+
+    async def get_prompt_stats(self, prompt_id: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """
+            SELECT
+                COALESCE(p.use_count, 0) AS total_uses,
+                COALESCE(COUNT(pu.agent_id), 0) AS agent_count,
+                NULL AS avg_rating
+            FROM dbo.prompts p
+            LEFT JOIN dbo.prompt_usage pu ON pu.prompt_id = p.id
+            WHERE p.id = $1::uuid
+            GROUP BY p.id, p.use_count
+            """,
+            prompt_id,
+        )
+        if not row:
+            return {"total_uses": 0, "agent_count": 0, "avg_rating": None}
+        return {
+            "total_uses": int(row.get("total_uses") or 0),
+            "agent_count": int(row.get("agent_count") or 0),
+            "avg_rating": row.get("avg_rating"),
+        }

@@ -48,6 +48,15 @@ class EvalChart extends HTMLElement {
     this._ctx = this._canvas.getContext("2d");
     this._emptyEl = this.shadowRoot.getElementById("empty");
     this._summaryEl = this.shadowRoot.getElementById("summary");
+
+    // EV6 — click handler for bar interaction
+    this._canvas.addEventListener("click", (e) => {
+      const point = this._hitTest(e.offsetX, e.offsetY);
+      if (point) {
+        this.dispatchEvent(new CustomEvent("point-click", { detail: point, bubbles: true }));
+      }
+    });
+
     this._draw();
   }
 
@@ -83,6 +92,7 @@ class EvalChart extends HTMLElement {
     if (data.length === 0) {
       this._emptyEl.hidden = false;
       canvas.hidden = true;
+      this._barRects = [];
       return;
     }
     this._emptyEl.hidden = true;
@@ -98,12 +108,17 @@ class EvalChart extends HTMLElement {
     const avg = data.reduce((s, d) => s + d.score, 0) / data.length;
     this._summaryEl.textContent = `avg: ${avg.toFixed(3)}`;
 
+    // Store bar rects for hit-testing
+    this._barRects = [];
+
     // Draw bars
     data.forEach((item, i) => {
       const y = PAD_TOP + i * (barH + gap);
       const maxVal = item.max || 1;
       const pct = Math.max(0, Math.min(1, item.score / maxVal));
       const barW = pct * chartW;
+
+      this._barRects.push({ x: PAD_LEFT, y, w: chartW, h: barH, item, index: i });
 
       // Background track
       ctx.fillStyle = "rgba(71,85,105,.25)";
@@ -135,6 +150,22 @@ class EvalChart extends HTMLElement {
       ctx.textAlign = "left";
       ctx.fillText(item.score.toFixed(3), PAD_LEFT + barW + 4, y + barH / 2);
     });
+  }
+
+  /**
+   * EV6 — hit-test clicked position against stored bar rects.
+   * @param {number} x — offsetX from click event
+   * @param {number} y — offsetY from click event
+   * @returns {object|null} — matched data item or null
+   */
+  _hitTest(x, y) {
+    if (!this._barRects) return null;
+    for (const rect of this._barRects) {
+      if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) {
+        return { scenario: rect.item.scenario, score: rect.item.score, index: rect.index, item: rect.item };
+      }
+    }
+    return null;
   }
 }
 

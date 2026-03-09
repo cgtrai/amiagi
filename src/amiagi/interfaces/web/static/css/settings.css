@@ -1,8 +1,3 @@
-/* ================================================================
-   Settings page — extracted + new tabs (Liquid Glass v2)
-   ================================================================ */
-
-/* ── Page layout ─────────────────────────────────────────────── */
 .settings-page {
   padding: var(--space-6);
 }
@@ -11,7 +6,6 @@
   color: var(--text-primary);
 }
 
-/* ── Tabs bar ────────────────────────────────────────────────── */
 .settings-tabs {
   display: flex;
   gap: var(--space-1);
@@ -39,7 +33,6 @@
   border-bottom-color: var(--accent-blue);
 }
 
-/* ── Sections show/hide ──────────────────────────────────────── */
 .settings-section {
   display: none;
 }
@@ -47,7 +40,6 @@
   display: block;
 }
 
-/* ── Panel card ──────────────────────────────────────────────── */
 .settings-panel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -60,7 +52,6 @@
   color: var(--text-primary);
 }
 
-/* ── Form elements ───────────────────────────────────────────── */
 .form-group {
   margin-bottom: var(--space-4);
 }
@@ -74,7 +65,6 @@
   margin-bottom: 0;
 }
 
-/* ── Lists ───────────────────────────────────────────────────── */
 .key-list,
 .hook-list {
   list-style: none;
@@ -99,7 +89,6 @@
   color: var(--accent-teal);
 }
 
-/* ── Memory items ────────────────────────────────────────────── */
 .memory-item {
   padding: var(--space-3);
   border-bottom: 1px solid var(--glass-border);
@@ -118,7 +107,6 @@
   font-size: var(--font-size-xs);
 }
 
-/* ── Cron items ──────────────────────────────────────────────── */
 .cron-item {
   display: flex;
   justify-content: space-between;
@@ -136,7 +124,6 @@
   color: var(--accent-teal);
 }
 
-/* ── Status, inputs, rows ────────────────────────────────────── */
 .settings-muted {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
@@ -197,7 +184,6 @@
   font-size: var(--font-size-sm);
 }
 
-/* ── General tab — preferences grid ──────────────────────────── */
 .settings-prefs-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -212,13 +198,54 @@
   background: var(--glass-pill-bg);
   border-radius: var(--glass-radius-sm);
 }
+.settings-pref-item--full {
+  grid-column: 1 / -1;
+}
 .settings-pref-item label {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
-/* ── System tab — info rows ──────────────────────────────────── */
+.settings-sub-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.settings-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+}
+
+.settings-choice-grid label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+}
+
+.settings-inline-result {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  background: var(--glass-pill-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.settings-inline-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .settings-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -244,7 +271,6 @@
   color: var(--text-primary);
 }
 
-/* ── Security tab — session list ─────────────────────────────── */
 .settings-session-list {
   display: flex;
   flex-direction: column;
@@ -262,7 +288,6 @@
   border-bottom: none;
 }
 
-/* ── Execution tab — read-only sandbox list ──────────────────── */
 .settings-sandbox-row {
   display: flex;
   justify-content: space-between;
@@ -275,7 +300,6 @@
   border-bottom: none;
 }
 
-/* ── Advanced tab — policy viewer ────────────────────────────── */
 .settings-policy-pre {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--glass-border);
@@ -290,7 +314,6 @@
   word-break: break-all;
 }
 
-/* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .settings-page {
     padding: var(--space-4);
@@ -316,13 +339,13 @@
   .settings-tabs {
     overflow-x: auto;
     flex-wrap: nowrap;
-    -ms-overflow-style: none;        /* Edge (legacy) */
+    -ms-overflow-style: none;
   }
-  .settings-tabs::-webkit-scrollbar { display: none; }  /* Chrome / Safari */
+  .settings-tabs::-webkit-scrollbar { display: none; }
 }
 @supports (scrollbar-width: none) {
   @media (max-width: 480px) {
-    .settings-tabs { scrollbar-width: none; }            /* Firefox 64+ */
+    .settings-tabs { scrollbar-width: none; }
   }
   .settings-tab {
     white-space: nowrap;
@@ -337,4 +360,79 @@
     font-size: 0.7rem;
     max-height: 200px;
   }
+}
+
+.glass-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.glass-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.glass-switch__slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: rgba(255 255 255 / 0.08);
+  border: 1px solid rgba(255 255 255 / 0.12);
+  transition: background 0.25s, border-color 0.25s;
+}
+.glass-switch__slider::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255 255 255 / 0.5);
+  transition: transform 0.25s;
+}
+.glass-switch input:checked + .glass-switch__slider {
+  background: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+}
+.glass-switch input:checked + .glass-switch__slider::before {
+  transform: translateX(20px);
+  background: #fff;
+}
+.glass-switch input:disabled + .glass-switch__slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ═══ Permissions panel layout ═══ */
+.perm-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+}
+.perm-status {
+  font-size: var(--font-size-sm, 0.85rem);
+  color: var(--text-muted, #888);
+}
+.perm-resource-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  margin-top: var(--space-2, 0.5rem);
+}
+.perm-resource-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-radius: var(--radius-md, 8px);
+  background: rgba(255 255 255 / 0.03);
+  border: 1px solid rgba(255 255 255 / 0.06);
+}
+.perm-resource-label {
+  flex: 1;
+  font-size: var(--font-size-sm, 0.85rem);
 }

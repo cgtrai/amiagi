@@ -61,6 +61,28 @@ async def metrics_page(request: Request):
     return templates.TemplateResponse(request, "metrics.html")
 
 
+# ── Session Replay page ───────────────────────────────────────────
+
+async def sessions_page(request: Request):
+    """GET /sessions — session replay and timeline browser."""
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "sessions.html")
+
+
+# ── Productivity pages ──────────────────────────────────────────
+
+async def prompt_library_page(request: Request):
+    """GET /prompt-library — shared prompt library UI."""
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "prompts.html")
+
+
+async def snippets_page(request: Request):
+    """GET /snippets-library — saved snippets UI."""
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "snippets.html")
+
+
 # ── Settings page ────────────────────────────────────────────────
 
 async def settings_page(request: Request):
@@ -149,6 +171,10 @@ dashboard_routes: list[Route] = [
     Route("/tasks", tasks_page, methods=["GET"]),
     Route("/tasks/new", task_wizard_page, methods=["GET"]),
     Route("/metrics", metrics_page, methods=["GET"]),
+    Route("/sessions", sessions_page, methods=["GET"]),
+    Route("/prompt-library", prompt_library_page, methods=["GET"]),
+    Route("/prompts-library", prompt_library_page, methods=["GET"]),
+    Route("/snippets-library", snippets_page, methods=["GET"]),
     Route("/settings", settings_page, methods=["GET"]),
     Route("/files", files_page, methods=["GET"]),
     Route("/teams", teams_page, methods=["GET"]),

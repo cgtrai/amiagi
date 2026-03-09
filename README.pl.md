@@ -3,17 +3,19 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 2543](https://img.shields.io/badge/tests-2543%20passed-brightgreen.svg)](tests/)
-[![Version: 1.2.0](https://img.shields.io/badge/version-1.2.0-blueviolet.svg)](pyproject.toml)
+[![Tests: 2868](https://img.shields.io/badge/tests-2868%20passed-brightgreen.svg)](tests/)
+[![Version: 1.3.0](https://img.shields.io/badge/version-1.3.0-blueviolet.svg)](pyproject.toml)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
 Lokalny framework CLI do orkiestracji autonomicznych zespołów agentów LLM w kontrolowanym środowisku.
 
 `amiagi` to pełnoprawna platforma orkiestracji agentów: dynamiczny rejestr agentów, kolejka zadań, silnik workflow, budżetowanie, framework ewaluacyjny, REST API, web dashboard i kompozycja zespołów — wszystko z izolacją bezpieczeństwa per agent, pełnym audytem JSONL i obsługą wielu backendów (Ollama, OpenAI, OpenRouter, Azure, vLLM).
 
-Aktualna wersja: **v1.2.0** — wszystkie 11 faz roadmapy + pełna konsola zarządzania web (5 sprintów UI), **2543 testów**.
+Aktualna wersja: **v1.3.0** — domknięcie planu 02 i gotowość do UAT, **2868 testów**.
 
-v1.2.0 zamyka Web Management Console: 5 sprintów dostarczających 11 nowych ekranów, 19 Web Componentów, 12 migracji DB, 100+ endpointów API, 490+ kluczy i18n i system designu Liquid Glass v2.
+v1.3.0 utwardza Web Management Console pod operatora: parity Supervisor WWW/TUI dla głównych scenariuszy, jawne semantyki runtime dla Teams/Evaluations/Knowledge, przywrócony katalog lokalnych modeli oparty o Ollama, modele komercyjne definiowane wyłącznie przez użytkownika oraz domknięty finalny gate regresyjny przed UAT.
+
+Dokumenty wydania: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md).
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 

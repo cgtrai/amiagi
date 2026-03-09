@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('snippets.title') }} — amiagi{% endblock %}
+
+{% block head %}
+<style>
+.snippets-page { padding: var(--space-6); }
+.snippets-header {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-4);
+  margin-bottom: var(--space-6); flex-wrap: wrap;
+}
+.snippets-header h2 { margin: 0; color: var(--text-primary); }
+.snippets-toolbar { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.snippets-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4);
+}
+.snippet-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius);
+  padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3);
+}
+.snippet-meta { display: flex; gap: var(--space-2); flex-wrap: wrap; color: var(--text-muted); font-size: var(--font-size-xs); }
+.snippet-content {
+  white-space: pre-wrap; overflow: auto; max-height: 240px; padding: var(--space-3);
+  border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04);
+  font-family: var(--font-family-mono, monospace); color: var(--text-primary);
+}
+.snippet-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.snippet-tag {
+  padding: 2px var(--space-2); border-radius: var(--glass-radius-pill); background: rgba(56,189,248,0.14);
+  color: var(--accent-blue); font-size: var(--font-size-xs);
+}
+.snippet-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.snippets-empty,
+.snippets-error {
+  grid-column: 1 / -1; padding: var(--space-8); text-align: center; color: var(--text-muted);
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius);
+}
+.modal-card--md { max-width: 760px; }
+.snippet-export-group { display: inline-flex; gap: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="snippets-page">
+  <div class="snippets-header">
+    <div>
+      <h2>✂️ {{ _('snippets.title') }}</h2>
+      <div class="text-muted">Saved fragments from agent conversations and tasks</div>
+    </div>
+    <div class="snippets-toolbar">
+      <input id="snippet-filter" class="glass-input" placeholder="{{ _('settings.filter') }} / tags / text" oninput="loadSnippetsPage()"/>
+      <button class="glass-btn" onclick="loadSnippetsPage()">{{ _('common.refresh') }}</button>
+      <div class="snippet-export-group">
+        <button class="glass-btn glass-btn--secondary" onclick="exportSnippets('markdown')">📥 MD</button>
+        <button class="glass-btn glass-btn--secondary" onclick="exportSnippets('json')">JSON</button>
+      </div>
+      <button class="glass-btn glass-btn--primary" onclick="openSnippetModal()">+ {{ _('snippets.create') }}</button>
+    </div>
+  </div>
+
+  <div class="snippets-grid" id="snippet-grid">
+    <div class="snippets-empty">{{ _('snippets.loading') }}</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="snippet-modal" hidden>
+  <div class="glass-card modal-card modal-card--md">
+    <h2 id="snippet-modal-title">{{ _('snippets.create') }}</h2>
+    <div class="field">
+      <label for="snippet-content">{{ _('snippets.content') }}</label>
+      <textarea id="snippet-content" class="glass-input" rows="10"></textarea>
+    </div>
+    <div class="field">
+      <label for="snippet-tags">{{ _('snippets.tags') }}</label>
+      <input id="snippet-tags" class="glass-input" placeholder="code, note, fix"/>
+    </div>
+    <div class="field">
+      <label for="snippet-source-agent">{{ _('agent.role') }}/{{ _('snippets.source') }}</label>
+      <input id="snippet-source-agent" class="glass-input" placeholder="polluks"/>
+    </div>
+    <div class="field">
+      <label for="snippet-source-task">Task ID</label>
+      <input id="snippet-source-task" class="glass-input" placeholder="abc123"/>
+    </div>
+    <div class="btn-row">
+      <button class="glass-btn" onclick="closeSnippetModal()">{{ _('common.cancel') }}</button>
+      <button class="glass-btn glass-btn--primary" onclick="saveSnippetRecord()">{{ _('common.save') }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  let snippetCache = [];
+  let editingSnippetId = null;
+
+  function esc(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+  }
+
+  function parseTags(raw) {
+    return (raw || '').split(',').map(tag => tag.trim()).filter(Boolean);
+  }
+
+  async function fetchSnippets() {
+    const filter = document.getElementById('snippet-filter').value.trim();
+    const url = filter ? `/api/snippets?q=${encodeURIComponent(filter)}` : '/api/snippets';
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('snippet_fetch_failed');
+    const snippets = await response.json();
+    snippetCache = Array.isArray(snippets) ? snippets : [];
+    return snippetCache;
+  }
+
+  function findSnippet(snippetId) {
+    return snippetCache.find(item => item.id === snippetId) || null;
+  }
+
+  function renderSnippetCard(snippet) {
+    const tags = (snippet.tags || []).map(tag => `<span class="snippet-tag">${esc(tag)}</span>`).join('');
+    const sourceParts = [snippet.source_agent, snippet.source_task_id].filter(Boolean).map(esc).join(' · ');
+    const pinIcon = snippet.pinned ? '📌' : '📍';
+    const pinClass = snippet.pinned ? 'glass-btn--primary' : '';
+    const encodedContent = encodeURIComponent(snippet.content || '');
+    return `
+      <article class="snippet-card" onclick="openSnippetDetail('${snippet.id}')" style="cursor:pointer">
+        <div class="snippet-meta">
+          <span>${snippet.created_at ? esc(new Date(snippet.created_at).toLocaleString()) : '—'}</span>
+          <span>${sourceParts || '—'}</span>
+        </div>
+        <div class="snippet-tags">${tags || '<span class="text-muted">—</span>'}</div>
+        <div class="snippet-content">${esc(snippet.content || '')}</div>
+        <div class="snippet-actions" onclick="event.stopPropagation()">
+          <button class="glass-btn glass-btn--ghost glass-btn--xs ${pinClass}" onclick="togglePin('${snippet.id}', ${snippet.pinned ? 'false' : 'true'})">${pinIcon}</button>
+          <button class="glass-btn glass-btn--ghost" onclick="editSnippet('${snippet.id}')">Edit</button>
+          <button class="glass-btn glass-btn--ghost" data-content="${encodedContent}" onclick="insertSnippetContent(decodeURIComponent(this.dataset.content))">Quick insert</button>
+          <button class="glass-btn glass-btn--ghost" onclick="copySnippet('${snippet.id}')">Copy</button>
+          <button class="glass-btn glass-btn--ghost" onclick="deleteSnippetRecord('${snippet.id}')">{{ _('common.delete') }}</button>
+        </div>
+      </article>
+    `;
+  }
+
+  window.loadSnippetsPage = async function () {
+    const grid = document.getElementById('snippet-grid');
+    grid.innerHTML = `<div class="snippets-empty">{{ _('snippets.loading') }}</div>`;
+    try {
+      const snippets = await fetchSnippets();
+      if (!snippets.length) {
+        grid.innerHTML = `<div class="snippets-empty">{{ _('snippets.empty') }}</div>`;
+        return;
+      }
+      grid.innerHTML = snippets.map(renderSnippetCard).join('');
+    } catch (_) {
+      grid.innerHTML = `<div class="snippets-error">{{ _('snippets.error') }}</div>`;
+    }
+  };
+
+  window.openSnippetModal = function (snippet) {
+    editingSnippetId = snippet && snippet.id ? snippet.id : null;
+    document.getElementById('snippet-modal-title').textContent = editingSnippetId ? 'Edit snippet' : '{{ _('snippets.create') }}';
+    document.getElementById('snippet-content').value = snippet?.content || '';
+    document.getElementById('snippet-tags').value = (snippet?.tags || []).join(', ');
+    document.getElementById('snippet-source-agent').value = snippet?.source_agent || snippet?.source || '';
+    document.getElementById('snippet-source-task').value = snippet?.source_task_id || '';
+    document.getElementById('snippet-modal').hidden = false;
+  };
+
+  window.closeSnippetModal = function () {
+    editingSnippetId = null;
+    document.getElementById('snippet-modal').hidden = true;
+  };
+
+  window.saveSnippetRecord = async function () {
+    const body = {
+      content: document.getElementById('snippet-content').value,
+      tags: parseTags(document.getElementById('snippet-tags').value),
+      source_agent: document.getElementById('snippet-source-agent').value.trim() || null,
+      source_task_id: document.getElementById('snippet-source-task').value.trim() || null,
+    };
+    const targetUrl = editingSnippetId
+      ? `/api/snippets/${encodeURIComponent(editingSnippetId)}`
+      : '/api/snippets';
+    const response = await fetch(targetUrl, {
+      method: editingSnippetId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      if (typeof showToast === 'function') showToast('{{ _("common.error") }}', 'error');
+      return;
+    }
+    closeSnippetModal();
+    loadSnippetsPage();
+  };
+
+  window.deleteSnippetRecord = async function (snippetId) {
+    const response = await fetch(`/api/snippets/${encodeURIComponent(snippetId)}`, { method: 'DELETE' });
+    if (response.ok) {
+      loadSnippetsPage();
+    }
+  };
+
+  window.copySnippet = async function (snippetId) {
+    const snippet = findSnippet(snippetId) || (await fetch(`/api/snippets/${encodeURIComponent(snippetId)}`).then(r => r.ok ? r.json() : null));
+    if (!snippet) return;
+    try {
+      await navigator.clipboard.writeText(snippet.content || '');
+      if (typeof showToast === 'function') showToast('Copied ✓', 'success');
+    } catch (_) {
+      if (typeof showToast === 'function') showToast('{{ _("common.error") }}', 'error');
+    }
+  };
+
+  /* SN2 — Pin toggle */
+  window.togglePin = async function (snippetId, pinned) {
+    try {
+      const response = await fetch(`/api/snippets/${encodeURIComponent(snippetId)}/pin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: pinned }),
+      });
+      if (!response.ok && typeof showToast === 'function') {
+        showToast('{{ _("common.error") }}', 'error');
+      }
+      loadSnippetsPage();
+    } catch (_) {}
+  };
+
+  /* SN4 — Export */
+  window.exportSnippets = function (format) {
+    const targetFormat = format === 'json' ? 'json' : 'markdown';
+    window.open(`/api/snippets/export?format=${encodeURIComponent(targetFormat)}`, '_blank');
+  };
+
+  window.editSnippet = async function (snippetId) {
+    const snippet = findSnippet(snippetId) || await fetch(`/api/snippets/${encodeURIComponent(snippetId)}`).then(r => r.ok ? r.json() : null);
+    if (!snippet) return;
+    if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+    openSnippetModal(snippet);
+  };
+
+  /* SN5 — Detail drawer */
+  window.openSnippetDetail = async function (snippetId) {
+    try {
+      const response = await fetch(`/api/snippets/${encodeURIComponent(snippetId)}`);
+      if (!response.ok) return;
+      const s = await response.json();
+      const encodedContent = encodeURIComponent(s.content || '');
+      openDetailDrawer(s.title || 'Snippet', `
+        <div class="snippet-detail">
+          <pre class="glass-card" style="padding:12px;white-space:pre-wrap"><code>${esc(s.content || '')}</code></pre>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            <span class="glass-badge">${esc(s.source_agent || s.source || 'manual')}</span>
+            ${(s.tags || []).map(t => `<span class="glass-badge badge-muted">${esc(t)}</span>`).join('')}
+            ${s.created_at ? `<span class="meta-tag">Created: ${new Date(s.created_at).toLocaleString()}</span>` : ''}
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="glass-btn glass-btn--sm" onclick="editSnippet('${s.id}')">Edit</button>
+            <button class="glass-btn glass-btn--sm" data-content="${encodedContent}" onclick="insertSnippetContent(decodeURIComponent(this.dataset.content))">Quick insert</button>
+            <button class="glass-btn glass-btn--sm" onclick="navigator.clipboard.writeText(decodeURIComponent(this.dataset.content)).then(()=>showToast('Copied','success'))" data-content="${encodedContent}">Copy</button>
+            <button class="glass-btn glass-btn--sm glass-btn--danger" onclick="deleteSnippetRecord('${s.id}');closeDetailDrawer()">Delete</button>
+          </div>
+        </div>
+      `);
+    } catch (_) {}
+  };
+
+  window.insertSnippetContent = async function (text) {
+    const active = document.activeElement;
+    const value = text || '';
+    if (active && (active.tagName === 'TEXTAREA' || (active.tagName === 'INPUT' && /^(text|search|url|email|tel|password)$/i.test(active.type || 'text')))) {
+      const start = active.selectionStart ?? active.value.length;
+      const end = active.selectionEnd ?? active.value.length;
+      active.value = `${active.value.slice(0, start)}${value}${active.value.slice(end)}`;
+      active.selectionStart = active.selectionEnd = start + value.length;
+      active.dispatchEvent(new Event('input', { bubbles: true }));
+      if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+      if (typeof showToast === 'function') showToast('Inserted ✓', 'success');
+      return;
+    }
+    if (active && active.isContentEditable) {
+      document.execCommand('insertText', false, value);
+      if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+      if (typeof showToast === 'function') showToast('Inserted ✓', 'success');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+      if (typeof showToast === 'function') showToast('Copied!', 'success');
+    } catch (_) {}
+  };
+
+  /* SN3 — Quick insert Ctrl+Shift+V */
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+      e.preventDefault();
+      fetch('/api/snippets').then(r => r.json()).then(function(data) {
+        const items = Array.isArray(data) ? data : data.items || [];
+        const html = items.map(function(s) {
+          return `<div class="glass-card snippet-pick" style="padding:10px;margin-bottom:6px;cursor:pointer" data-content="${encodeURIComponent(s.content || '')}" onclick="insertSnippet(this)">
+            <strong>${esc(s.title || (s.content || '').slice(0, 50))}</strong>
+            ${s.pinned ? ' 📌' : ''}
+          </div>`;
+        }).join('');
+        if (typeof openDetailDrawer === 'function') openDetailDrawer('Quick Insert', html || '<p>No snippets</p>');
+      }).catch(function() {});
+    }
+  });
+  window.insertSnippet = function (el) {
+    insertSnippetContent(decodeURIComponent(el.dataset.content));
+  };
+
+  loadSnippetsPage();
+})();
+</script>
+{% endblock %}

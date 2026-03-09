@@ -60,6 +60,12 @@ from amiagi.i18n import _
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.ollama_client import OllamaClientError
 from amiagi.infrastructure.script_executor import ScriptExecutor
+from amiagi.interfaces.web.stream_contract import (
+    stream_meta_for_actor,
+    stream_meta_for_panel,
+    summarize_actor_state,
+    summarize_log_event,
+)
 
 if TYPE_CHECKING:
     from amiagi.application.audit_chain import AuditChain
@@ -619,13 +625,59 @@ class RouterEngine:
     # EventBus helpers (replace direct _append_log / _set_actor_state)
     # ------------------------------------------------------------------
 
-    def _emit_log(self, panel: str, message: str) -> None:
-        self.event_bus.emit(LogEvent(panel=panel, message=message))
+    def _emit_log(
+        self,
+        panel: str,
+        message: str,
+        *,
+        agent_id: str | None = None,
+        channel: str | None = None,
+        source_kind: str | None = None,
+        source_label: str | None = None,
+        summary: str | None = None,
+    ) -> None:
+        meta = stream_meta_for_panel(panel)
+        resolved_source_label = source_label or meta.get("source_label")
+        self.event_bus.emit(
+            LogEvent(
+                panel=panel,
+                message=message,
+                agent_id=agent_id if agent_id is not None else meta.get("agent_id"),
+                channel=channel if channel is not None else meta.get("channel"),
+                source_kind=source_kind if source_kind is not None else meta.get("source_kind"),
+                source_label=resolved_source_label,
+                summary=summary if summary is not None else summarize_log_event(panel, message, resolved_source_label),
+            )
+        )
 
-    def _emit_actor_state(self, actor: str, state: str, event: str) -> None:
+    def _emit_actor_state(
+        self,
+        actor: str,
+        state: str,
+        event: str,
+        *,
+        agent_id: str | None = None,
+        channel: str | None = None,
+        source_kind: str | None = None,
+        source_label: str | None = None,
+        summary: str | None = None,
+    ) -> None:
         self._actor_states[actor] = state
         self._last_router_event = event
-        self.event_bus.emit(ActorStateEvent(actor=actor, state=state, event=event))
+        meta = stream_meta_for_actor(actor)
+        resolved_source_label = source_label or meta.get("source_label")
+        self.event_bus.emit(
+            ActorStateEvent(
+                actor=actor,
+                state=state,
+                event=event,
+                agent_id=agent_id if agent_id is not None else meta.get("agent_id"),
+                channel=channel if channel is not None else meta.get("channel"),
+                source_kind=source_kind if source_kind is not None else meta.get("source_kind"),
+                source_label=resolved_source_label,
+                summary=summary if summary is not None else summarize_actor_state(actor, state, event, resolved_source_label),
+            )
+        )
 
     def _emit_cycle_finished(self, event: str) -> None:
         self._router_cycle_in_progress = False
@@ -2061,6 +2113,107 @@ class RouterEngine:
         return True
 
     # ------------------------------------------------------------------
+    # Slash-command handler (inside router, always allowed)
+    # ------------------------------------------------------------------
+
+    def _handle_slash_in_router(self, text: str) -> None:
+        """Handle slash commands that must bypass the permission gate.
+
+        Called from ``_process_user_turn`` BEFORE the network check
+        so that ``/permissions all``, ``/help``, ``/quit`` etc. are
+        never blocked by the consent system.
+        """
+        lower = text.strip().lower()
+
+        if lower in {"/quit", "/exit"}:
+            self._emit_cycle_finished("quit_requested")
+            return
+
+        if lower.startswith("/permissions"):
+            parts = lower.split()
+            action = parts[1] if len(parts) > 1 else "status"
+
+            if action in {"status", "show"}:
+                granted_once_count = len(getattr(self.permission_manager, "granted_once", set()))
+                self._emit_log(
+                    "user_model_log",
+                    f"--- PERMISSIONS ---\n"
+                    f"allow_all: {bool(self.permission_manager.allow_all)}\n"
+                    f"granted_once_count: {granted_once_count}",
+                )
+            elif action in {"all", "on", "global"}:
+                self.permission_manager.allow_all = True
+                self._persist_permissions()
+                self._emit_log("user_model_log", "Włączono tryb: zgoda globalna na wszystkie zasoby.")
+            elif action in {"ask", "off", "interactive"}:
+                self.permission_manager.allow_all = False
+                self._persist_permissions()
+                self._emit_log("user_model_log", "Włączono tryb interakcyjny — wymagana zgoda per zasób.")
+            elif action in {"reset", "clear"}:
+                granted = getattr(self.permission_manager, "granted_once", None)
+                if isinstance(granted, set):
+                    granted.clear()
+                self.permission_manager.allow_all = False
+                self._persist_permissions()
+                self._emit_log("user_model_log", "Zresetowano wszystkie zapamiętane zgody.")
+            else:
+                self._emit_log(
+                    "user_model_log",
+                    "Użycie: /permissions [status|all|ask|reset]",
+                )
+
+            self._emit_actor_state("terminal", "WAITING_INPUT", "Obsłużono /permissions")
+            return
+
+        if lower == "/help":
+            self._emit_log(
+                "user_model_log",
+                "Komendy: /help, /permissions [status|all|ask|reset], /quit",
+            )
+            self._emit_actor_state("terminal", "WAITING_INPUT", "Wyświetlono pomoc")
+            return
+
+        # Unknown slash command — let it through to the normal pipeline
+        # (some may be handled elsewhere, e.g. /goal, /sandbox, etc.).
+        # We fall through to the regular _process_user_turn which will
+        # check permissions for commands that hit the model.
+        self._process_user_turn_after_slash(text)
+
+    # ------------------------------------------------------------------
+    # Permissions persistence helpers
+    # ------------------------------------------------------------------
+
+    _PERMISSIONS_PATH: str = "config/permissions.json"
+
+    def _persist_permissions(self) -> None:
+        """Save current PermissionManager state to config/permissions.json."""
+        import json as _json
+        path = Path(self._PERMISSIONS_PATH)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "allow_all": bool(self.permission_manager.allow_all),
+            "granted_once": sorted(getattr(self.permission_manager, "granted_once", set())),
+        }
+        path.write_text(_json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    @staticmethod
+    def load_permissions(permission_manager: Any) -> None:
+        """Load saved permissions from config/permissions.json into *permission_manager*."""
+        import json as _json
+        path = Path("config/permissions.json")
+        if not path.exists():
+            return
+        try:
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            if data.get("allow_all"):
+                permission_manager.allow_all = True
+            granted = data.get("granted_once")
+            if isinstance(granted, list):
+                permission_manager.granted_once = set(granted)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # Full user-turn cycle (Faza 2)
     # ------------------------------------------------------------------
 
@@ -2068,6 +2221,24 @@ class RouterEngine:
         """Full user-turn orchestration extracted from textual_cli."""
 
         self._emit_actor_state("terminal", "INPUT_READY", "Wysłano wiadomość do routera")
+
+        # Slash commands are ALWAYS allowed — never gate them behind
+        # network-permission checks (prevents the deadlock where
+        # ``/permissions all`` itself would be blocked).
+        # Also detect slash commands wrapped in [Sponsor -> agent] prefix
+        # from the web agent console.
+        stripped = text.strip()
+        slash_text = stripped
+        if stripped.startswith("[") and "] /" in stripped:
+            slash_text = stripped.split("] ", 1)[1]
+        if slash_text.startswith("/"):
+            self._handle_slash_in_router(slash_text)
+            return
+
+        self._process_user_turn_after_slash(text)
+
+    def _process_user_turn_after_slash(self, text: str) -> None:
+        """Continue user-turn processing after slash-command interception."""
 
         allowed, network_resource = self._is_model_access_allowed()
         if not allowed:
@@ -2078,11 +2249,6 @@ class RouterEngine:
                 "Użyj /permissions all, aby odblokować zapytania modelu.",
             )
             self._emit_actor_state("terminal", "WAITING_INPUT", "Odmowa dostępu — oczekiwanie na wiadomość")
-            return
-
-        if text.lower() in {"/quit", "/exit"}:
-            # Signal adapter to exit via CycleFinishedEvent with special event
-            self._emit_cycle_finished("quit_requested")
             return
 
         self._log_activity(

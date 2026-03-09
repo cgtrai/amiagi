@@ -1,112 +1,170 @@
 {# ── Command Rail — 64px icon-only navigation ─────────────── #}
 {# Icons: Lucide (https://lucide.dev) — 20×20, stroke-width 1.75 #}
-<aside class="command-rail app-rail" id="command-rail">
+<aside class="command-rail app-rail" id="command-rail" aria-label="{{ _('nav.dashboard') }}">
 
   {# ── Primary navigation ────────────────────────────────────── #}
+  <span class="rail-group-label">{{ _("nav.group_system") }}</span>
   <a href="/dashboard"
      class="command-rail-item{% if request.url.path == '/dashboard' %} active{% endif %}"
-     data-tooltip="{{ _('nav.dashboard') }}">
+      data-tooltip="{{ _('nav.dashboard') }}"
+      title="{{ _('nav.dashboard') }}"
+      aria-label="{{ _('nav.dashboard') }}">
     {# lucide: layout-dashboard #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
   </a>
 
   <a href="/agents"
      class="command-rail-item{% if request.url.path.startswith('/agents') %} active{% endif %}"
-     data-tooltip="{{ _('dashboard.agents') }}">
+      data-tooltip="{{ _('dashboard.agents') }}"
+      title="{{ _('dashboard.agents') }}"
+      aria-label="{{ _('dashboard.agents') }}">
     {# lucide: bot #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 17h6"/></svg>
   </a>
 
   <a href="/tasks"
      class="command-rail-item{% if request.url.path == '/tasks' or request.url.path == '/tasks/new' %} active{% endif %}"
-     data-tooltip="{{ _('dashboard.tasks') }}">
+      data-tooltip="{{ _('dashboard.tasks') }}"
+      title="{{ _('dashboard.tasks') }}"
+      aria-label="{{ _('dashboard.tasks') }}">
     {# lucide: clipboard-list #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><line x1="8" y1="11" x2="8.01" y2="11"/><line x1="8" y1="16" x2="8.01" y2="16"/></svg>
   </a>
 
   <a href="/teams"
      class="command-rail-item{% if request.url.path == '/teams' %} active{% endif %}"
-     data-tooltip="{{ _('nav.teams') }}">
+      data-tooltip="{{ _('nav.teams') }}"
+      title="{{ _('nav.teams') }}"
+      aria-label="{{ _('nav.teams') }}">
     {# lucide: users #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   </a>
 
   <a href="/supervisor"
      class="command-rail-item{% if request.url.path == '/supervisor' %} active{% endif %}"
-     data-tooltip="{{ _('nav.supervisor') }}">
+      data-tooltip="{{ _('nav.supervisor') }}"
+      title="{{ _('nav.supervisor') }}"
+      aria-label="{{ _('nav.supervisor') }}">
     {# lucide: monitor #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
   </a>
 
+  <span class="rail-group-label">{{ _("nav.group_agents") }}</span>
   <a href="/inbox"
      class="command-rail-item{% if request.url.path == '/inbox' %} active{% endif %}"
-     data-tooltip="{{ _('nav.inbox') }}">
+      data-tooltip="{{ _('nav.inbox') }}"
+      title="{{ _('nav.inbox') }}"
+      aria-label="{{ _('nav.inbox') }}">
     {# lucide: inbox #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
   </a>
 
   <a href="/model-hub"
      class="command-rail-item{% if request.url.path == '/model-hub' %} active{% endif %}"
-     data-tooltip="{{ _('nav.model_hub') }}">
+      data-tooltip="{{ _('nav.model_hub') }}"
+      title="{{ _('nav.model_hub') }}"
+      aria-label="{{ _('nav.model_hub') }}">
     {# lucide: cpu #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
   </a>
 
   <a href="/budget"
      class="command-rail-item{% if request.url.path == '/budget' %} active{% endif %}"
-     data-tooltip="{{ _('nav.budget') }}">
+      data-tooltip="{{ _('nav.budget') }}"
+      title="{{ _('nav.budget') }}"
+      aria-label="{{ _('nav.budget') }}">
     {# lucide: wallet #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
   </a>
 
   <a href="/workflows"
      class="command-rail-item{% if request.url.path == '/workflows' %} active{% endif %}"
-     data-tooltip="{{ _('nav.workflows') }}">
+      data-tooltip="{{ _('nav.workflows') }}"
+      title="{{ _('nav.workflows') }}"
+      aria-label="{{ _('nav.workflows') }}">
     {# lucide: git-branch #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
   </a>
 
   <a href="/memory"
      class="command-rail-item{% if request.url.path == '/memory' %} active{% endif %}"
-     data-tooltip="{{ _('nav.memory') }}">
+      data-tooltip="{{ _('nav.memory') }}"
+      title="{{ _('nav.memory') }}"
+      aria-label="{{ _('nav.memory') }}">
     {# lucide: brain #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
   </a>
 
   <a href="/evaluations"
      class="command-rail-item{% if request.url.path == '/evaluations' %} active{% endif %}"
-     data-tooltip="{{ _('nav.evaluations') }}">
+      data-tooltip="{{ _('nav.evaluations') }}"
+      title="{{ _('nav.evaluations') }}"
+      aria-label="{{ _('nav.evaluations') }}">
     {# lucide: flask-conical #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16.5h10"/></svg>
   </a>
 
   <a href="/knowledge"
      class="command-rail-item{% if request.url.path == '/knowledge' %} active{% endif %}"
-     data-tooltip="{{ _('nav.knowledge') }}">
+      data-tooltip="{{ _('nav.knowledge') }}"
+      title="{{ _('nav.knowledge') }}"
+      aria-label="{{ _('nav.knowledge') }}">
     {# lucide: book-open #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+  </a>
+
+  <a href="/prompt-library"
+     class="command-rail-item{% if request.url.path == '/prompt-library' %} active{% endif %}"
+      data-tooltip="{{ _('nav.prompts') }}"
+      title="{{ _('nav.prompts') }}"
+      aria-label="{{ _('nav.prompts') }}">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </a>
+
+  <a href="/snippets-library"
+     class="command-rail-item{% if request.url.path == '/snippets-library' %} active{% endif %}"
+      data-tooltip="{{ _('nav.snippets') }}"
+      title="{{ _('nav.snippets') }}"
+      aria-label="{{ _('nav.snippets') }}">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14"/><path d="M21 13V5a2 2 0 0 0-2-2h-3"/><path d="M21 13l-7 8-4-4"/><path d="M9 7h7"/><path d="M9 11h5"/></svg>
   </a>
 
   <div class="command-rail-divider"></div>
 
   {# ── Workspace & monitoring ────────────────────────────────── #}
+  <span class="rail-group-label">{{ _("nav.group_workspace") }}</span>
   <a href="/files"
      class="command-rail-item{% if request.url.path == '/files' %} active{% endif %}"
-     data-tooltip="{{ _('workspace.title') }}">
+      data-tooltip="{{ _('workspace.title') }}"
+      title="{{ _('workspace.title') }}"
+      aria-label="{{ _('workspace.title') }}">
     {# lucide: folder-open #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
   </a>
 
   <a href="/metrics"
      class="command-rail-item{% if request.url.path == '/metrics' %} active{% endif %}"
-     data-tooltip="{{ _('monitoring.performance') }}">
+      data-tooltip="{{ _('monitoring.performance') }}"
+      title="{{ _('monitoring.performance') }}"
+      aria-label="{{ _('monitoring.performance') }}">
     {# lucide: activity #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
   </a>
 
+  <a href="/sessions"
+     class="command-rail-item{% if request.url.path == '/sessions' %} active{% endif %}"
+      data-tooltip="{{ _('sessions.title') }}"
+      title="{{ _('sessions.title') }}"
+      aria-label="{{ _('sessions.title') }}">
+    {# lucide: history #}
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l4 2"/></svg>
+  </a>
+
   <a href="/health-dashboard"
      class="command-rail-item{% if request.url.path == '/health-dashboard' %} active{% endif %}"
-     data-tooltip="{{ _('nav.health') }}">
+      data-tooltip="{{ _('nav.health') }}"
+      title="{{ _('nav.health') }}"
+      aria-label="{{ _('nav.health') }}">
     {# lucide: heart-pulse #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.572l-7.5 7.428l-7.5-7.428A5 5 0 1 1 12 6.006a5 5 0 1 1 7.5 6.572"/><path d="M12 6v4l2 2h4"/></svg>
   </a>
@@ -117,7 +175,9 @@
   {# ── Bottom-pinned items ───────────────────────────────────── #}
   <a href="/settings"
      class="command-rail-item{% if request.url.path.startswith('/settings') %} active{% endif %}"
-     data-tooltip="{{ _('nav.settings') }}">
+      data-tooltip="{{ _('nav.settings') }}"
+      title="{{ _('nav.settings') }}"
+      aria-label="{{ _('nav.settings') }}">
     {# lucide: settings #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
   </a>
@@ -126,19 +186,25 @@
   <div class="command-rail-divider"></div>
   <a href="/admin/users"
      class="command-rail-item{% if request.url.path == '/admin/users' %} active{% endif %}"
-     data-tooltip="{{ _('nav.admin') }}">
+      data-tooltip="{{ _('nav.admin') }}"
+      title="{{ _('nav.admin') }}"
+      aria-label="{{ _('nav.admin') }}">
     {# lucide: shield-check #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
   </a>
   <a href="/admin/vault"
      class="command-rail-item{% if request.url.path == '/admin/vault' %} active{% endif %}"
-     data-tooltip="{{ _('nav.vault') }}">
+      data-tooltip="{{ _('nav.vault') }}"
+      title="{{ _('nav.vault') }}"
+      aria-label="{{ _('nav.vault') }}">
     {# lucide: key-round #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
   </a>
   <a href="/admin/sandboxes"
      class="command-rail-item{% if request.url.path == '/admin/sandboxes' %} active{% endif %}"
-     data-tooltip="{{ _('nav.sandboxes') }}">
+      data-tooltip="{{ _('nav.sandboxes') }}"
+      title="{{ _('nav.sandboxes') }}"
+      aria-label="{{ _('nav.sandboxes') }}">
     {# lucide: container #}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1"/><path d="m10 14 11.9-6.9"/><path d="M14 19.8v-8.1"/><path d="M18 17.5V9.4"/></svg>
   </a>

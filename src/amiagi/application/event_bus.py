@@ -33,6 +33,11 @@ class LogEvent:
 
     panel: str  # "user_model_log", "executor_log", "supervisor_log"
     message: str
+    agent_id: str | None = None
+    channel: str | None = None
+    source_kind: str | None = None
+    source_label: str | None = None
+    summary: str | None = None
 
 
 @dataclass(slots=True)
@@ -42,6 +47,11 @@ class ActorStateEvent:
     actor: str  # "router", "creator", "supervisor", "terminal"
     state: str  # "ACTIVE", "THINKING", "PAUSED", …
     event: str  # human-readable description
+    agent_id: str | None = None
+    channel: str | None = None
+    source_kind: str | None = None
+    source_label: str | None = None
+    summary: str | None = None
 
 
 @dataclass(slots=True)

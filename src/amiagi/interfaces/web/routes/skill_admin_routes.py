@@ -32,6 +32,34 @@ def _get_skill_repo(request: Request):
     return getattr(request.app.state, "skill_repository", None)
 
 
+async def _skill_preview_payload(repo, skill_id: str) -> dict[str, Any] | None:
+    skill = await repo.get_skill(skill_id)
+    if skill is None:
+        return None
+
+    usage_map = await repo.skill_usage_map() if hasattr(repo, "skill_usage_map") else []
+    stats = await repo.skill_usage_stats(skill_id) if hasattr(repo, "skill_usage_stats") else {}
+    usage_entry = next((item for item in usage_map if item.get("skill_id") == skill_id), None)
+    linked_agents = usage_entry.get("agents", []) if usage_entry else []
+    preview_sections = [
+        f"# Skill: {skill.display_name or skill.name}",
+        skill.description or skill.content or "",
+    ]
+    if skill.compatible_roles:
+        preview_sections.append("Compatible roles: " + ", ".join(skill.compatible_roles))
+    if skill.trigger_keywords:
+        preview_sections.append("Trigger keywords: " + ", ".join(skill.trigger_keywords))
+    if skill.compatible_tools:
+        preview_sections.append("Tools: " + ", ".join(skill.compatible_tools))
+
+    return {
+        "skill": skill.to_dict(),
+        "prompt_preview": "\n\n".join(section for section in preview_sections if section),
+        "linked_agents": linked_agents,
+        "stats": stats,
+    }
+
+
 def _parse_import_payload(body: bytes, content_type: str) -> list[dict]:
     """Parse YAML or JSON import body into a list of skill dicts."""
     text = body.decode("utf-8")
@@ -76,6 +104,18 @@ async def admin_list_skills(request: Request) -> Response:
 
     skills = await repo.list_skills(category=category, role=role, active_only=active_only)
     return JSONResponse({"skills": [s.to_dict() for s in skills]})
+
+
+@require_permission("admin.settings")
+async def admin_skill_edit_page(request: Request) -> Response:
+    templates = getattr(request.app.state, "templates", None)
+    if templates is None:
+        return JSONResponse({"error": "templates_not_available"}, status_code=503)
+    return templates.TemplateResponse(
+        request,
+        "admin/skill_edit.html",
+        {"user": request.state.user},
+    )
 
 
 @require_permission("admin.settings")
@@ -139,6 +179,28 @@ async def admin_skill_stats(request: Request) -> Response:
     return JSONResponse(stats)
 
 
+@require_permission("admin.settings")
+async def admin_skill_preview(request: Request) -> Response:
+    repo = _get_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "skill_repository_not_available"}, status_code=503)
+
+    payload = await _skill_preview_payload(repo, request.path_params["id"])
+    if payload is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(payload)
+
+
+@require_permission("admin.settings")
+async def admin_skill_usage_map(request: Request) -> Response:
+    repo = _get_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "skill_repository_not_available"}, status_code=503)
+
+    usage = await repo.skill_usage_map()
+    return JSONResponse({"skills": usage})
+
+
 # ── Traits ─────────────────────────────────────────────────────
 
 @require_permission("admin.settings")
@@ -160,7 +222,8 @@ async def admin_list_traits(request: Request) -> Response:
 
     trait_type = request.query_params.get("type")
     agent_role = request.query_params.get("role")
-    traits = await repo.list_traits(trait_type=trait_type, agent_role=agent_role)
+    active_only = request.query_params.get("active", "true").lower() == "true"
+    traits = await repo.list_traits(trait_type=trait_type, agent_role=agent_role, active_only=active_only)
     return JSONResponse({"traits": [t.to_dict() for t in traits]})
 
 
@@ -255,12 +318,15 @@ async def admin_import_skills(request: Request) -> Response:
 
 skill_admin_routes = [
     Route("/admin/skills", admin_list_skills, methods=["GET"]),
+    Route("/admin/skills/{id}/edit", admin_skill_edit_page, methods=["GET"]),
     Route("/admin/skills", admin_create_skill, methods=["POST"]),
     Route("/admin/skills/import", admin_import_skills, methods=["POST"]),
+    Route("/admin/skills/usage-map", admin_skill_usage_map, methods=["GET"]),
     Route("/admin/skills/{id}", admin_get_skill, methods=["GET"]),
     Route("/admin/skills/{id}", admin_update_skill, methods=["PUT"]),
     Route("/admin/skills/{id}", admin_delete_skill, methods=["DELETE"]),
     Route("/admin/skills/{id}/stats", admin_skill_stats, methods=["GET"]),
+    Route("/admin/skills/{id}/preview", admin_skill_preview, methods=["GET"]),
     Route("/admin/traits", admin_list_traits, methods=["GET"]),
     Route("/admin/traits", admin_create_trait, methods=["POST"]),
     Route("/admin/traits/{id}", admin_get_trait, methods=["GET"]),

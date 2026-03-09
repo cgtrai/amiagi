@@ -101,10 +101,46 @@ def run_web(
     except Exception:
         shell_policy = default_shell_policy()
 
+    # -- Load saved model config (web mode skips the textual wizard) ------
+    from amiagi.infrastructure.session_model_config import SessionModelConfig
+    from amiagi.interfaces.shared_cli_helpers import _set_executor_model
+    from amiagi.interfaces.web.routes.model_routes import _read_model_config
+
+    saved_cfg = SessionModelConfig.load(settings.model_config_path)
+    if saved_cfg and saved_cfg.polluks_model:
+        ok, _prev = _set_executor_model(chat_service, saved_cfg.polluks_model)
+        if ok:
+            logger.info("Web: loaded executor model '%s' from model_config.json", saved_cfg.polluks_model)
+        else:
+            logger.warning("Web: failed to set executor model '%s'", saved_cfg.polluks_model)
+    elif not getattr(chat_service.ollama_client, 'model', ''):
+        logger.warning(
+            "Web: no model configured — executor model is empty. "
+            "Set it via Settings → Models or /permissions all + chat."
+        )
+
+    raw_model_config = _read_model_config() or {}
+    if agent_registry is not None and raw_model_config:
+        for key, model_name in raw_model_config.items():
+            if not key.endswith("_model") or not model_name:
+                continue
+            agent_id = key[:-6]
+            descriptor = agent_registry.get(agent_id)
+            if descriptor is None:
+                continue
+            backend = str(raw_model_config.get(f"{agent_id}_source", getattr(descriptor, "model_backend", "ollama")) or "ollama")
+            try:
+                agent_registry.update_model(agent_id, str(model_name), model_backend=backend)
+            except Exception as exc:
+                logger.warning("Web: failed to restore model '%s' for %s: %s", model_name, agent_id, exc)
+
     # -- RouterEngine -------------------------------------------------------
+    permission_manager = PermissionManager()
+    RouterEngine.load_permissions(permission_manager)
+
     router_engine = RouterEngine(
         chat_service=chat_service,
-        permission_manager=PermissionManager(),
+        permission_manager=permission_manager,
         script_executor=script_executor,
         work_dir=settings.work_dir,
         shell_policy_path=settings.shell_policy_path,

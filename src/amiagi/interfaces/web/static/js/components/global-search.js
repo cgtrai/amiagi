@@ -29,7 +29,12 @@ class GlobalSearch extends HTMLElement {
     skill: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
     prompt: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     session: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 3H9l-3-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+    user: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    role: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>',
+    vault: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
     workflow: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>',
+    workflow_run: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l4 2"/></svg>',
     template: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
     knowledge: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
   };
@@ -42,7 +47,12 @@ class GlobalSearch extends HTMLElement {
     skill: "rgba(244,114,182,0.15)",
     prompt: "rgba(147,51,234,0.15)",
     session: "rgba(56,189,248,0.15)",
+    inbox: "rgba(14,165,233,0.15)",
+    user: "rgba(59,130,246,0.15)",
+    role: "rgba(34,197,94,0.15)",
+    vault: "rgba(245,158,11,0.15)",
     workflow: "rgba(251,146,60,0.15)",
+    workflow_run: "rgba(249,115,22,0.15)",
     template: "rgba(45,212,191,0.15)",
     knowledge: "rgba(168,85,247,0.15)"
   };
@@ -56,6 +66,7 @@ class GlobalSearch extends HTMLElement {
     this._visible = false;
     this._debounceTimer = null;
     this._activeFilter = null;
+    this._minSearchLen = 3;
   }
 
   connectedCallback() {
@@ -73,12 +84,18 @@ class GlobalSearch extends HTMLElement {
       if (e.target === self._overlay) self.close();
     });
 
-    // Input handling
+    // Input handling — SE1 autocomplete + full search
     this._input.addEventListener("input", function () {
       clearTimeout(self._debounceTimer);
       var q = self._input.value.trim();
       self._debounceTimer = setTimeout(function () {
-        self._search(q);
+        if (q.length >= 2 && q.length < self._minSearchLen) {
+          self._fetchSuggestions(q);
+        } else if (q.length >= self._minSearchLen) {
+          self._search(q);
+        } else {
+          self._list.innerHTML = "";
+        }
       }, 200);
       // Show/hide recent section
       self._recentSection.style.display = q.length > 0 ? "none" : "";
@@ -202,6 +219,80 @@ class GlobalSearch extends HTMLElement {
     this._filters.querySelectorAll(".gs-filter").forEach(function (btn) {
       btn.classList.toggle("active", (btn.dataset.type || null) === (type || null));
     });
+  }
+
+  /* ---------- SE1 Suggestions ---------- */
+
+  async _fetchSuggestions(query) {
+    try {
+      var resp = await fetch(this.apiUrl.replace(/\/$/, "") + "/suggestions?q=" + encodeURIComponent(query));
+      var data = await resp.json();
+      this._renderSuggestions(data.suggestions || [], data.recent || [], data.queries || []);
+    } catch (_) {
+      this._list.innerHTML = "";
+    }
+  }
+
+  _renderSuggestions(suggestions, recent, queries) {
+    this._list.innerHTML = "";
+    var self = this;
+    if (recent.length) {
+      var hdr = document.createElement("li");
+      hdr.className = "gs-item gs-muted";
+      hdr.innerHTML = "<strong>Recent</strong>";
+      this._list.appendChild(hdr);
+      recent.forEach(function (q) {
+        var li = document.createElement("li");
+        li.className = "gs-item";
+        li.innerHTML = '<span class="gs-title">' + self._esc(q) + '</span>';
+        li.addEventListener("click", function () {
+          self._input.value = q;
+          self._search(q);
+        });
+        self._list.appendChild(li);
+      });
+    }
+    if (queries.length) {
+      var hdrQ = document.createElement("li");
+      hdrQ.className = "gs-item gs-muted";
+      hdrQ.innerHTML = "<strong>Frequent</strong>";
+      this._list.appendChild(hdrQ);
+      queries.forEach(function (q) {
+        var li = document.createElement("li");
+        li.className = "gs-item";
+        li.innerHTML = '<span class="gs-title">' + self._esc(q) + '</span>';
+        li.addEventListener("click", function () {
+          self._input.value = q;
+          self._search(q);
+        });
+        self._list.appendChild(li);
+      });
+    }
+    if (suggestions.length) {
+      var hdr2 = document.createElement("li");
+      hdr2.className = "gs-item gs-muted";
+      hdr2.innerHTML = "<strong>Suggestions</strong>";
+      this._list.appendChild(hdr2);
+      suggestions.forEach(function (s) {
+        var title = typeof s === "string" ? s : (s.title || s.name || "");
+        var type = typeof s === "string" ? "search" : ((s.entity_type || s.type || "item").toLowerCase());
+        var icon = GlobalSearch.TYPE_ICONS[type] || "";
+        var color = GlobalSearch.TYPE_COLORS[type] || "rgba(99,102,241,0.1)";
+        var li = document.createElement("li");
+        li.className = "gs-item";
+        li.innerHTML =
+          '<span class="gs-type" style="background:' + color + '">' +
+            (icon ? '<span class="gs-icon">' + icon + '</span>' : "") +
+            self._esc(type) +
+          '</span>' +
+          '<span class="gs-title">' + self._esc(title) + '</span>';
+        li.addEventListener("click", function () {
+          self._input.value = title;
+          self._search(title);
+        });
+        self._list.appendChild(li);
+      });
+    }
   }
 
   /* ---------- Search ---------- */
@@ -430,10 +521,15 @@ class GlobalSearch extends HTMLElement {
             <button class="gs-filter active" data-type="">All</button>
             <button class="gs-filter" data-type="agent">Agents</button>
             <button class="gs-filter" data-type="task">Tasks</button>
+            <button class="gs-filter" data-type="session">Sessions</button>
+            <button class="gs-filter" data-type="workflow">Workflows</button>
+            <button class="gs-filter" data-type="inbox">Inbox</button>
             <button class="gs-filter" data-type="file">Files</button>
+            <button class="gs-filter" data-type="user">Users</button>
+            <button class="gs-filter" data-type="role">Roles</button>
+            <button class="gs-filter" data-type="vault">Vault</button>
             <button class="gs-filter" data-type="skill">Skills</button>
             <button class="gs-filter" data-type="prompt">Prompts</button>
-            <button class="gs-filter" data-type="workflow">Workflows</button>
           </div>
           <div class="gs-recent"></div>
           <ul class="gs-list"></ul>

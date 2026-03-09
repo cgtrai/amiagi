@@ -53,6 +53,20 @@
     if (!s) return "—";
     return String(s);
   }
+  function fmtMeta(value, fallback) {
+    return value == null || value === '' ? (fallback || 'n/a') : value;
+  }
+
+  function notifyModelHub(message, level) {
+    if (typeof showToast === 'function') {
+      showToast(message, level || 'info');
+    }
+  }
+
+  async function responseErrorMessage(response, fallback) {
+    var payload = await response.json().catch(function () { return {}; });
+    return payload.error || fallback;
+  }
 
   /* ── Tab switching ─────────────────────────────────────────── */
   tabs.forEach(function (tab) {
@@ -75,6 +89,10 @@
   }
   async function fetchLocalModels() {
     try { const r = await fetch("/api/models/local"); return r.ok ? r.json() : null; }
+    catch { return null; }
+  }
+  async function fetchModelCatalog() {
+    try { const r = await fetch("/models"); return r.ok ? r.json() : null; }
     catch { return null; }
   }
   async function fetchVram() {
@@ -174,10 +192,14 @@
         '</div>' +
         '<div class="model-hub-card-meta">' +
           '<span>Size: ' + esc(fmtSize(m.size)) + '</span>' +
-          (run ? '<span>VRAM: ' + esc(fmtSize(run.size_vram || run.size)) + '</span>' : '') +
+          '<span class="meta-tag">Ctx: ' + fmtMeta(m.context_length, 'n/a') + (m.context_length ? '' : '') + '</span>' +
+          '<span class="meta-tag">VRAM: ' + fmtMeta(m.vram_mb, 'n/a') + (m.vram_mb != null ? ' MB' : '') + '</span>' +
+          '<span class="meta-tag">Cost: ' + (m.cost_per_1k == null ? 'local' : ('$' + Number(m.cost_per_1k).toFixed(4) + '/1k')) + '</span>' +
+          (run ? '<span class="meta-tag meta-tag--accent">Loaded: ' + fmtBytes(run.size_vram || run.size || 0) + '</span>' : '') +
         '</div>' +
         '<div class="model-hub-card-actions">' +
           '<button class="glass-btn glass-btn--sm js-bench" data-name="' + esc(name) + '">Benchmark</button>' +
+          (run ? '<button class="glass-btn glass-btn--sm glass-btn--ghost js-unload" data-name="' + esc(name) + '">Unload</button>' : '') +
           '<button class="glass-btn glass-btn--sm glass-btn--danger js-del-local" data-name="' + esc(name) + '">Delete</button>' +
         '</div>';
       localGrid.appendChild(card);
@@ -223,7 +245,7 @@
           try {
             var evt = JSON.parse(line.slice(6));
             if (evt.done) {
-              pullStatus.textContent = "Pull complete ✓";
+              pullStatus.textContent = "Pull complete";
               pullStatus.className = "model-hub-pull-status --ok";
               pullInput.value = "";
               loadLocal();
@@ -255,18 +277,105 @@
       });
       var d = await r.json();
       if (r.ok && d.ok) {
-        alert("Benchmark: " + (d.tokens_per_second || 0).toFixed(1) + " tok/s (" + d.elapsed_seconds + "s)");
-      } else { alert("Benchmark failed: " + (d.error || "unknown")); }
-    } catch (e) { alert("Error: " + e.message); }
+        notifyModelHub("Benchmark ready: " + (d.tokens_per_second || 0).toFixed(1) + " tok/s", "success");
+      } else {
+        notifyModelHub("Benchmark failed: " + (d.error || "unknown"), "error");
+      }
+    } catch (e) {
+      notifyModelHub("Benchmark failed", "error");
+    }
   }
   async function deleteLocalModel(name) {
     if (!confirm("Delete local model " + name + "?")) return;
     try {
       var r = await fetch("/api/models/local/" + encodeURIComponent(name), { method: "DELETE" });
-      if (r.ok) loadLocal();
-      else alert("Delete failed");
-    } catch (e) { alert("Error: " + e.message); }
+      if (r.ok) {
+        notifyModelHub("Local model deleted", "success");
+        loadLocal();
+      } else {
+        notifyModelHub(await responseErrorMessage(r, "Delete failed"), "error");
+      }
+    } catch (e) {
+      notifyModelHub("Delete failed", "error");
+    }
   }
+
+  /* ── M5: Model Queue ──────────────────────────────────── */
+  async function loadModelQueue() {
+    var queueEl = document.getElementById('model-queue');
+    if (!queueEl) return;
+    try {
+      var r = await fetch('/api/models/queue');
+      if (!r.ok) { queueEl.innerHTML = ''; return; }
+      var data = await r.json();
+      var items = data.queue || data.items || [];
+      if (items.length === 0) { queueEl.innerHTML = '<p class="model-hub-empty">No models in queue</p>'; return; }
+      var html = '<h4>Model Queue</h4>';
+      for (var i = 0; i < items.length; i++) {
+        var q = items[i];
+        html += '<div class="glass-card" style="padding:var(--space-2);margin-bottom:var(--space-1)">' +
+          '<span class="model-hub-card-name">' + esc(q.model_name || '?') + '</span> ' +
+          '<span class="meta-tag">' + esc(q.agent_id || '') + '</span> ' +
+          '<span class="meta-tag">waiting ' + esc(q.waiting_since || '') + '</span>' +
+          '</div>';
+      }
+      queueEl.innerHTML = html;
+    } catch (e) { /* ignore */ }
+  }
+
+  /* ── M6: Unload model (free VRAM) ──────────────────────── */
+  async function unloadModel(name) {
+    if (!confirm('Unload ' + name + ' from VRAM?')) return;
+    try {
+      var r = await fetch('/api/models/' + encodeURIComponent(name) + '/unload', { method: 'POST' });
+      if (r.ok) {
+        notifyModelHub('Model unloaded', 'success');
+        loadLocal();
+      } else {
+        notifyModelHub(await responseErrorMessage(r, 'Unload failed'), 'error');
+      }
+    } catch (e) {
+      notifyModelHub('Unload failed', 'error');
+    }
+  }
+
+  /* ── M4: JSON Config Editor ────────────────────────────── */
+  async function loadModelConfig() {
+    var textarea = document.getElementById('model-config-json');
+    if (!textarea) return;
+    try {
+      var r = await fetch('/models/config');
+      if (r.ok) {
+        var data = await r.json();
+        textarea.value = JSON.stringify(data, null, 2);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  function initConfigEditor() {
+    var saveBtn = document.getElementById('btn-save-config');
+    if (!saveBtn) return;
+    saveBtn.addEventListener('click', async function () {
+      var textarea = document.getElementById('model-config-json');
+      try {
+        var parsed = JSON.parse(textarea.value);
+        var r = await fetch('/models/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed)
+        });
+        var d = await r.json();
+        if (d.ok) {
+          if (typeof showToast === 'function') showToast('Config saved', 'success');
+        } else {
+          if (typeof showToast === 'function') showToast(d.error || 'Save failed', 'error');
+        }
+      } catch (e) {
+        if (typeof showToast === 'function') showToast('Invalid JSON: ' + e.message, 'error');
+      }
+    });
+    loadModelConfig();
+  }
+  initConfigEditor();
 
   pullForm.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -280,6 +389,7 @@
     if (!name) return;
     if (btn.classList.contains("js-bench")) benchModel(name);
     else if (btn.classList.contains("js-del-local")) deleteLocalModel(name);
+    else if (btn.classList.contains("js-unload")) unloadModel(name);
   });
 
   async function loadLocal() {
@@ -297,6 +407,7 @@
 
   var defaultUrls = {
     openai: "https://api.openai.com/v1",
+    google: "https://generativelanguage.googleapis.com/v1beta",
     anthropic: "https://api.anthropic.com",
     custom: "",
   };
@@ -358,10 +469,10 @@
       });
       var d = await r.json();
       if (d.ok) {
-        cloudStatus.textContent = "✓ Connected — " + d.latency_ms + "ms, " + (d.models || []).length + " models available";
+        cloudStatus.textContent = "Connected — " + d.latency_ms + "ms, " + (d.models || []).length + " models available";
         cloudStatus.className = "model-hub-cloud-status --ok";
       } else {
-        cloudStatus.textContent = "✗ " + (d.error || "Connection failed") + (d.detail ? ": " + d.detail.slice(0, 120) : "");
+        cloudStatus.textContent = (d.error || "Connection failed") + (d.detail ? ": " + d.detail.slice(0, 120) : "");
         cloudStatus.className = "model-hub-cloud-status --err";
       }
     } catch (e) {
@@ -396,7 +507,7 @@
       });
       var d = await r.json();
       if (d.ok) {
-        cloudStatus.textContent = "Saved ✓";
+        cloudStatus.textContent = "Saved";
         cloudStatus.className = "model-hub-cloud-status --ok";
         cloudModel.value = ""; cloudKey.value = ""; cloudName.value = "";
         loadCloud();
@@ -417,9 +528,15 @@
         "/api/models/cloud/" + encodeURIComponent(provider) + "/" + encodeURIComponent(model),
         { method: "DELETE" }
       );
-      if (r.ok) loadCloud();
-      else alert("Delete failed");
-    } catch (e) { alert("Error: " + e.message); }
+      if (r.ok) {
+        notifyModelHub("Cloud model deleted", "success");
+        loadCloud();
+      } else {
+        notifyModelHub(await responseErrorMessage(r, "Delete failed"), "error");
+      }
+    } catch (e) {
+      notifyModelHub("Delete failed", "error");
+    }
   }
 
   cloudForm.addEventListener("submit", saveCloudModel);
@@ -451,15 +568,15 @@
     var current = benchSelect.value;
     var opts = '<option value="">— select model —</option>';
     try {
-      var r = await fetch("/api/models/local");
-      if (r.ok) {
-        var d = await r.json();
-        var models = (d && d.models) ? d.models : [];
-        for (var i = 0; i < models.length; i++) {
-          var name = models[i].name || "";
-          var sel = (name === current) ? " selected" : "";
-          opts += '<option value="' + esc(name) + '"' + sel + '>' + esc(name) + '</option>';
-        }
+      var d = await fetchModelCatalog();
+      var models = (d && d.ollama_models) ? d.ollama_models : [];
+      for (var i = 0; i < models.length; i++) {
+        var name = models[i] || "";
+        var sel = (name === current) ? " selected" : "";
+        opts += '<option value="' + esc(name) + '"' + sel + '>' + esc(name) + '</option>';
+      }
+      if (current && models.indexOf(current) === -1) {
+        opts += '<option value="' + esc(current) + '" selected>' + esc(current) + '</option>';
       }
     } catch (e) { /* ignore */ }
     benchSelect.innerHTML = opts;
@@ -536,20 +653,19 @@
 
   async function loadAssignments() {
     try {
-      var r = await fetch("/models");
-      if (!r.ok) return;
-      var data = await r.json();
+      var data = await fetchModelCatalog();
+      if (!data) return;
       if (!assignEl) return;
-      var agents = data.config_models || [];
+      var agents = data.agent_assignments || [];
       if (agents.length === 0) { assignEl.innerHTML = ""; return; }
       var html = "";
       for (var i = 0; i < agents.length; i++) {
         var a = agents[i];
         html +=
           '<div class="glass-card model-hub-assignment-card">' +
-            '<span class="model-hub-assignment-agent">' + esc(a.role || a.name || "—") + '</span>' +
-            '<span class="model-hub-assignment-model">' + esc(a.name || "—") + '</span>' +
-            '<span class="model-hub-assignment-source">' + esc(a.source || "ollama") + '</span>' +
+            '<span class="model-hub-assignment-agent">' + esc(a.name || a.agent_id || "—") + '</span>' +
+            '<span class="model-hub-assignment-model">' + esc(a.model_name || "—") + '</span>' +
+            '<span class="model-hub-assignment-source">' + esc(a.model_backend || a.source || "ollama") + '</span>' +
           '</div>';
       }
       assignEl.innerHTML = html;
@@ -558,7 +674,7 @@
 
   /* ── Load all ──────────────────────────────────────────────── */
   async function loadAll() {
-    await Promise.all([loadLocal(), loadCloud(), loadAssignments(), populateBenchModelSelect()]);
+    await Promise.all([loadLocal(), loadCloud(), loadAssignments(), populateBenchModelSelect(), loadModelQueue()]);
   }
   if (refreshBtn) refreshBtn.addEventListener("click", loadAll);
   loadAll();

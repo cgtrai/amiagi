@@ -10,19 +10,10 @@
     <!-- Bell notification -->
     <li class="nav-bell-wrapper">
       <button id="bell-btn" class="nav-bell-btn" aria-label="Notifications"
-        onclick="toggleNotificationDropdown()">
+        onclick="toggleNotificationDrawer()">
         🔔
         <span id="bell-badge" class="nav-bell-badge">0</span>
       </button>
-      <div id="notif-dropdown" class="notif-dropdown">
-        <div class="notif-header">
-          <span>{{ _("notifications.title") }}</span>
-          <button onclick="markAllRead()" class="notif-mark-all">{{ _("notifications.mark_all_read") }}</button>
-        </div>
-        <ul id="notif-list" class="notif-list">
-          <li class="notif-empty">{{ _("notifications.empty") }}</li>
-        </ul>
-      </div>
     </li>
 
     <!-- Language switcher -->
@@ -41,6 +32,32 @@
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileMenu()"></div>
 
 <script>
+var NOTIF_I18N = {
+  title: {{ _("notifications.title") | tojson }},
+  empty: {{ _("notifications.empty") | tojson }},
+  markAllRead: {{ _("notifications.mark_all_read") | tojson }},
+  alertRules: {{ _("metrics.alerts") | tojson }},
+  notifications: {{ _("notifications.title") | tojson }},
+  channels: {{ _("settings.notification_channels") | tojson }},
+  save: {{ _("common.save") | tojson }},
+  cancel: {{ _("common.cancel") | tojson }},
+  refresh: {{ _("common.refresh") | tojson }},
+  muted: "Muted",
+  mute: "Mute",
+  unmute: "Unmute",
+  unreadOnly: "Unread only",
+  all: "All",
+  source: "Source",
+  severity: "Severity",
+  eventType: "Event type",
+  actionable: "Actionable",
+  open: "Open",
+  noRules: "No alert rules yet",
+  createRule: "Create Rule",
+  channelSaved: "Notification preferences saved",
+  drawerHint: "Review alerts, choose delivery channels and mute noisy agents.",
+};
+
 function toggleMobileMenu() {
   var rail = document.getElementById('command-rail') || document.getElementById('sidebar');
   var overlay = document.getElementById('rail-overlay') || document.getElementById('sidebar-overlay');
@@ -59,58 +76,214 @@ function closeMobileMenu() {
   if (btn) btn.classList.remove('open');
 }
 
-/* ---------- Notification bell ---------- */
-var _notifOpen = false;
-
-function toggleNotificationDropdown() {
-  _notifOpen = !_notifOpen;
-  document.getElementById('notif-dropdown').style.display = _notifOpen ? 'block' : 'none';
-  if (_notifOpen) fetchNotifications();
+function _notifBadge(severity) {
+  var cls = severity === 'error' ? 'badge-danger' : (severity === 'warning' ? 'badge-working' : 'badge-idle');
+  return '<span class="glass-badge ' + cls + '">' + _esc(severity || 'info') + '</span>';
 }
 
-// Close dropdown on outside click
-document.addEventListener('click', function(e) {
-  if (_notifOpen && !e.target.closest('.nav-bell-wrapper')) {
-    _notifOpen = false;
-    document.getElementById('notif-dropdown').style.display = 'none';
-  }
-});
+function _notifTypeLabel(raw) {
+  return _esc(String(raw || 'system.info').replace(/[._]/g, ' '));
+}
 
-function fetchNotifications() {
+function _notifActionLink(item) {
+  var url = item.action_url || '';
+  if (!url && item.workflow_run_id) url = '/workflows?run_id=' + encodeURIComponent(item.workflow_run_id);
+  if (!url && item.task_id) url = '/tasks?task_id=' + encodeURIComponent(item.task_id);
+  if (!url && item.session_id) url = '/sessions?session_id=' + encodeURIComponent(item.session_id);
+  if (!url) return '';
+  return '<a class="glass-btn glass-btn--xs glass-btn--ghost" href="' + _esc(url) + '">' + NOTIF_I18N.open + '</a>';
+}
+
+function renderNotificationCenter(data) {
+  var groups = data.groups || [];
+  var prefs = (data && data.preferences) || { channels: {}, muted_agents: [], grouping: {} };
+  var muted = prefs.muted_agents || [];
+  var toolbar = ''
+    + '<div class="notif-drawer-shell">'
+    + '<div class="notif-drawer-head">'
+    + '<div><h3 style="margin:0">' + NOTIF_I18N.notifications + '</h3><p style="margin:4px 0 0;color:var(--text-muted)">' + NOTIF_I18N.drawerHint + '</p></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button class="glass-btn glass-btn--sm" onclick="markAllRead()">' + NOTIF_I18N.markAllRead + '</button>'
+    + '<button class="glass-btn glass-btn--sm glass-btn--ghost" onclick="openAlertRules()">⚙️ ' + NOTIF_I18N.alertRules + '</button>'
+    + '<button class="glass-btn glass-btn--sm glass-btn--ghost" onclick="openNotificationChannels()">📡 ' + NOTIF_I18N.channels + '</button>'
+    + '</div></div>'
+    + '<div class="notif-summary-row">'
+    + '<span class="glass-pill">Unread: ' + _esc(data.unread_count || 0) + '</span>'
+    + '<span class="glass-pill">Groups: ' + _esc(groups.length) + '</span>'
+    + '<span class="glass-pill">Muted: ' + _esc(muted.length) + '</span>'
+    + '</div>';
+
+  if (!groups.length) {
+    return toolbar + '<p style="color:var(--text-muted)">' + NOTIF_I18N.empty + '</p></div>';
+  }
+
+  return toolbar + groups.map(function(group) {
+    var groupKey = group.key || 'system';
+    var isMuted = muted.indexOf(groupKey) >= 0;
+    return '<section class="glass-card" style="padding:12px;margin-bottom:10px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">'
+      + '<div><strong>' + _esc(group.label || groupKey) + '</strong><div style="font-size:12px;color:var(--text-muted)">' + _esc((group.items || []).length) + ' notifications</div></div>'
+      + '<button class="glass-btn glass-btn--xs glass-btn--ghost" onclick="toggleMuteAgent(\'' + _esc(groupKey) + '\',' + (isMuted ? 'true' : 'false') + ')">' + (isMuted ? '🔔 ' + NOTIF_I18N.unmute : '🔇 ' + NOTIF_I18N.mute) + '</button>'
+      + '</div>'
+      + (group.groups || []).map(function(subgroup) {
+        return '<div class="notif-subgroup" style="margin-bottom:8px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+          + '<span class="glass-pill">' + _notifTypeLabel(subgroup.label || subgroup.key) + '</span>'
+          + '<span style="font-size:12px;color:var(--text-muted)">' + _esc((subgroup.items || []).length) + '</span>'
+          + '</div>'
+          + (subgroup.items || []).map(function(n) {
+            var unreadStyle = n.is_read ? '' : 'font-weight:600;';
+            return '<article class="notif-item" style="padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)">'
+              + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'
+              + '<div style="min-width:0;flex:1">'
+              + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px">'
+              + _notifBadge(n.severity)
+              + '<span class="glass-pill">' + _esc(n.source || 'system') + '</span>'
+              + (n.actionability ? '<span class="glass-pill">' + NOTIF_I18N.actionable + '</span>' : '')
+              + '</div>'
+              + '<div style="' + unreadStyle + '">' + _esc(n.title || n.message || '') + '</div>'
+              + (n.body ? '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + _esc(n.body) + '</div>' : '')
+              + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + _esc(n.created_at || '') + '</div>'
+              + '</div>'
+              + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
+              + _notifActionLink(n)
+              + (n.is_read ? '' : '<button class="glass-btn glass-btn--xs" onclick="readNotif(\'' + _esc(n.id) + '\')">✓</button>')
+              + '</div>'
+              + '</div>'
+              + '</article>';
+          }).join('')
+          + '</div>';
+      }).join('')
+      + '</section>';
+  }).join('') + '</div>';
+}
+
+/* ---------- Notification bell → Drawer (N1–N5) ---------- */
+
+function toggleNotificationDrawer() {
   fetch('/api/notifications')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var items = data.notifications || [];
-      var list = document.getElementById('notif-list');
-      var badge = document.getElementById('bell-badge');
-      var unread = items.filter(function(n) { return !n.read; });
-      badge.textContent = unread.length;
-      badge.style.display = unread.length > 0 ? '' : 'none';
-      if (items.length === 0) {
-        list.innerHTML = '<li class="notif-empty">No notifications</li>';
-        return;
-      }
-      list.innerHTML = items.map(function(n) {
-        var cls = n.read ? 'notif-item' : 'notif-item notif-item--unread';
-        var dot = n.read ? '' : '<span class="notif-dot"></span>';
-        return '<li class="' + cls + '" onclick="readNotif(\'' + _esc(n.id) + '\')">'
-          + dot + '<span>' + _esc(n.message || n.title || '') + '</span>'
-          + '<div class="notif-meta">' + _esc(n.created_at || '') + '</div>'
-          + '</li>';
-      }).join('');
+      if (typeof openDetailDrawer === 'function') openDetailDrawer(NOTIF_I18N.notifications, renderNotificationCenter(data));
     })
     .catch(function() {});
 }
 
+/* N2 — Alert rules builder */
+function openAlertRules() {
+  fetch('/api/alerts/rules').then(function(r) { return r.json(); }).then(function(data) {
+    var rules = data.rules || [];
+    var html = '<div class="alert-rules-editor">'
+      + '<div class="existing-rules">' + rules.map(function(r) {
+        return '<div class="glass-card" style="padding:8px;margin-bottom:6px;display:flex;align-items:center;gap:8px">'
+          + '<span>' + _esc(r.name || '') + '</span>'
+          + '<span class="glass-badge ' + (r.active ? 'badge-success' : 'badge-muted') + '">' + (r.active ? 'Active' : 'Disabled') + '</span>'
+          + '<span class="meta-tag">' + _esc(r.metric || '') + ' ' + _esc(r.operator || '') + ' ' + (r.threshold || '') + '</span>'
+          + '<span class="meta-tag">' + _esc(r.event_type || '') + '</span>'
+          + '<span class="meta-tag">' + _esc((r.channels || []).join(', ')) + '</span>'
+          + '<button class="glass-btn glass-btn--xs glass-btn--danger" onclick="deleteAlertRule(\'' + _esc(r.id) + '\')">×</button>'
+          + '</div>';
+      }).join('') + '</div>'
+      + (rules.length ? '' : '<p style="color:var(--text-muted)">' + NOTIF_I18N.noRules + '</p>')
+      + '<form id="new-rule-form" class="glass-card" style="padding:12px;margin-top:12px">'
+      + '<h4 style="margin:0 0 8px">' + NOTIF_I18N.createRule + '</h4>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+      + '<select class="glass-input" id="rule-event-type"><option value="task.done">task.done</option><option value="agent.error">agent.error</option><option value="budget.exceeded">budget.exceeded</option><option value="system.info">system.info</option></select>'
+      + '<select class="glass-input" id="rule-severity"><option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option></select>'
+      + '<select class="glass-input" id="rule-metric"><option value="budget_pct">Budget %</option><option value="error_rate">Error Rate</option><option value="response_time">Response Time</option><option value="queue_length">Queue Length</option></select>'
+      + '<select class="glass-input" id="rule-operator"><option value=">">&gt;</option><option value="<">&lt;</option><option value="==">==</option></select>'
+      + '<input class="glass-input" id="rule-threshold" type="number" placeholder="Threshold">'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label><input type="checkbox" class="rule-channel" value="ui" checked> UI</label><label><input type="checkbox" class="rule-channel" value="webhook"> Webhook</label><label><input type="checkbox" class="rule-channel" value="email"> Email</label></div>'
+      + '</div>'
+      + '<input class="glass-input" id="rule-name" placeholder="Rule name" style="margin-top:8px">'
+      + '<button type="submit" class="glass-btn glass-btn--primary glass-btn--sm" style="margin-top:8px">' + NOTIF_I18N.createRule + '</button>'
+      + '</form></div>';
+    if (typeof openDetailDrawer === 'function') openDetailDrawer(NOTIF_I18N.alertRules, html);
+    setTimeout(function() {
+      var form = document.getElementById('new-rule-form');
+      if (form) form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var selectedChannels = Array.from(document.querySelectorAll('.rule-channel:checked')).map(function(el) { return el.value; });
+        var body = {
+          name: document.getElementById('rule-name').value.trim() || 'Rule',
+          event_type: document.getElementById('rule-event-type').value,
+          severity: document.getElementById('rule-severity').value,
+          metric: document.getElementById('rule-metric').value,
+          operator: document.getElementById('rule-operator').value,
+          threshold: parseFloat(document.getElementById('rule-threshold').value) || 0,
+          channel: selectedChannels[0] || 'ui',
+          channels: selectedChannels,
+          active: true
+        };
+        fetch('/api/alerts/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+          .then(function() { openAlertRules(); })
+          .catch(function() {});
+      });
+    }, 50);
+  }).catch(function() {});
+}
+
+function deleteAlertRule(id) {
+  fetch('/api/alerts/rules/' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(function() { openAlertRules(); }).catch(function() {});
+}
+
+function openNotificationChannels() {
+  fetch('/api/notifications/preferences').then(function(r) { return r.json(); }).then(function(data) {
+    var prefs = (data && data.preferences) || { channels: {}, muted_agents: [], grouping: {} };
+    var rows = ['task.done', 'agent.error', 'budget.exceeded', 'system.info'].map(function(eventType) {
+      var channels = prefs.channels && prefs.channels[eventType] ? prefs.channels[eventType] : ['ui'];
+      return '<tr>'
+        + '<td>' + _notifTypeLabel(eventType) + '</td>'
+        + '<td><label><input type="checkbox" data-channel-event="' + _esc(eventType) + '" value="ui" ' + (channels.indexOf('ui') >= 0 ? 'checked' : '') + '> UI</label></td>'
+        + '<td><label><input type="checkbox" data-channel-event="' + _esc(eventType) + '" value="email" ' + (channels.indexOf('email') >= 0 ? 'checked' : '') + '> Email</label></td>'
+        + '<td><label><input type="checkbox" data-channel-event="' + _esc(eventType) + '" value="webhook" ' + (channels.indexOf('webhook') >= 0 ? 'checked' : '') + '> Webhook</label></td>'
+        + '</tr>';
+    }).join('');
+    var html = '<div class="glass-card" style="padding:12px">'
+      + '<h3 style="margin-top:0">' + NOTIF_I18N.channels + '</h3>'
+      + '<table class="glass-table" style="width:100%"><thead><tr><th>' + NOTIF_I18N.eventType + '</th><th>UI</th><th>Email</th><th>Webhook</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="glass-btn glass-btn--primary glass-btn--sm" onclick="saveNotificationChannels()">' + NOTIF_I18N.save + '</button></div>'
+      + '</div>';
+    if (typeof openDetailDrawer === 'function') openDetailDrawer(NOTIF_I18N.channels, html);
+  }).catch(function() {});
+}
+
+function saveNotificationChannels() {
+  var channels = {};
+  Array.from(document.querySelectorAll('[data-channel-event]')).forEach(function(input) {
+    var eventType = input.getAttribute('data-channel-event');
+    if (!channels[eventType]) channels[eventType] = [];
+    if (input.checked) channels[eventType].push(input.value);
+  });
+  fetch('/api/notifications/preferences', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channels: channels })
+  }).then(function() {
+    if (typeof showToast === 'function') showToast(NOTIF_I18N.channelSaved, 'success');
+    toggleNotificationDrawer();
+  }).catch(function() {});
+}
+
+/* N5 — Mute agent */
+function toggleMuteAgent(agentId, currentlyMuted) {
+  fetch('/api/notifications/mute/' + encodeURIComponent(agentId), { method: currentlyMuted ? 'DELETE' : 'POST' })
+    .then(function() { if (typeof showToast === 'function') showToast(currentlyMuted ? 'Agent unmuted' : 'Agent muted', 'info'); toggleNotificationDrawer(); })
+    .catch(function() {});
+}
+
+// Close dropdown on outside click — no longer needed (drawer handles that)
+
 function readNotif(id) {
-  fetch('/api/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' })
-    .then(function() { fetchNotifications(); })
+  fetch('/api/notifications/' + encodeURIComponent(id) + '/read', { method: 'PUT' })
+    .then(function() { toggleNotificationDrawer(); })
     .catch(function() {});
 }
 
 function markAllRead() {
-  fetch('/api/notifications/read-all', { method: 'POST' })
-    .then(function() { fetchNotifications(); })
+  fetch('/api/notifications/read-all', { method: 'PUT' })
+    .then(function() { toggleNotificationDrawer(); })
     .catch(function() {});
 }
 

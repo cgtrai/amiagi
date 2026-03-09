@@ -22,6 +22,7 @@ from amiagi.interfaces.cli_commands import (
 from amiagi.interfaces.permission_manager import PermissionManager
 from amiagi.interfaces.shared_cli_helpers import (
     _build_landing_banner,
+    _build_operator_command_catalog,
     _fetch_ollama_models,
     _set_executor_model,
 )
@@ -32,31 +33,8 @@ from amiagi.i18n import _
 
 def _build_cli_help_commands() -> list[tuple[str, str]]:
     return [
-        ("/help", _("cli.help.cmd.help")),
-        ("/cls", _("cli.help.cmd.cls")),
-        ("/cls all", _("cli.help.cmd.cls_all")),
-        ("/models current", _("cli.help.cmd.models_current")),
-        ("/models show", _("cli.help.cmd.models_show")),
-        ("/models chose <nr>", _("cli.help.cmd.models_chose")),
-        ("/permissions", _("cli.help.cmd.permissions")),
-        ("/permissions all", _("cli.help.cmd.permissions_all")),
-        ("/permissions ask", _("cli.help.cmd.permissions_ask")),
-        ("/permissions reset", _("cli.help.cmd.permissions_reset")),
-        ("/show-system-context [tekst]", _("cli.help.cmd.show_system_context")),
-        ("/goal-status", _("cli.help.cmd.goal_status")),
-        ("/goal", _("cli.help.cmd.goal")),
-        ("/queue-status", _("cli.help.cmd.queue_status")),
-        ("/capabilities [--network]", _("cli.help.cmd.capabilities")),
-        ("/history [n]", _("cli.help.cmd.history")),
-        ("/remember <tekst>", _("cli.help.cmd.remember")),
-        ("/memories [zapytanie]", _("cli.help.cmd.memories")),
-        ("/import-dialog [plik]", _("cli.help.cmd.import_dialog")),
-        ("/create-python <plik> <opis>", _("cli.help.cmd.create_python")),
-        ("/run-python <plik> [arg ...]", _("cli.help.cmd.run_python")),
-        ("/run-shell <polecenie>", _("cli.help.cmd.run_shell")),
-        ("/lang <code>", _("cli.help.cmd.lang")),
-        ("/bye", _("cli.help.cmd.bye")),
-        ("/exit", _("cli.help.cmd.exit")),
+        (item["command"], item["description"])
+        for item in _build_operator_command_catalog()
     ]
 
 

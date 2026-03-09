@@ -41,6 +41,10 @@
         </svg>
         {{ _("health.export_report") }}
       </button>
+      <button class="glass-btn glass-btn--ghost" id="btn-health-alerts"
+              onclick="if(typeof openAlertRules==='function')openAlertRules();">
+        🔔 {{ _("health.configure_alerts") }}
+      </button>
     </div>
   </div>
 
@@ -116,6 +120,26 @@
         <span class="health-metric-label">{{ _("health.rate_limiter") }}</span>
         <span class="health-metric-value">—</span>
       </div>
+      <div class="health-metric" id="metric-python">
+        <span class="health-metric-label">Python</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-tasks-running">
+        <span class="health-metric-label">Tasks Running</span>
+        <span class="health-metric-value">—</span>
+      </div>
+      <div class="health-metric" id="metric-qpm">
+        <span class="health-metric-label">Queries/min</span>
+        <span class="health-metric-value">—</span>
+      </div>
+    </div>
+  </section>
+
+  {# ── Rate limits panel (H1) ─────────────────────────────── #}
+  <section class="health-panel" id="panel-rate-limits">
+    <h3>Rate Limits</h3>
+    <div id="rate-limits-panel">
+      <p class="health-muted">{{ _("common.loading") }}</p>
     </div>
   </section>
 

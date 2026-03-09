@@ -280,6 +280,12 @@ class TestP2Templates:
         assert "vault-modal-overlay" in src
         assert "vault-secret-form" in src
 
+    def test_vault_has_rotation_workflow_panel(self):
+        src = (_TEMPLATES / "vault.html").read_text(encoding="utf-8")
+        assert "vault-rotation-panel" in src
+        assert "vault-rotation-form" in src
+        assert "vault-rotation-list" in src
+
 
 # ============================================================
 # 4. Static assets — CSS
@@ -336,6 +342,12 @@ class TestP2JSFiles:
         src = (_STATIC / "js" / "budget.js").read_text(encoding="utf-8")
         assert "renderChart" in src
         assert "getContext" in src
+
+    def test_vault_js_has_rotation_workflow_logic(self):
+        src = (_STATIC / "js" / "vault.js").read_text(encoding="utf-8")
+        assert "rotation-schedule" in src
+        assert "js-rotation" in src
+        assert "vault-rotation-form" in src
 
 
 # ============================================================
@@ -595,7 +607,7 @@ class TestSecretVaultFernet:
         """Fernet tokens are URL-safe base64 and start with 'gAAAAA'."""
         vault.set_secret("agent-x", "KEY", "value")
         raw_data = json.loads(vault._path.read_text(encoding="utf-8"))
-        token = raw_data["agent-x"]["KEY"]
+        token = raw_data["agent-x"]["KEY"]["encrypted_value"]
         assert token.startswith("gAAAAA"), f"Not a Fernet token: {token[:20]}"
 
     def test_key_file_created(self, tmp_path):

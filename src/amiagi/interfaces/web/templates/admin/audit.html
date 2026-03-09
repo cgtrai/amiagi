@@ -1,31 +1,96 @@
 {% extends "base.html" %}
 {% block title %}Amiagi — {{ _("admin.activity_logs") }}{% endblock %}
+{% block head %}
+{% include "partials/admin_nav.html" %}
+<style>
+.audit-page { padding: var(--space-6); }
+.admin-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-5); flex-wrap: wrap; gap: var(--space-3); }
+.audit-toolbar { display: flex; flex-direction: column; gap: var(--space-3); }
+.audit-quick-filters { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.audit-filters { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.audit-filters .glass-input { min-width: 120px; }
+.audit-actions { display: flex; gap: var(--space-2); align-items: center; }
+.audit-row { cursor: pointer; }
+.audit-row:hover { background: var(--glass-bg-hover); }
+.audit-detail-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-pagination { display: flex; gap: var(--space-2); justify-content: center; padding: var(--space-4) 0; }
+.audit-user-link, .audit-session-link { color: var(--accent-blue); text-decoration: none; }
+.audit-user-link:hover, .audit-session-link:hover { text-decoration: underline; }
+.audit-retention { display: inline-flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.audit-retention-note { color: var(--text-muted); font-size: var(--font-size-xs); }
+</style>
+{% endblock %}
 {% block content %}
-  <div class="container">
-    {% include "partials/admin_nav.html" %}
-    <h1>{{ _("admin.activity_logs") }}</h1>
-
-    <table class="table glass-card">
-      <thead>
-        <tr>
-          <th>{{ _("admin.date") }}</th>
-          <th>{{ _("admin.email") }}</th>
-          <th>{{ _("admin.actions") }}</th>
-          <th>{{ _("admin.details") }}</th>
-          <th>{{ _("admin.ip") }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in logs %}
-        <tr>
-          <td>{{ log.created_at }}</td>
-          <td>{{ log.email or "–" }}</td>
-          <td>{{ log.action }}</td>
-          <td>{{ log.detail or "–" }}</td>
-          <td>{{ log.ip_address or "–" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="audit-page" id="audit-page"
+     data-initial-user="{{ (filters.user if filters else '')|e }}"
+     data-initial-action="{{ (filters.action if filters else '')|e }}"
+     data-initial-since="{{ (filters.since if filters else '')|e }}"
+     data-initial-until="{{ (filters.until if filters else '')|e }}"
+     data-initial-search="{{ (filters.q if filters else '')|e }}"
+     data-initial-error-only="{{ (filters.error_only if filters else '')|e }}"
+     data-initial-session-id="{{ (filters.session_id if filters else '')|e }}"
+     data-retention-days="{{ retention_days if retention_days is not none else 'forever' }}">
+  <div class="admin-header">
+    <h2>{{ _("admin.activity_logs") }}</h2>
+    <div class="audit-toolbar">
+      <div class="audit-quick-filters">
+        <button class="glass-btn glass-btn--sm glass-btn--pill active" data-quick="all">All</button>
+        <button class="glass-btn glass-btn--sm glass-btn--pill" data-quick="today">Today</button>
+        <button class="glass-btn glass-btn--sm glass-btn--pill" data-quick="7d">Last 7d</button>
+        <button class="glass-btn glass-btn--sm glass-btn--pill" data-quick="errors">Errors only</button>
+      </div>
+      <div class="audit-filters">
+        <input class="glass-input" id="filter-user" placeholder="User...">
+        <input class="glass-input" id="filter-search" placeholder="Search details / action / IP...">
+        <select class="glass-input" id="filter-action" title="{{ _('admin.filter_action') }}">
+          <option value="">All actions</option>
+          <option value="agent">Agent</option>
+          <option value="prompt">Prompt</option>
+          <option value="workflow">Workflow</option>
+          <option value="task">Task</option>
+          <option value="vault">Vault</option>
+          <option value="settings">Settings</option>
+          <option value="permission">Permission</option>
+          <option value="login">Login</option>
+          <option value="system">System</option>
+        </select>
+        <input class="glass-input" type="date" id="filter-since" title="{{ _('admin.filter_since') }}">
+        <input class="glass-input" type="date" id="filter-until" title="{{ _('admin.filter_until') }}">
+        <button class="glass-btn glass-btn--sm glass-btn--primary" id="btn-filter-apply">Apply</button>
+      </div>
+      <div class="audit-actions">
+        <button class="glass-btn glass-btn--sm" id="btn-export-csv">Export CSV</button>
+        <button class="glass-btn glass-btn--sm" id="btn-export-json">Export JSON</button>
+        <div class="audit-retention">
+          <select class="glass-input" id="audit-retention-select" title="Retention">
+            <option value="30">30d</option>
+            <option value="90">90d</option>
+            <option value="forever">Forever</option>
+          </select>
+          <button class="glass-btn glass-btn--sm" id="btn-retention-save">Save retention</button>
+          <span class="audit-retention-note" id="audit-retention-note"></span>
+        </div>
+        <label class="glass-btn glass-btn--sm u-inline-flex-center">
+          <input type="checkbox" id="audit-live-tail"> Live tail
+        </label>
+      </div>
+    </div>
   </div>
+  <table class="glass-table" id="audit-table">
+    <thead>
+      <tr>
+        <th>{{ _("admin.date") }}</th>
+        <th>{{ _("admin.email") }}</th>
+        <th>{{ _("admin.actions") }}</th>
+        <th>{{ _("admin.details") }}</th>
+        <th>{{ _("admin.ip") }}</th>
+      </tr>
+    </thead>
+    <tbody id="audit-tbody"></tbody>
+  </table>
+  <div class="audit-pagination" id="audit-pagination"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/audit.js" defer></script>
 {% endblock %}

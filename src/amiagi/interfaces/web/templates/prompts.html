@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('prompts.title') }} — amiagi{% endblock %}
+
+{% block head %}
+<style>
+.productivity-page { padding: var(--space-6); }
+.productivity-header {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-4);
+  margin-bottom: var(--space-6); flex-wrap: wrap;
+}
+.productivity-header h2 { margin: 0; color: var(--text-primary); }
+.productivity-toolbar { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.productivity-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4);
+}
+.prompt-tag-filters {
+  display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4);
+}
+.prompt-tag-filter {
+  border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--text-secondary);
+  border-radius: var(--glass-radius-pill); padding: 6px 12px; cursor: pointer; transition: .15s ease;
+}
+.prompt-tag-filter.active {
+  background: rgba(99,102,241,0.14); color: var(--accent-purple); border-color: rgba(99,102,241,0.3);
+}
+.prompt-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius);
+  padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3);
+}
+.prompt-card__header { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+.prompt-card__title { margin: 0; color: var(--text-primary); font-size: var(--font-size-lg); }
+.prompt-card__meta { font-size: var(--font-size-xs); color: var(--text-muted); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.prompt-card__template {
+  white-space: pre-wrap; color: var(--text-secondary); font-family: var(--font-family-mono, monospace);
+  font-size: var(--font-size-sm); background: rgba(255,255,255,0.03); border-radius: var(--glass-radius-sm);
+  padding: var(--space-3); max-height: 180px; overflow: auto;
+}
+.prompt-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.prompt-tag {
+  padding: 2px var(--space-2); border-radius: var(--glass-radius-pill); background: rgba(99,102,241,0.14);
+  color: var(--accent-purple); font-size: var(--font-size-xs);
+}
+.prompt-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.productivity-empty,
+.productivity-error {
+  grid-column: 1 / -1; padding: var(--space-8); text-align: center; color: var(--text-muted);
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius);
+}
+.modal-card--md { max-width: 760px; }
+.field-inline { display: flex; gap: var(--space-3); align-items: center; }
+.field-inline input[type="checkbox"] { width: auto; }
+.prompt-render-block {
+  white-space: pre-wrap; background: rgba(255,255,255,0.04); border-radius: var(--glass-radius-sm);
+  padding: var(--space-4); color: var(--text-primary); font-family: var(--font-family-mono, monospace);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="productivity-page">
+  <div class="productivity-header">
+    <div>
+      <h2>🧠 {{ _('prompts.title') }}</h2>
+      <div class="text-muted">{{ _('settings.prompt_library') }}</div>
+    </div>
+    <div class="productivity-toolbar">
+      <input id="prompt-filter" class="glass-input" placeholder="{{ _('settings.filter') }}" oninput="loadPromptLibrary()"/>
+      <button class="glass-btn" onclick="loadPromptLibrary()">{{ _('common.refresh') }}</button>
+      <button class="glass-btn glass-btn--primary" onclick="openPromptModal()">+ {{ _('prompts.create') }}</button>
+    </div>
+  </div>
+
+  <div class="prompt-tag-filters" id="prompt-tag-filters"></div>
+
+  <div class="productivity-grid" id="prompt-grid">
+    <div class="productivity-empty">{{ _('prompts.loading') }}</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="prompt-modal" hidden>
+  <div class="glass-card modal-card modal-card--md">
+    <h2 id="prompt-modal-title">{{ _('prompts.create') }}</h2>
+    <input type="hidden" id="prompt-id"/>
+    <div class="field">
+      <label for="prompt-title">{{ _('admin.name') }}</label>
+      <input id="prompt-title" class="glass-input"/>
+    </div>
+    <div class="field">
+      <label for="prompt-template">{{ _('prompts.template') }}</label>
+      <textarea id="prompt-template" class="glass-input" rows="10"></textarea>
+    </div>
+    <div class="field">
+      <label for="prompt-tags">{{ _('prompts.tags') }}</label>
+      <input id="prompt-tags" class="glass-input" placeholder="bugfix, review, release"/>
+    </div>
+    <label class="field-inline">
+      <input id="prompt-public" type="checkbox"/>
+      <span>{{ _('prompts.public') }}</span>
+    </label>
+    <div class="btn-row">
+      <button class="glass-btn" onclick="closePromptModal()">{{ _('common.cancel') }}</button>
+      <button class="glass-btn glass-btn--primary" onclick="savePromptRecord()">{{ _('common.save') }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  let selectedTag = '';
+
+  function esc(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+  }
+
+  function parseTags(raw) {
+    return (raw || '').split(',').map(tag => tag.trim()).filter(Boolean);
+  }
+
+  function renderPromptCard(prompt) {
+    const tags = (prompt.tags || []).map(tag => `<span class="prompt-tag">${esc(tag)}</span>`).join('');
+    const meta = [
+      prompt.is_public ? '{{ _("prompts.public") }}' : null,
+      prompt.parameters && prompt.parameters.length ? prompt.parameters.join(', ') : null,
+      `<span class="meta-tag">👥 ${prompt.agent_count || 0} agents</span>`,
+      `<span class="meta-tag">▶ ${prompt.usage_count ?? prompt.use_count ?? 0} uses</span>`,
+    ].filter(Boolean).join('');
+    return `
+      <article class="prompt-card">
+        <div class="prompt-card__header">
+          <div>
+            <h3 class="prompt-card__title">${esc(prompt.title || '—')}</h3>
+            <div class="prompt-card__meta">${meta}</div>
+          </div>
+        </div>
+        <div class="prompt-tags">${tags || '<span class="text-muted">—</span>'}</div>
+        <div class="prompt-card__template">${esc(prompt.template || '')}</div>
+        <div class="prompt-actions">
+          <button class="glass-btn glass-btn--ghost" onclick="openPromptPreview('${prompt.id}')">{{ _('prompts.preview') }}</button>
+          <button class="glass-btn glass-btn--ghost" onclick="openPromptUse('${prompt.id}')">{{ _('prompts.use') }}</button>
+          <button class="glass-btn glass-btn--ghost" onclick="showPromptStats('${prompt.id}')">📊 Stats</button>
+          <button class="glass-btn glass-btn--ghost" onclick="editPromptRecord('${prompt.id}')">{{ _('common.edit') }}</button>
+          <button class="glass-btn glass-btn--ghost" onclick="clonePromptRecord('${prompt.id}')">Clone</button>
+          <button class="glass-btn glass-btn--ghost" onclick="deletePromptRecord('${prompt.id}')">{{ _('common.delete') }}</button>
+        </div>
+      </article>
+    `;
+  }
+
+  async function fetchPrompts() {
+    const filter = document.getElementById('prompt-filter').value.trim();
+    const params = new URLSearchParams();
+    if (filter) params.set('q', filter);
+    if (selectedTag) params.set('tag', selectedTag);
+    const url = params.toString() ? `/api/prompts?${params.toString()}` : '/api/prompts';
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('prompt_fetch_failed');
+    }
+    return response.json();
+  }
+
+  function renderTagFilters(prompts) {
+    const host = document.getElementById('prompt-tag-filters');
+    const tags = Array.from(new Set((prompts || []).flatMap((prompt) => prompt.tags || []))).sort();
+    if (selectedTag && !tags.includes(selectedTag)) {
+      selectedTag = '';
+    }
+    const items = ['all', ...tags];
+    host.innerHTML = items.map((tag) => {
+      const value = tag === 'all' ? '' : tag;
+      const active = (tag === 'all' && !selectedTag) || selectedTag === value;
+      return `<button class="prompt-tag-filter${active ? ' active' : ''}" data-tag="${esc(value)}">${esc(tag)}</button>`;
+    }).join('');
+    host.querySelectorAll('.prompt-tag-filter').forEach((button) => {
+      button.addEventListener('click', function () {
+        selectedTag = this.dataset.tag || '';
+        loadPromptLibrary();
+      });
+    });
+  }
+
+  async function buildAgentOptions(selectedAgentId) {
+    let options = '<option value="">Select agent...</option>';
+    try {
+      const response = await fetch('/api/agents');
+      if (!response.ok) return options;
+      const payload = await response.json();
+      (payload.agents || payload.items || []).forEach((agent) => {
+        const agentId = agent.agent_id || agent.id || '';
+        const label = agent.name || agent.agent_id || agent.id || '';
+        const selected = selectedAgentId && selectedAgentId === agentId ? ' selected' : '';
+        options += `<option value="${esc(agentId)}"${selected}>${esc(label)}</option>`;
+      });
+    } catch (_) {}
+    return options;
+  }
+
+  function collectPromptRenderValues() {
+    const values = {};
+    (window.__promptRenderParams || []).forEach((name) => {
+      const input = document.getElementById(`prompt-param-${name}`);
+      values[name] = input ? input.value : '';
+    });
+    return values;
+  }
+
+  window.loadPromptLibrary = async function () {
+    const grid = document.getElementById('prompt-grid');
+    grid.innerHTML = `<div class="productivity-empty">{{ _('prompts.loading') }}</div>`;
+    try {
+      const prompts = await fetchPrompts();
+      renderTagFilters(prompts);
+      if (!prompts.length) {
+        grid.innerHTML = `<div class="productivity-empty">{{ _('prompts.empty') }}</div>`;
+        return;
+      }
+      grid.innerHTML = prompts.map(renderPromptCard).join('');
+    } catch (_) {
+      grid.innerHTML = `<div class="productivity-error">{{ _('prompts.error') }}</div>`;
+    }
+  };
+
+  window.openPromptModal = function (prompt) {
+    document.getElementById('prompt-id').value = prompt && prompt.id ? prompt.id : '';
+    document.getElementById('prompt-title').value = prompt && prompt.title ? prompt.title : '';
+    document.getElementById('prompt-template').value = prompt && prompt.template ? prompt.template : '';
+    document.getElementById('prompt-tags').value = prompt && prompt.tags ? prompt.tags.join(', ') : '';
+    document.getElementById('prompt-public').checked = !!(prompt && prompt.is_public);
+    document.getElementById('prompt-modal-title').textContent = prompt && prompt.id ? '{{ _("common.edit") }}' : '{{ _("prompts.create") }}';
+    document.getElementById('prompt-modal').hidden = false;
+  };
+
+  window.closePromptModal = function () {
+    document.getElementById('prompt-modal').hidden = true;
+  };
+
+  window.editPromptRecord = async function (promptId) {
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}`);
+    if (!response.ok) return;
+    const prompt = await response.json();
+    openPromptModal(prompt);
+  };
+
+  window.savePromptRecord = async function () {
+    const promptId = document.getElementById('prompt-id').value;
+    const body = {
+      title: document.getElementById('prompt-title').value.trim(),
+      template: document.getElementById('prompt-template').value,
+      tags: parseTags(document.getElementById('prompt-tags').value),
+      is_public: document.getElementById('prompt-public').checked,
+    };
+    const url = promptId ? `/api/prompts/${encodeURIComponent(promptId)}` : '/api/prompts';
+    const method = promptId ? 'PUT' : 'POST';
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      if (typeof showToast === 'function') showToast('{{ _("common.error") }}', 'error');
+      return;
+    }
+    closePromptModal();
+    if (typeof showToast === 'function') showToast('{{ _("common.success") }}', 'success');
+    loadPromptLibrary();
+  };
+
+  window.deletePromptRecord = async function (promptId) {
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}`, { method: 'DELETE' });
+    if (response.ok) {
+      loadPromptLibrary();
+    }
+  };
+
+  window.clonePromptRecord = async function (promptId) {
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}/clone`, { method: 'POST' });
+    if (response.ok) {
+      loadPromptLibrary();
+    }
+  };
+
+  window.openPromptPreview = async function (promptId) {
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}`);
+    if (!response.ok) return;
+    const prompt = await response.json();
+    let stats = { total_uses: prompt.usage_count ?? prompt.use_count ?? 0, agent_count: prompt.agent_count || 0 };
+    try {
+      const statsResponse = await fetch(`/api/prompts/${encodeURIComponent(promptId)}/stats`);
+      if (statsResponse.ok) {
+        stats = await statsResponse.json();
+      }
+    } catch (_) {}
+    openDetailDrawer(prompt.title || '{{ _("prompts.preview") }}', `
+      <div class="field">
+        <label>{{ _('prompts.template') }}</label>
+        <div class="prompt-render-block">${esc(prompt.template || '')}</div>
+      </div>
+      <div class="field">
+        <label>{{ _('prompts.tags') }}</label>
+        <div>${(prompt.tags || []).map(tag => `<span class="prompt-tag">${esc(tag)}</span>`).join(' ') || '—'}</div>
+      </div>
+      <div class="field">
+        <label>Usage</label>
+        <div class="prompt-render-block">${esc((stats.total_uses || 0) + ' uses · ' + (stats.agent_count || 0) + ' agents')}</div>
+      </div>
+    `);
+  };
+
+  window.openPromptUse = async function (promptId) {
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}`);
+    if (!response.ok) return;
+    const prompt = await response.json();
+    const agentOptions = await buildAgentOptions('');
+    window.__promptRenderParams = prompt.parameters || [];
+    const inputs = (prompt.parameters || []).map((name) => `
+      <div class="field">
+        <label for="prompt-param-${name}">${esc(name)}</label>
+        <input id="prompt-param-${name}" class="glass-input"/>
+      </div>
+    `).join('');
+    openDetailDrawer(prompt.title || '{{ _("prompts.use") }}', `
+      <div class="field">
+        <label>{{ _('prompts.template') }}</label>
+        <div class="prompt-render-block">${esc(prompt.template || '')}</div>
+      </div>
+      ${inputs || '<div class="text-muted">No parameters</div>'}
+      <div class="field">
+        <label>Agent</label>
+        <select class="glass-input" id="prompt-agent-select">${agentOptions}</select>
+      </div>
+      <div class="btn-row">
+        <button class="glass-btn glass-btn--primary" onclick="renderPromptRecord('${prompt.id}')">{{ _('prompts.render') }}</button>
+        <button class="glass-btn glass-btn--ghost" onclick="sendPromptToAgent('${prompt.id}')">🚀 Send to Agent</button>
+      </div>
+      <div id="prompt-render-output"></div>
+    `);
+  };
+
+  window.renderPromptRecord = async function (promptId) {
+    const values = collectPromptRenderValues();
+    const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}/use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const out = document.getElementById('prompt-render-output');
+    out.innerHTML = `<div class="field"><label>{{ _('prompts.render') }}</label><div class="prompt-render-block">${esc(data.rendered || '')}</div></div>`;
+  };
+
+  /* PR2 — Stats button */
+  window.showPromptStats = async function (promptId) {
+    try {
+      const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}/stats`);
+      if (!response.ok) return;
+      const stats = await response.json();
+      openDetailDrawer('Prompt Stats', `
+        <div class="glass-card" style="padding:12px;margin-bottom:8px"><strong>Total Uses:</strong> ${stats.total_uses || 0}</div>
+        <div class="glass-card" style="padding:12px;margin-bottom:8px"><strong>Agents:</strong> ${stats.agent_count || 0}</div>
+        <div class="glass-card" style="padding:12px;margin-bottom:8px"><strong>Avg Rating:</strong> ${stats.avg_rating || 'N/A'}</div>
+      `);
+    } catch (_) {}
+  };
+
+  window.sendPromptToAgent = async function (promptId) {
+    const agentId = document.getElementById('prompt-agent-select').value;
+    if (!agentId) return;
+    try {
+      const values = collectPromptRenderValues();
+      const response = await fetch(`/api/prompts/${encodeURIComponent(promptId)}/use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId, values }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const out = document.getElementById('prompt-render-output');
+        if (out) {
+          out.innerHTML = `<div class="field"><label>{{ _('prompts.render') }}</label><div class="prompt-render-block">${esc(data.rendered || '')}</div></div>`;
+        }
+      }
+      if (typeof showToast === 'function') {
+        showToast(response.ok ? 'Sent to agent' : '{{ _("common.error") }}', response.ok ? 'success' : 'error');
+      }
+    } catch (_) {}
+  };
+
+  loadPromptLibrary();
+})();
+</script>
+{% endblock %}

@@ -599,7 +599,9 @@ class TestInboxRoutes:
         paths = [r.path for r in inbox_routes]
         expected = [
             "/api/inbox", "/api/inbox/count",
+            "/api/inbox/batch/approve", "/api/inbox/batch/reject",
             "/api/inbox/{item_id}", "/api/inbox/{item_id}/approve",
+            "/api/inbox/{item_id}/grant",
             "/api/inbox/{item_id}/reject", "/api/inbox/{item_id}/reply",
         ]
         for p in expected:
@@ -620,17 +622,102 @@ class TestInboxRoutes:
         assert "GET" in method_map["/api/inbox/count"]
         assert "GET" in method_map["/api/inbox/{item_id}"]
         # POST endpoints
+        assert "POST" in method_map["/api/inbox/batch/approve"]
+        assert "POST" in method_map["/api/inbox/batch/reject"]
         assert "POST" in method_map["/api/inbox/{item_id}/approve"]
+        assert "POST" in method_map["/api/inbox/{item_id}/grant"]
         assert "POST" in method_map["/api/inbox/{item_id}/reject"]
         assert "POST" in method_map["/api/inbox/{item_id}/reply"]
         # Lifecycle — all POST
         assert "POST" in method_map["/api/agents/{agent_id}/pause"]
         assert "POST" in method_map["/api/agents/{agent_id}/resume"]
+        assert "POST" in method_map["/api/agents/{agent_id}/restart"]
         assert "POST" in method_map["/api/agents/{agent_id}/terminate"]
 
     def test_route_count(self):
         from amiagi.interfaces.web.routes.inbox_routes import inbox_routes
-        assert len(inbox_routes) == 9
+        assert len(inbox_routes) == 13
+
+
+class TestInboxRouteHandlers:
+    @pytest.mark.asyncio
+    async def test_batch_approve_resolves_multiple_items(self, monkeypatch):
+        from amiagi.interfaces.web.routes.inbox_routes import inbox_batch_approve
+        import amiagi.interfaces.web.audit.log_helpers as audit_log_helpers
+
+        monkeypatch.setattr(audit_log_helpers, "log_action", AsyncMock())
+
+        resolved = MagicMock()
+        resolved.to_dict.return_value = {"id": "item-1", "status": "approved"}
+        svc = AsyncMock()
+        svc.approve = AsyncMock(side_effect=[resolved, None])
+
+        req = MagicMock(spec=["app", "json"])
+        req.app.state = type("State", (), {"inbox_service": svc, "event_hub": None})()
+        req.json = AsyncMock(return_value={"item_ids": ["item-1", "missing"]})
+
+        resp = await inbox_batch_approve(req)
+        payload = json.loads(bytes(resp.body))
+        assert resp.status_code == 200
+        assert payload["resolved_count"] == 1
+        assert payload["failed_ids"] == ["missing"]
+
+    @pytest.mark.asyncio
+    async def test_grant_secret_resolves_secret_request(self, monkeypatch):
+        from amiagi.interfaces.web.routes.inbox_routes import inbox_grant_secret
+        import amiagi.interfaces.web.audit.log_helpers as audit_log_helpers
+
+        monkeypatch.setattr(audit_log_helpers, "log_action", AsyncMock())
+
+        item = MagicMock()
+        item.status = "pending"
+        item.item_type = "secret_request"
+        item.agent_id = "kastor"
+        item.metadata = {"secret_id": "kastor:OPENAI_API_KEY", "entity_type": "agent", "entity_id": "kastor"}
+        resolved = MagicMock()
+        resolved.to_dict.return_value = {"id": "sec-1", "status": "approved"}
+
+        svc = AsyncMock()
+        svc.get = AsyncMock(return_value=item)
+        svc._resolve = AsyncMock(return_value=resolved)
+
+        vault = AsyncMock()
+        vault.aget_secret = AsyncMock(return_value={"key": "OPENAI_API_KEY"})
+
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        conn.execute.return_value = "OK"
+
+        class _AsyncContext:
+            def __init__(self, value):
+                self._value = value
+
+            async def __aenter__(self):
+                return self._value
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        conn.transaction = MagicMock(return_value=_AsyncContext(conn))
+        pool = MagicMock()
+        pool.acquire.return_value = _AsyncContext(conn)
+
+        req = MagicMock(spec=["app", "json", "path_params", "state"])
+        req.app.state = type("State", (), {
+            "inbox_service": svc,
+            "secret_vault": vault,
+            "db_pool": pool,
+            "event_hub": None,
+        })()
+        req.json = AsyncMock(return_value={})
+        req.path_params = {"item_id": "sec-1"}
+        req.state = type("ReqState", (), {"user": None})()
+
+        resp = await inbox_grant_secret(req)
+        payload = json.loads(bytes(resp.body))
+        assert resp.status_code == 200
+        assert payload["ok"] is True
+        assert payload["secret_id"] == "kastor:OPENAI_API_KEY"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -834,6 +921,11 @@ class TestI18nKeys:
     @pytest.mark.parametrize("key", [
         "inbox.title", "inbox.pending", "inbox.approved", "inbox.rejected",
         "inbox.all", "inbox.approve", "inbox.reject", "inbox.empty",
+        "inbox.expired", "inbox.batch_approve", "inbox.batch_reject",
+        "inbox.none_selected", "inbox.selected_count", "inbox.grant_from_vault",
+        "inbox.grant_success", "inbox.priority_high", "inbox.priority_medium",
+        "inbox.priority_low", "inbox.auto_escalated", "inbox.auto_escalation_soon",
+        "inbox.sla_active", "inbox.batch_done", "inbox.batch_failed",
         "inbox.reply_placeholder", "inbox.send_reply",
         "inbox.delegate",
         "nav.inbox", "nav.supervisor",
@@ -884,6 +976,38 @@ class TestStaticAssets:
 
     def test_inbox_js(self):
         assert (self._STATIC / "js/inbox.js").exists()
+
+    def test_reply_dialog_js(self):
+        assert (self._STATIC / "js/components/reply-dialog.js").exists()
+
+
+class TestInboxReplyDialog:
+    _TPL_DIR = Path(__file__).resolve().parent.parent / \
+        "src/amiagi/interfaces/web/templates"
+    _STATIC = Path(__file__).resolve().parent.parent / \
+        "src/amiagi/interfaces/web/static"
+
+    def test_inbox_template_uses_reply_dialog(self):
+        html = (self._TPL_DIR / "inbox.html").read_text(encoding="utf-8")
+        assert "reply-dialog" in html
+
+    def test_inbox_js_supports_review_request_reply(self):
+        js = (self._STATIC / "js/inbox.js").read_text(encoding="utf-8")
+        assert "review_request" in js
+
+    def test_inbox_template_contains_expired_tab_and_batch_actions(self):
+        html = (self._TPL_DIR / "inbox.html").read_text(encoding="utf-8")
+        assert 'data-status="expired"' in html
+        assert 'id="btn-batch-approve"' in html
+        assert 'id="btn-batch-reject"' in html
+        assert 'id="inbox-modal-grant"' in html
+
+    def test_inbox_js_contains_batch_and_grant_flows(self):
+        js = (self._STATIC / "js/inbox.js").read_text(encoding="utf-8")
+        assert "/api/inbox/batch/" in js
+        assert "/api/inbox/" in js and "/grant" in js
+        assert "secret_request" in js
+        assert "tab-count-expired" in js
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -976,7 +1100,9 @@ class TestSystemRoutes:
         from amiagi.interfaces.web.routes.system_routes import system_routes
         paths = [r.path for r in system_routes]
         expected = [
-            "/api/system/state", "/api/system/input",
+            "/api/system/state", "/api/system/current-task", "/api/system/commands", "/api/system/commands/execute",
+            "/api/system/current-task/pause", "/api/system/current-task/stop",
+            "/api/system/current-task/retry", "/api/system/reset", "/api/system/input",
             "/api/inbox/{item_id}/delegate", "/api/agents/spawn",
         ]
         for p in expected:
@@ -984,12 +1110,19 @@ class TestSystemRoutes:
 
     def test_route_count(self):
         from amiagi.interfaces.web.routes.system_routes import system_routes
-        assert len(system_routes) == 4
+        assert len(system_routes) == 11
 
     def test_methods_correct(self):
         from amiagi.interfaces.web.routes.system_routes import system_routes
         method_map = {r.path: (r.methods or set()) for r in system_routes}
         assert "GET" in method_map["/api/system/state"]
+        assert "GET" in method_map["/api/system/current-task"]
+        assert "GET" in method_map["/api/system/commands"]
+        assert "POST" in method_map["/api/system/commands/execute"]
+        assert "POST" in method_map["/api/system/current-task/pause"]
+        assert "POST" in method_map["/api/system/current-task/stop"]
+        assert "POST" in method_map["/api/system/current-task/retry"]
+        assert "POST" in method_map["/api/system/reset"]
         assert "POST" in method_map["/api/system/input"]
         assert "POST" in method_map["/api/inbox/{item_id}/delegate"]
         assert "POST" in method_map["/api/agents/spawn"]
@@ -997,9 +1130,18 @@ class TestSystemRoutes:
     def test_handlers_are_async(self):
         import asyncio
         from amiagi.interfaces.web.routes.system_routes import (
-            system_state, system_input, inbox_delegate, agent_spawn,
+            system_state, system_current_task, system_commands, system_command_execute, system_current_task_pause,
+            system_current_task_stop, system_current_task_retry, system_reset,
+            system_input, inbox_delegate, agent_spawn,
         )
         assert asyncio.iscoroutinefunction(system_state)
+        assert asyncio.iscoroutinefunction(system_current_task)
+        assert asyncio.iscoroutinefunction(system_commands)
+        assert asyncio.iscoroutinefunction(system_command_execute)
+        assert asyncio.iscoroutinefunction(system_current_task_pause)
+        assert asyncio.iscoroutinefunction(system_current_task_stop)
+        assert asyncio.iscoroutinefunction(system_current_task_retry)
+        assert asyncio.iscoroutinefunction(system_reset)
         assert asyncio.iscoroutinefunction(system_input)
         assert asyncio.iscoroutinefunction(inbox_delegate)
         assert asyncio.iscoroutinefunction(agent_spawn)

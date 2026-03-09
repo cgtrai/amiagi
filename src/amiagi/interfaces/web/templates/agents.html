@@ -9,6 +9,8 @@
 .agents-header {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: var(--space-6);
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 .agents-header h2 { margin: 0; color: var(--text-primary); }
 .agents-grid {
@@ -30,6 +32,7 @@
 .agent-card-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .agents-header-actions { display: flex; align-items: center; gap: var(--space-3); }
 .modal-card--sm { max-width: 520px; }
+.modal-card--md { max-width: 760px; }
 .btn-row { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
 .agent-role-icon {
   width: 40px; height: 40px; border-radius: var(--glass-radius-sm);
@@ -50,21 +53,86 @@
 }
 .agent-card-model { margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-muted); }
 .agent-card-header .glass-badge { margin-left: auto; }
-.empty-agents { text-align: center; padding: var(--space-10); color: var(--text-muted); font-size: var(--font-size-lg); }
+.agent-card-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-4); }
+.agent-card-actions .glass-btn { min-width: 88px; }
+.drawer-tabs { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.drawer-tab.active { border-color: var(--accent-blue); color: var(--text-primary); }
+.drawer-panel { display: grid; gap: var(--space-3); }
+.drawer-code {
+  white-space: pre-wrap; padding: var(--space-3); border-radius: var(--glass-radius-sm);
+  background: rgba(255,255,255,0.04); color: var(--text-secondary); font-family: var(--font-family-mono, monospace);
+}
+.drawer-list { display: grid; gap: var(--space-2); }
+.drawer-item {
+  padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+}
+.drawer-meta { display: flex; gap: var(--space-2); flex-wrap: wrap; font-size: var(--font-size-xs); color: var(--text-muted); }
+.agents-state {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+}
+.agents-state-card {
+  width: min(100%, 520px);
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+}
+.agents-state-card .empty-state {
+  padding: 0;
+  font-size: var(--font-size-base);
+}
+.agents-state-detail {
+  color: var(--text-muted);
+  text-align: center;
+  font-size: var(--font-size-sm);
+}
+.agent-perm-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.wizard-steps { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: var(--space-4); }
+.wizard-step {
+  padding: 6px 10px; border-radius: 999px; background: var(--glass-bg-hover);
+  color: var(--text-muted); font-size: var(--font-size-xs); border: 1px solid transparent;
+}
+.wizard-step.active { color: var(--text-primary); border-color: var(--accent-blue); }
+.wizard-step.done { color: var(--accent-green, #22c55e); }
+.wizard-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); }
+.wizard-summary { padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04); color: var(--text-secondary); }
+@media (max-width: 768px) {
+  .agents-page { padding: var(--space-4); }
+  .agents-grid { grid-template-columns: 1fr; }
+  .agents-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .agent-card-actions .glass-btn {
+    flex: 1 1 140px;
+  }
+  .btn-row {
+    flex-wrap: wrap;
+  }
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="agents-page">
   <div class="agents-header">
-    <h2>🤖 {{ _("agents.title") }}</h2>
+    <h2>{{ _("agents.title") }}</h2>
     <div class="agents-header-actions">
       <div id="agent-count" class="text-muted"></div>
+      <button class="glass-btn" onclick="openAgentWizard()">Wizard</button>
       <button class="glass-btn glass-btn--primary" onclick="openCreateAgent()">+ {{ _("agents.create") }}</button>
     </div>
   </div>
   <div class="agents-grid" id="agents-grid">
-    <div class="empty-agents">{{ _("agents.loading") }}</div>
+    <div class="agents-state"><div class="glass-card agents-state-card"><span class="glass-pill">Loading</span><div class="empty-state">{{ _("agents.loading") }}</div></div></div>
   </div>
 </div>
 
@@ -113,59 +181,609 @@
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="agent-wizard-modal" hidden>
+  <div class="glass-card modal-card modal-card--md">
+    <h2>Agent Wizard</h2>
+    <div id="agent-wizard-steps" class="wizard-steps"></div>
+    <div id="agent-wizard-body"></div>
+    <div class="btn-row">
+      <button class="glass-btn" onclick="closeAgentWizard()">{{ _("common.cancel") }}</button>
+      <button class="glass-btn" id="agent-wizard-back" onclick="agentWizardBack()" hidden>Back</button>
+      <button class="glass-btn glass-btn--primary" id="agent-wizard-next" onclick="agentWizardNext()">Next</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function() {
   const ROLE_ICONS = {executor:'⚙️', supervisor:'👁️', researcher:'🔬', planner:'📐', reviewer:'🔍'};
+  const AGENT_DRAWER_TABS = ['config', 'skills', 'permissions', 'history', 'benchmarks'];
+  const WIZARD_STEPS = ['Need', 'Blueprint', 'Skills & Tools', 'Model & Persona', 'Permissions', 'Review'];
 
-  /* ── Ollama model list for create-agent modal ── */
-  let _agentOllamaModels = [];
-  async function fetchAgentOllamaModels() {
-    try {
-      const res = await fetch('/models/ollama/status');
-      const data = await res.json();
-      _agentOllamaModels = (data.models || []).map(m => typeof m === 'string' ? m : m.name || String(m));
-    } catch(e) { _agentOllamaModels = []; }
+  let _agentModelCatalog = { all_models: [], backends: ['ollama'], ollama_models: [] };
+  let _agentWizardState = null;
+
+  function esc(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
   }
+
+  function formatBackendLabel(name) {
+    if (!name) return 'ollama';
+    if (name === 'ollama') return 'Ollama';
+    if (name === 'openai') return 'OpenAI';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  async function loadAgentModelCatalog(force) {
+    if (!force && _agentModelCatalog.all_models && _agentModelCatalog.all_models.length) return _agentModelCatalog;
+    try {
+      const res = await fetch('/models');
+      const data = await res.json();
+      _agentModelCatalog = data || { all_models: [], backends: ['ollama'], ollama_models: [] };
+    } catch(e) { _agentModelCatalog = { all_models: [], backends: ['ollama'], ollama_models: [] }; }
+    return _agentModelCatalog;
+  }
+
+  function catalogBackends() {
+    const backends = Array.isArray(_agentModelCatalog.backends) ? _agentModelCatalog.backends.slice() : [];
+    return backends.length ? backends : ['ollama'];
+  }
+
+  function renderBackendOptions(selected) {
+    const backends = catalogBackends();
+    if (selected && !backends.includes(selected)) backends.push(selected);
+    return backends.map((backend) => `<option value="${backend}" ${backend === (selected || 'ollama') ? 'selected' : ''}>${formatBackendLabel(backend)}</option>`).join('');
+  }
+
+  function catalogModelsForBackend(backend) {
+    return (_agentModelCatalog.all_models || []).filter((item) => (item.backend || 'ollama') === backend);
+  }
+
+  function buildModelOptions(selected, backend) {
+    const models = catalogModelsForBackend(backend);
+    let html = '<option value="">— {{ _("settings.select_model") }} —</option>';
+    html += models.map((item) => `<option value="${esc(item.name)}" ${item.name === selected ? 'selected' : ''}>${esc(item.label || item.name)}</option>`).join('');
+    if (selected && !models.some((item) => item.name === selected)) {
+      html += `<option value="${esc(selected)}" selected>${esc(selected)} (custom)</option>`;
+    }
+    if (!models.length && !selected) {
+      html = '<option value="">{{ _("settings.no_models") }}</option>';
+    }
+    return html;
+  }
+
+  function syncBackendSelect(selectId, selected) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.innerHTML = renderBackendOptions(selected || select.value || 'ollama');
+  }
+
+  async function ensureAgentModelCatalog(force) {
+    await loadAgentModelCatalog(force);
+    syncBackendSelect('ag-backend', document.getElementById('ag-backend')?.value || 'ollama');
+  }
+
+  window.updateWizardModelSelect = function(selectedModel) {
+    const backendSelect = document.getElementById('wiz-backend');
+    const modelSelect = document.getElementById('wiz-model');
+    if (!backendSelect || !modelSelect) return;
+    modelSelect.innerHTML = buildModelOptions(selectedModel || modelSelect.value || '', backendSelect.value || 'ollama');
+  };
+
+  window.updateDrawerModelOptions = function(selectedModel) {
+    const backendSelect = document.getElementById('drawer-model-backend');
+    const modelSelect = document.getElementById('drawer-model-name');
+    if (!backendSelect || !modelSelect) return;
+    modelSelect.innerHTML = buildModelOptions(selectedModel || modelSelect.value || '', backendSelect.value || 'ollama');
+  }
+
   window.populateAgentModelSelect = function() {
     const sel = document.getElementById('ag-model');
-    const src = document.getElementById('ag-backend').value;
-    const cur = sel.value;
-    sel.innerHTML = '';
-    if (src === 'ollama' && _agentOllamaModels.length) {
-      const ph = document.createElement('option');
-      ph.value = ''; ph.textContent = '— {{ _("settings.select_model") }} —';
-      sel.appendChild(ph);
-      _agentOllamaModels.forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m;
-        if (m === cur) o.selected = true;
-        sel.appendChild(o);
-      });
-    } else if (src === 'ollama') {
-      const o = document.createElement('option');
-      o.value = ''; o.textContent = '{{ _("settings.no_models") }}';
-      sel.appendChild(o);
-    } else {
-      const ph = document.createElement('option');
-      ph.value = ''; ph.textContent = '— {{ _("settings.select_model") }} —';
-      sel.appendChild(ph);
-      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'].forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m;
-        if (m === cur) o.selected = true;
-        sel.appendChild(o);
-      });
-    }
+    const backendSelect = document.getElementById('ag-backend');
+    if (!sel || !backendSelect) return;
+    sel.innerHTML = buildModelOptions(sel.value, backendSelect.value || 'ollama');
   };
-  fetchAgentOllamaModels().then(() => populateAgentModelSelect());
+  ensureAgentModelCatalog(true).then(() => populateAgentModelSelect());
 
   function stateClass(s) {
     const m = {idle:'muted',working:'success',paused:'idle',error:'error',terminated:'danger'};
     return m[s] || 'muted';
   }
+
+  function wizardModelOptions(selected, backend) {
+    return buildModelOptions(selected, backend || 'ollama');
+  }
+
+  function renderAgentsState(message, variant, detail) {
+    const badge = variant === 'error'
+      ? '<span class="glass-badge glass-badge--error">Error</span>'
+      : variant === 'empty'
+        ? '<span class="glass-badge glass-badge--muted">Empty</span>'
+        : '<span class="glass-badge glass-badge--muted">Loading</span>';
+    return '<div class="agents-state"><div class="glass-card agents-state-card">'
+      + badge
+      + '<div class="empty-state">' + esc(message) + '</div>'
+      + (detail ? '<div class="agents-state-detail">' + esc(detail) + '</div>' : '')
+      + '</div></div>';
+  }
+
+  function renderWizardSteps() {
+    const el = document.getElementById('agent-wizard-steps');
+    if (!el || !_agentWizardState) return;
+    el.innerHTML = WIZARD_STEPS.map((label, index) => {
+      const step = index + 1;
+      const klass = step === _agentWizardState.step ? 'active' : step < _agentWizardState.step ? 'done' : '';
+      return `<span class="wizard-step ${klass}">${step}. ${label}</span>`;
+    }).join('');
+  }
+
+  function renderWizardBody() {
+    const el = document.getElementById('agent-wizard-body');
+    const nextBtn = document.getElementById('agent-wizard-next');
+    const backBtn = document.getElementById('agent-wizard-back');
+    if (!el || !_agentWizardState) return;
+    renderWizardSteps();
+    backBtn.hidden = _agentWizardState.step === 1;
+    nextBtn.textContent = _agentWizardState.step === 6 ? 'Create Agent' : 'Next';
+
+    const bp = _agentWizardState.blueprint || {};
+    const perms = bp.initial_permissions || {};
+    const validation = _agentWizardState.validation || {};
+
+    if (_agentWizardState.step === 1) {
+      el.innerHTML = `
+        <div class="field">
+          <label>What do you need this agent to do?</label>
+          <textarea id="wiz-need" class="glass-input" rows="5" placeholder="Describe the agent you want to create...">${esc(_agentWizardState.need || '')}</textarea>
+        </div>`;
+      return;
+    }
+
+    if (_agentWizardState.step === 2) {
+      el.innerHTML = `
+        <div class="wizard-grid">
+          <div class="field"><label>{{ _("admin.name") }}</label><input id="wiz-name" class="glass-input" value="${esc(bp.name || '')}"></div>
+          <div class="field"><label>{{ _("agent.role") }}</label><select id="wiz-role" class="glass-input">
+            ${['executor','supervisor','specialist'].map((role) => `<option value="${role}" ${bp.role === role ? 'selected' : ''}>${role}</option>`).join('')}
+          </select></div>
+        </div>
+        <div class="field"><label>Team function</label><input id="wiz-team-function" class="glass-input" value="${esc(bp.team_function || '')}"></div>
+        <div class="wizard-summary">Complexity: ${esc((_agentWizardState.analysis || {}).complexity || '—')} · Suggested role: ${esc((_agentWizardState.analysis || {}).suggested_role || '—')}</div>`;
+      return;
+    }
+
+    if (_agentWizardState.step === 3) {
+      el.innerHTML = `
+        <div class="field"><label>{{ _("agent.skills") }}</label><input id="wiz-skills" class="glass-input" value="${esc((bp.required_skills || []).join(', '))}" placeholder="python, review, research"></div>
+        <div class="field"><label>Tools</label><input id="wiz-tools" class="glass-input" value="${esc((bp.required_tools || []).join(', '))}" placeholder="read_file, apply_patch"></div>
+        <div class="wizard-summary">Scenarios prepared: ${(bp.test_scenarios || []).length}</div>`;
+      return;
+    }
+
+    if (_agentWizardState.step === 4) {
+      const wizardBackend = bp.suggested_backend || 'ollama';
+      el.innerHTML = `
+        <div class="wizard-grid">
+          <div class="field"><label>{{ _("agent.backend") }}</label><select id="wiz-backend" class="glass-input" onchange="updateWizardModelSelect()">${renderBackendOptions(wizardBackend)}</select></div>
+          <div class="field"><label>{{ _("agent.model") }}</label><select id="wiz-model" class="glass-input">${wizardModelOptions(bp.suggested_model || '', wizardBackend)}</select></div>
+        </div>
+        <div class="field"><label>{{ _("agent.persona") }}</label><textarea id="wiz-persona" class="glass-input" rows="7">${esc(bp.persona_prompt || '')}</textarea></div>`;
+      return;
+    }
+
+    if (_agentWizardState.step === 5) {
+      el.innerHTML = `
+        <div class="wizard-grid">
+          <label class="field"><span>Shell access</span><input id="wiz-shell-access" type="checkbox" ${perms.shell_access ? 'checked' : ''}></label>
+          <label class="field"><span>Network access</span><input id="wiz-network-access" type="checkbox" ${perms.network_access ? 'checked' : ''}></label>
+        </div>
+        <div class="field"><label>Allowed paths (comma-separated)</label><input id="wiz-allowed-paths" class="glass-input" value="${esc((perms.allowed_paths || []).join(', '))}" placeholder="workspace/, data/"></div>
+        <div class="wizard-summary">Sensitive permissions will require explicit confirmation before creation.</div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="wizard-summary" style="margin-bottom:12px">Ready to create <strong>${esc(bp.name || 'agent')}</strong> as <strong>${esc(bp.role || 'executor')}</strong>.</div>
+      <div class="wizard-grid">
+        <div class="wizard-summary"><strong>Skills</strong><br>${esc((bp.required_skills || []).join(', ') || '—')}</div>
+        <div class="wizard-summary"><strong>Tools</strong><br>${esc((bp.required_tools || []).join(', ') || '—')}</div>
+        <div class="wizard-summary"><strong>Model</strong><br>${esc(bp.suggested_model || '—')} (${esc(bp.suggested_backend || '—')})</div>
+        <div class="wizard-summary"><strong>Scenarios</strong><br>${(validation.scenario_count != null ? validation.scenario_count : (bp.test_scenarios || []).length)}</div>
+      </div>
+      <div class="field"><label><input id="wiz-confirm-sensitive" type="checkbox" ${!(validation.requires_confirmation) ? 'checked' : ''}> Confirm sensitive permissions if present</label></div>
+      ${(validation.sensitive_permissions || []).length ? `<div class="wizard-summary">Sensitive: ${esc((validation.sensitive_permissions || []).join(', '))}</div>` : ''}`;
+  }
+
+  function collectWizardBlueprint() {
+    const current = _agentWizardState.blueprint || {};
+    if (_agentWizardState.step === 2) {
+      current.name = document.getElementById('wiz-name').value.trim();
+      current.role = document.getElementById('wiz-role').value;
+      current.team_function = document.getElementById('wiz-team-function').value.trim();
+    } else if (_agentWizardState.step === 3) {
+      current.required_skills = document.getElementById('wiz-skills').value.split(',').map((item) => item.trim()).filter(Boolean);
+      current.required_tools = document.getElementById('wiz-tools').value.split(',').map((item) => item.trim()).filter(Boolean);
+    } else if (_agentWizardState.step === 4) {
+      current.suggested_backend = document.getElementById('wiz-backend').value;
+      current.suggested_model = document.getElementById('wiz-model').value.trim();
+      current.persona_prompt = document.getElementById('wiz-persona').value;
+    } else if (_agentWizardState.step === 5) {
+      current.initial_permissions = {
+        ...(current.initial_permissions || {}),
+        shell_access: document.getElementById('wiz-shell-access').checked,
+        network_access: document.getElementById('wiz-network-access').checked,
+        allowed_paths: document.getElementById('wiz-allowed-paths').value.split(',').map((item) => item.trim()).filter(Boolean),
+      };
+    }
+    _agentWizardState.blueprint = current;
+    return current;
+  }
+
+  window.openAgentWizard = function() {
+    _agentWizardState = { step: 1, need: '', blueprint: null, analysis: null, validation: null, session_id: null };
+    document.getElementById('agent-wizard-modal').hidden = false;
+    renderWizardBody();
+  };
+
+  window.closeAgentWizard = function() {
+    document.getElementById('agent-wizard-modal').hidden = true;
+    _agentWizardState = null;
+  };
+
+  window.agentWizardBack = function() {
+    if (!_agentWizardState || _agentWizardState.step <= 1) return;
+    _agentWizardState.step -= 1;
+    renderWizardBody();
+  };
+
+  window.agentWizardNext = async function() {
+    if (!_agentWizardState) return;
+    try {
+      if (_agentWizardState.step === 1) {
+        _agentWizardState.need = document.getElementById('wiz-need').value.trim();
+        const res = await fetch('/api/agents/wizard/start', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({need: _agentWizardState.need})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Wizard start failed');
+        _agentWizardState = {..._agentWizardState, ...data, step: 2};
+        renderWizardBody();
+        return;
+      }
+
+      collectWizardBlueprint();
+
+      if (_agentWizardState.step === 5) {
+        const res = await fetch('/api/agents/wizard/step', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            session_id: _agentWizardState.session_id,
+            action: 'validate',
+            step: 6,
+            blueprint: _agentWizardState.blueprint,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Wizard validation failed');
+        _agentWizardState = {..._agentWizardState, ...data, step: 6};
+        renderWizardBody();
+        return;
+      }
+
+      if (_agentWizardState.step === 6) {
+        const res = await fetch('/api/agents/wizard/step', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            session_id: _agentWizardState.session_id,
+            action: 'create',
+            blueprint: _agentWizardState.blueprint,
+            sponsor_confirmed: !!document.getElementById('wiz-confirm-sensitive')?.checked,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Agent creation failed');
+        if (typeof showToast === 'function') showToast('Agent created', 'success');
+        closeAgentWizard();
+        loadAgents();
+        return;
+      }
+
+      await fetch('/api/agents/wizard/step', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          session_id: _agentWizardState.session_id,
+          action: 'update_blueprint',
+          step: _agentWizardState.step + 1,
+          blueprint: _agentWizardState.blueprint,
+        }),
+      });
+      _agentWizardState.step += 1;
+      renderWizardBody();
+    } catch (e) {
+      if (typeof showToast === 'function') showToast(e.message || 'Wizard error', 'error');
+    }
+  };
+
+  function drawerShell(agentId, activeTab) {
+    const tabs = AGENT_DRAWER_TABS.map((tab) => `<button class="glass-btn glass-btn--ghost drawer-tab ${tab === activeTab ? 'active' : ''}" onclick="loadAgentDrawerTab('${agentId}', '${tab}')">${tab}</button>`).join('');
+    return `<div class="drawer-tabs">${tabs}</div><div id="agent-drawer-panel" class="drawer-panel"><div class="drawer-code">{{ _("common.loading") }}</div></div>`;
+  }
+
+  function normalizeAgentConfig(config) {
+    return {
+      agent_id: config.agent_id,
+      role: config.role || '',
+      model_name: config.model_name || '',
+      model_backend: config.model_backend || 'ollama',
+      persona_prompt: config.persona_prompt || '',
+      skills: config.skills || [],
+      tools: config.tools || [],
+    };
+  }
+
+  async function renderDrawerConfig(config) {
+    await loadAgentModelCatalog();
+    const backendOptions = renderBackendOptions(config.model_backend || 'ollama');
+    const modelOptions = buildModelOptions(config.model_name || '', config.model_backend || 'ollama');
+    return `
+      <div class="field"><label>{{ _("agent.role") }}</label><div class="drawer-code">${esc(config.role)}</div></div>
+      <div class="field"><label>{{ _("agent.model") }}</label><select id="drawer-model-name" class="glass-input">${modelOptions}</select></div>
+      <div class="field"><label>{{ _("agent.backend") }}</label><select id="drawer-model-backend" class="glass-input" onchange="updateDrawerModelOptions()">${backendOptions}</select></div>
+      <div class="field"><label>{{ _("agent.persona") }}</label><textarea id="drawer-persona" class="glass-input" rows="8">${esc(config.persona_prompt)}</textarea></div>
+      <div class="field"><label>{{ _("agent.skills") }}</label><input id="drawer-skills" class="glass-input" value="${esc((config.skills || []).join(', '))}"></div>
+      <div class="btn-row"><button class="glass-btn glass-btn--primary" onclick="saveAgentDrawerConfig('${config.agent_id}')">{{ _("agent.save") }}</button></div>
+    `;
+  }
+
+  async function renderDrawerSkills(preview, agentId) {
+    const agentSkills = new Set(preview.sections && preview.sections.skills || []);
+    const tools = (preview.sections && preview.sections.tools || []).map((tool) => `<span class="meta-tag">${esc(tool)}</span>`).join('');
+    let allSkillsHtml = '';
+    try {
+      const res = await fetch('/admin/skills');
+      const allSkills = await res.json();
+      const skillList = allSkills.skills || allSkills || [];
+      allSkillsHtml = skillList.map(s => {
+        const name = s.name || s.id || String(s);
+        const display = s.display_name || name;
+        return `<label class="drawer-checkbox" style="display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0">`
+          + `<input type="checkbox" class="skill-check" value="${esc(name)}" ${agentSkills.has(name) ? 'checked' : ''}> ${esc(display)}</label>`;
+      }).join('');
+    } catch(e) {
+      allSkillsHtml = [...agentSkills].map(s => `<label class="drawer-checkbox" style="display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0">`
+        + `<input type="checkbox" class="skill-check" value="${esc(s)}" checked> ${esc(s)}</label>`).join('');
+    }
+    return `
+      <div><label>{{ _("agent.skills") }}</label><div class="agent-card-skills" style="display:flex;flex-wrap:wrap">${allSkillsHtml || '<span class="text-muted">{{ _("agent.no_skills") }}</span>'}</div></div>
+      <div class="btn-row"><button class="glass-btn glass-btn--primary glass-btn--sm" onclick="saveAgentSkills('${agentId}')">{{ _("agent.save") }}</button></div>
+      <div><label>Tools</label><div class="agent-card-meta">${tools || '<span class="text-muted">—</span>'}</div></div>
+      <div><label>{{ _("prompts.preview") }}</label><div class="drawer-code">${esc(preview.prompt_preview || '')}</div></div>
+    `;
+  }
+
+  function renderDrawerPermissions(data) {
+    const allowed = (data.allowed || data.permissions || []);
+    const blocked = (data.blocked || []);
+    const tools = (data.tools || []);
+    const allowedHtml = allowed.length ? allowed.map((p) => `<span class="glass-badge badge-success" style="margin:2px">${esc(p)} <button class="tag-remove" title="Block" style="background:none;border:none;cursor:pointer;color:inherit" onclick="toggleAgentPerm('${data.agent_id||''}','${esc(p)}','blocked')">⇄</button> <button class="tag-remove" title="Remove" style="background:none;border:none;cursor:pointer;color:inherit" onclick="removeAgentPerm('${data.agent_id||''}','${esc(p)}','allowed')">&times;</button></span>`).join('') : '<span class="text-muted">{{ _("settings.read_only") }}</span>';
+    const blockedHtml = blocked.length ? blocked.map((p) => `<span class="glass-badge badge-danger" style="margin:2px">${esc(p)} <button class="tag-remove" title="Allow" style="background:none;border:none;cursor:pointer;color:inherit" onclick="toggleAgentPerm('${data.agent_id||''}','${esc(p)}','allowed')">⇄</button> <button class="tag-remove" title="Remove" style="background:none;border:none;cursor:pointer;color:inherit" onclick="removeAgentPerm('${data.agent_id||''}','${esc(p)}','blocked')">&times;</button></span>`).join('') : '<span class="text-muted">&mdash;</span>';
+    const toolsHtml = tools.length ? tools.map((item) => `<span class="meta-tag">${esc(item)}</span>`).join('') : '<span class="text-muted">&mdash;</span>';
+    return `
+      <div><div class="agent-perm-heading"><span class="glass-pill">Allowed</span></div><div class="agent-card-meta" style="flex-wrap:wrap">${allowedHtml}</div></div>
+      <div class="btn-row" style="margin-top:6px"><input id="perm-allowed-input" class="glass-input" placeholder="workspace.read"><button class="glass-btn glass-btn--sm" onclick="addAgentPerm('${data.agent_id||''}','allowed')">+ Allow</button></div>
+      <div><div class="agent-perm-heading"><span class="glass-pill">Blocked</span></div><div class="agent-card-meta" style="flex-wrap:wrap">${blockedHtml}</div></div>
+      <div class="btn-row" style="margin-top:6px"><input id="perm-blocked-input" class="glass-input" placeholder="network.internet"><button class="glass-btn glass-btn--sm" onclick="addAgentPerm('${data.agent_id||''}','blocked')">+ Block</button></div>
+      <div><label>Tools</label><div class="agent-card-meta">${toolsHtml}</div></div>
+      <div class="drawer-code">model=${esc(data.model_name || '—')} backend=${esc(data.model_backend || '—')} workspace=${esc(data.workspace || '—')}</div>
+    `;
+  }
+
+  function renderDrawerHistory(data) {
+    if (!data.history || !data.history.length) {
+      return '<div class="drawer-code">No history yet.</div>';
+    }
+    return `<div class="drawer-list">${data.history.map((entry) => `
+      <div class="drawer-item">
+        <div><strong>${esc(entry.action || '')}</strong></div>
+        <div class="drawer-meta"><span>${esc(entry.created_at || '')}</span></div>
+        <div class="drawer-code">${esc(JSON.stringify(entry.detail || {}, null, 2))}</div>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  function renderDrawerBenchmarks(data) {
+    if (!data.benchmarks || !data.benchmarks.length) {
+      return '<div class="drawer-code">No benchmark history yet.</div>';
+    }
+    return `<div class="drawer-list">${data.benchmarks.map((item) => `
+      <div class="drawer-item">
+        <div><strong>${esc(item.rubric_name || 'benchmark')}</strong></div>
+        <div class="drawer-meta"><span>score ${esc(item.aggregate_score || 0)}</span><span>passed ${esc(item.passed || 0)}/${esc(item.scenarios_count || 0)}</span></div>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  window.openAgentDrawer = function(agentId, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    openDetailDrawer(agentId, drawerShell(agentId, 'config'));
+    loadAgentDrawerTab(agentId, 'config');
+  };
+
+  window.loadAgentDrawerTab = async function(agentId, tab) {
+    openDetailDrawer(agentId, drawerShell(agentId, tab));
+    const panel = document.getElementById('agent-drawer-panel');
+    panel.innerHTML = '<div class="drawer-code">{{ _("common.loading") }}</div>';
+    try {
+      if (tab === 'config') {
+        const response = await fetch(`/agents/${encodeURIComponent(agentId)}/config`);
+        const data = await response.json();
+        panel.innerHTML = await renderDrawerConfig(normalizeAgentConfig(data));
+      } else if (tab === 'skills') {
+        const response = await fetch(`/agents/${encodeURIComponent(agentId)}/preview`);
+        const data = await response.json();
+        panel.innerHTML = await renderDrawerSkills(data, agentId);
+      } else if (tab === 'permissions') {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/permissions`);
+        const data = await response.json();
+        panel.innerHTML = renderDrawerPermissions(data);
+      } else if (tab === 'history') {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/history`);
+        const data = await response.json();
+        panel.innerHTML = renderDrawerHistory(data);
+      } else if (tab === 'benchmarks') {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/benchmarks`);
+        const data = await response.json();
+        panel.innerHTML = renderDrawerBenchmarks(data);
+      }
+    } catch (e) {
+      panel.innerHTML = '<div class="drawer-code">{{ _("common.error") }}</div>';
+    }
+  };
+
+  window.saveAgentDrawerConfig = async function(agentId) {
+    const body = {
+      model_name: document.getElementById('drawer-model-name').value.trim(),
+      model_backend: document.getElementById('drawer-model-backend').value,
+      persona_prompt: document.getElementById('drawer-persona').value,
+      skills: document.getElementById('drawer-skills').value.split(',').map((item) => item.trim()).filter(Boolean),
+    };
+    try {
+      const response = await fetch(`/agents/${encodeURIComponent(agentId)}/config`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (response.ok) {
+        if (typeof showToast === 'function') showToast('Configuration saved', 'success');
+        loadAgents();
+        loadAgentDrawerTab(agentId, 'config');
+      } else {
+        const error = await response.json().catch(() => ({}));
+        if (typeof showToast === 'function') showToast(error.error || 'Save failed', 'error');
+      }
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Network error', 'error');
+    }
+  };
+
+  window.runAgentAction = async function(agentId, action, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/${action}`, { method: 'POST' });
+      if (response.ok) {
+        if (typeof showToast === 'function') showToast('Agent ' + action + ' applied', 'success');
+        loadAgents();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        if (typeof showToast === 'function') showToast(error.error || 'Action failed', 'error');
+      }
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Network error', 'error');
+    }
+  };
+
+  window.openAgentChat = function(agentId, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    location.href = '/agents/' + encodeURIComponent(agentId);
+  };
+
+  window.saveAgentSkills = async function(agentId) {
+    const checks = document.querySelectorAll('.skill-check:checked');
+    const skills = Array.from(checks).map(c => c.value);
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/skills`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({skills})
+      });
+      if (res.ok) {
+        if (typeof showToast === 'function') showToast('Skills saved', 'success');
+        loadAgents();
+      } else { if (typeof showToast === 'function') showToast('Save failed', 'error'); }
+    } catch(e) { if (typeof showToast === 'function') showToast('Network error', 'error'); }
+  };
+
+  window.removeAgentPerm = async function(agentId, perm, section) {
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/permissions/${encodeURIComponent(perm)}`, {
+        method: 'DELETE', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({section})
+      });
+      if (res.ok) {
+        loadAgentDrawerTab(agentId, 'permissions');
+        if (typeof showToast === 'function') showToast('Permission removed', 'success');
+      }
+    } catch(e) { if (typeof showToast === 'function') showToast('Error', 'error'); }
+  };
+
+  window.addAgentPerm = async function(agentId, section) {
+    const input = document.getElementById(section === 'blocked' ? 'perm-blocked-input' : 'perm-allowed-input');
+    const permission = input?.value?.trim();
+    if (!permission) return;
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/permissions`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({permission, section})
+      });
+      if (res.ok) {
+        if (input) input.value = '';
+        loadAgentDrawerTab(agentId, 'permissions');
+        if (typeof showToast === 'function') showToast('Permission saved', 'success');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (typeof showToast === 'function') showToast(err.error || 'Save failed', 'error');
+      }
+    } catch(e) { if (typeof showToast === 'function') showToast('Error', 'error'); }
+  };
+
+  window.toggleAgentPerm = async function(agentId, perm, section) {
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/permissions`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({permission: perm, section})
+      });
+      if (res.ok) {
+        loadAgentDrawerTab(agentId, 'permissions');
+        if (typeof showToast === 'function') showToast('Permission updated', 'success');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (typeof showToast === 'function') showToast(err.error || 'Update failed', 'error');
+      }
+    } catch(e) { if (typeof showToast === 'function') showToast('Error', 'error'); }
+  };
+
+  window.deleteAgent = async function(agentId, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (!confirm('Delete agent ' + agentId + '?')) return;
+    try {
+      var res = await fetch('/api/agents/' + encodeURIComponent(agentId), { method: 'DELETE' });
+      if (res.ok) {
+        if (typeof showToast === 'function') showToast('Agent deleted', 'success');
+        loadAgents();
+      } else {
+        var err = await res.json();
+        if (typeof showToast === 'function') showToast(err.error || 'Delete failed', 'error');
+      }
+    } catch(e) {
+      if (typeof showToast === 'function') showToast('Network error', 'error');
+    }
+  };
 
   async function loadAgents() {
     try {
@@ -176,32 +794,46 @@
       const count = document.getElementById('agent-count');
       count.textContent = agents.length + ' {{ _("agents.count") }}';
 
-      if (!agents.length) { grid.innerHTML = '<div class="empty-agents">{{ _("agents.empty") }}</div>'; return; }
+      if (!agents.length) {
+        grid.innerHTML = renderAgentsState('{{ _("agents.empty") }}', 'empty', 'Create or start an agent to populate this workspace.');
+        return;
+      }
 
       grid.innerHTML = agents.map(a => {
         const icon = ROLE_ICONS[a.role] || '🤖';
-        const skills = (a.skills||[]).slice(0,5).map(s => '<span class="skill-tag">'+s+'</span>').join('');
-        const tools = (a.tools||[]).length;
-        return `<a href="/agents/${a.agent_id}" class="agent-detail-card">
+        const skills = (a.skills || []).slice(0, 5).map(s => '<span class="skill-tag">' + esc(s) + '</span>').join('');
+        const tools = (a.tools || []).length;
+        return `<div class="agent-detail-card" onclick="openAgentChat('${a.agent_id}')">
           <div class="agent-card-header">
             <div class="agent-role-icon">${icon}</div>
             <div>
-              <h3>${a.name||a.agent_id}</h3>
-              <div class="agent-role-label">${a.role}</div>
+              <h3>${esc(a.name || a.agent_id)}</h3>
+              <div class="agent-role-label">${esc(a.role)}</div>
             </div>
-            <span class="glass-badge glass-badge--${stateClass(a.state)}">${a.state}</span>
+            <span class="glass-badge glass-badge--${stateClass(a.state)}">${esc(a.state)}</span>
           </div>
-          <div class="agent-card-model">Model: <strong>${a.model_name||'—'}</strong> (${a.model_backend||'—'})</div>
+          <div class="agent-card-model">Model: <strong>${esc(a.model_name || '—')}</strong> (${esc(a.model_backend || '—')})</div>
           <div class="agent-card-meta">
-            <span class="meta-tag">${(a.skills||[]).length} skills</span>
+            <span class="meta-tag">${(a.skills || []).length} skills</span>
             <span class="meta-tag">${tools} tools</span>
-            ${a.created_at ? '<span class="meta-tag">'+new Date(a.created_at).toLocaleDateString()+'</span>' : ''}
+            <span class="meta-tag">Tokens ${a.token_count || 0}</span>
+            <span class="meta-tag">Cost $${(a.cost_usd || 0).toFixed(4)}</span>
+            ${a.created_at ? '<span class="meta-tag">' + esc(new Date(a.created_at).toLocaleDateString()) + '</span>' : ''}
           </div>
-          ${skills ? '<div class="agent-card-skills">'+skills+'</div>' : ''}
-        </a>`;
+          ${skills ? '<div class="agent-card-skills">' + skills + '</div>' : ''}
+          <div class="agent-card-actions">
+            <button class="glass-btn glass-btn--ghost" onclick="openAgentChat('${a.agent_id}', event)">Chat</button>
+            <button class="glass-btn glass-btn--ghost" onclick="openAgentDrawer('${a.agent_id}', event)">Configure</button>
+            ${['idle','paused'].includes(a.state) ? '<button class="glass-btn glass-btn--ghost glass-btn--success" onclick="runAgentAction(\'' + a.agent_id + '\', \'resume\', event)">Run</button>' : ''}
+            ${['error','terminated'].includes(a.state) ? '<button class="glass-btn glass-btn--ghost glass-btn--success" onclick="runAgentAction(\'' + a.agent_id + '\', \'restart\', event)">Restart</button>' : ''}
+            ${['working','running','busy'].includes(a.state) ? '<button class="glass-btn glass-btn--ghost" onclick="runAgentAction(\'' + a.agent_id + '\', \'pause\', event)">Pause</button>' : ''}
+            ${['working','running','busy'].includes(a.state) ? '<button class="glass-btn glass-btn--ghost glass-btn--danger" onclick="runAgentAction(\'' + a.agent_id + '\', \'terminate\', event)">Stop</button>' : ''}
+            ${['terminated','error','idle'].includes(a.state) ? '<button class="glass-btn glass-btn--ghost glass-btn--danger" onclick="deleteAgent(\'' + a.agent_id + '\', event)">Delete</button>' : ''}
+          </div>
+        </div>`;
       }).join('');
     } catch(e) {
-      document.getElementById('agents-grid').innerHTML = '<div class="empty-agents">{{ _("agents.error") }}</div>';
+      document.getElementById('agents-grid').innerHTML = renderAgentsState('{{ _("agents.error") }}', 'error', 'The agent registry could not be loaded right now.');
     }
   }
 
@@ -226,7 +858,7 @@
       var res = await fetch('/api/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
       if (res.ok) {
         closeCreateAgent();
-        if (typeof showToast === 'function') showToast('Agent created ✓', 'success');
+        if (typeof showToast === 'function') showToast('Agent created', 'success');
         loadAgents();
       } else {
         var err = await res.json();

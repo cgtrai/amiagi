@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="/static/css/inbox.css?v=1.2.1"/>
 <script src="/static/js/components/approval-card.js?v=1.2.1" defer></script>
 <script src="/static/js/components/inbox-badge.js?v=1.2.1" defer></script>
+<script src="/static/js/components/reply-dialog.js?v=1.2.1" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -25,6 +26,14 @@
     <inbox-badge poll-interval="15000"></inbox-badge>
   </div>
 
+  <div class="inbox-bulk-toolbar glass-card">
+    <div class="inbox-bulk-summary" id="inbox-selection-count">{{ _("inbox.none_selected") }}</div>
+    <div class="inbox-bulk-actions">
+      <button class="glass-btn glass-btn--success" id="btn-batch-approve" disabled>{{ _("inbox.batch_approve") }}</button>
+      <button class="glass-btn glass-btn--danger" id="btn-batch-reject" disabled>{{ _("inbox.batch_reject") }}</button>
+    </div>
+  </div>
+
   {# ── Tab bar ───────────────────────────────────────────── #}
   <div class="inbox-tabs" id="inbox-tabs">
     <button class="inbox-tab active" data-status="pending">
@@ -38,6 +47,10 @@
     <button class="inbox-tab" data-status="rejected">
       {{ _("inbox.rejected") }}
       <span class="tab-count" id="tab-count-rejected">0</span>
+    </button>
+    <button class="inbox-tab" data-status="expired">
+      {{ _("inbox.expired") }}
+      <span class="tab-count" id="tab-count-expired">0</span>
     </button>
     <button class="inbox-tab" data-status="">
       {{ _("inbox.all") }}
@@ -76,12 +89,19 @@
         </svg>
         {{ _("inbox.reject") }}
       </button>
+      <button class="glass-btn glass-btn--sm" id="inbox-modal-delegate">
+        📨 {{ _("inbox.delegate") or "Delegate" }}
+      </button>
+      <button class="glass-btn glass-btn--sm glass-btn--primary" id="inbox-modal-grant" hidden>
+        🔐 {{ _("inbox.grant_from_vault") }}
+      </button>
     </div>
     {# Reply textarea (for ask_human items) #}
     <div class="inbox-modal-reply" id="inbox-modal-reply" hidden>
-      <textarea id="inbox-reply-text" placeholder="{{ _('inbox.reply_placeholder') }}"
-                rows="3"></textarea>
-      <button class="glass-btn" id="inbox-modal-send-reply">{{ _("inbox.send_reply") }}</button>
+      <reply-dialog id="inbox-reply-dialog"
+                    placeholder="{{ _('inbox.reply_placeholder') }}"
+                    button-label="{{ _('inbox.send_reply') }}"
+                    rows="3"></reply-dialog>
     </div>
   </div>
 </div>

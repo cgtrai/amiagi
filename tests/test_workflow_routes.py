@@ -20,6 +20,14 @@ def _make_app(engine=None) -> Starlette:
     return app
 
 
+class _FakeHub:
+    def __init__(self):
+        self.events = []
+
+    async def broadcast(self, name, payload):
+        self.events.append((name, payload))
+
+
 def _sample_def_body() -> dict:
     """A minimal valid workflow-definition JSON body."""
     return {
@@ -119,6 +127,81 @@ class TestCreateWorkflowDefinition:
         r = client.post("/api/workflows", json={"name": "wf", "nodes": []})
         assert r.status_code == 400
 
+    def test_create_from_yaml_body(self) -> None:
+        client = TestClient(_make_app())
+        yaml_body = """
+nodes:
+  - node_id: analyze
+    node_type: execute
+    label: Analyze Code
+    agent_role: executor
+  - node_id: review
+    node_type: gate
+    label: Human Review
+    depends_on: [analyze]
+"""
+        r = client.post(
+            "/api/workflows",
+            json={
+                "name": "yaml-wf",
+                "description": "from yaml",
+                "yaml_body": yaml_body,
+            },
+        )
+        assert r.status_code == 201
+        data = r.json()
+        assert data["definition"]["name"] == "yaml-wf"
+        assert len(data["definition"]["nodes"]) == 2
+        assert data["definition"]["nodes"][1]["depends_on"] == ["analyze"]
+
+    def test_invalid_yaml_body_returns_400(self) -> None:
+        client = TestClient(_make_app())
+        r = client.post(
+            "/api/workflows",
+            json={
+                "name": "bad-yaml",
+                "yaml_body": "nodes: [",
+            },
+        )
+        assert r.status_code == 400
+
+
+class TestWorkflowFrontendContract:
+    def test_workflows_js_sends_yaml_body_instead_of_empty_nodes(self) -> None:
+        from pathlib import Path
+
+        js = Path(__file__).resolve().parent.parent / "src" / "amiagi" / "interfaces" / "web" / "static" / "js" / "workflows.js"
+        content = js.read_text(encoding="utf-8")
+        assert "yaml_body: yamlBody" in content
+        assert "nodes: []" not in content
+
+    def test_workflows_js_recognizes_waiting_approval_gate_status(self) -> None:
+        from pathlib import Path
+
+        js = Path(__file__).resolve().parent.parent / "src" / "amiagi" / "interfaces" / "web" / "static" / "js" / "workflows.js"
+        content = js.read_text(encoding="utf-8")
+        assert "waiting_approval" in content
+
+    def test_workflows_js_contains_edit_clone_and_live_preview_hooks(self) -> None:
+        from pathlib import Path
+
+        js = Path(__file__).resolve().parent.parent / "src" / "amiagi" / "interfaces" / "web" / "static" / "js" / "workflows.js"
+        content = js.read_text(encoding="utf-8")
+        assert "data-action=\"edit\"" in content
+        assert "data-action=\"clone\"" in content
+        assert "workflow-editor-preview" in content
+        assert "updateWorkflowPreview" in content
+
+    def test_workflows_js_contains_contract_error_feedback_helpers(self) -> None:
+        from pathlib import Path
+
+        js = Path(__file__).resolve().parent.parent / "src" / "amiagi" / "interfaces" / "web" / "static" / "js" / "workflows.js"
+        content = js.read_text(encoding="utf-8")
+        assert "responseErrorMessage" in content
+        assert "notify(await responseErrorMessage(res, \"Clone failed\")" in content
+        assert "Gate approval failed" in content
+        assert "Run ${action} failed" in content
+
 
 class TestGetWorkflowDefinition:
     def test_not_found(self) -> None:
@@ -145,6 +228,52 @@ class TestDeleteWorkflowDefinition:
         assert r2.status_code == 404
 
 
+class TestUpdateAndCloneWorkflowDefinition:
+    def test_update_definition_ok(self) -> None:
+        client = TestClient(_make_app())
+        create = client.post("/api/workflows", json=_sample_def_body())
+        wf_id = create.json()["id"]
+
+        r = client.put(
+            f"/api/workflows/{wf_id}",
+            json={
+                "name": "updated-wf",
+                "nodes": [
+                    {
+                        "node_id": "n1",
+                        "node_type": "execute",
+                        "label": "Step 1",
+                        "depends_on": [],
+                        "config": {"progress_current": 3, "progress_total": 5},
+                    }
+                ],
+            },
+        )
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["definition"]["name"] == "updated-wf"
+        assert data["definition"]["nodes"][0]["progress"] == "3/5"
+
+    def test_clone_definition_creates_copy(self) -> None:
+        client = TestClient(_make_app())
+        create = client.post("/api/workflows", json=_sample_def_body())
+        wf_id = create.json()["id"]
+
+        r = client.post(f"/api/workflows/{wf_id}/clone", json={})
+
+        assert r.status_code == 201
+        payload = r.json()
+        assert payload["definition"]["name"].endswith("(copy)")
+        listed = client.get("/api/workflows").json()["definitions"]
+        assert len(listed) == 2
+
+    def test_update_definition_missing_returns_404(self) -> None:
+        client = TestClient(_make_app())
+        r = client.put("/api/workflows/missing", json=_sample_def_body())
+        assert r.status_code == 404
+
+
 # ── Tests: Runs ─────────────────────────────────────────────
 
 class TestListWorkflowRuns:
@@ -164,17 +293,25 @@ class TestWorkflowRunPauseResume:
     def test_pause(self) -> None:
         engine = _FakeEngine()
         engine._runs["r1"] = _FakeRun(run_id="r1")
-        client = TestClient(_make_app(engine))
+        app = _make_app(engine)
+        app.state.event_hub = _FakeHub()
+        client = TestClient(app)
         r = client.post("/api/workflow-runs/r1/pause")
         assert r.status_code == 200
+        assert r.json()["run"]["status"] == "paused"
+        assert app.state.event_hub.events[-1][0] == "workflow.paused"
 
     def test_resume(self) -> None:
         engine = _FakeEngine()
         engine._runs["r1"] = _FakeRun(run_id="r1")
-        client = TestClient(_make_app(engine))
+        app = _make_app(engine)
+        app.state.event_hub = _FakeHub()
+        client = TestClient(app)
         client.post("/api/workflow-runs/r1/pause")
         r = client.post("/api/workflow-runs/r1/resume")
         assert r.status_code == 200
+        assert r.json()["run"]["status"] == "running"
+        assert app.state.event_hub.events[-1][0] == "workflow.resumed"
 
     def test_run_not_found(self) -> None:
         engine = _FakeEngine()
@@ -185,6 +322,10 @@ class TestWorkflowRunPauseResume:
     def test_abort(self) -> None:
         engine = _FakeEngine()
         engine._runs["r1"] = _FakeRun(run_id="r1")
-        client = TestClient(_make_app(engine))
+        app = _make_app(engine)
+        app.state.event_hub = _FakeHub()
+        client = TestClient(app)
         r = client.post("/api/workflow-runs/r1/abort")
         assert r.status_code == 200
+        assert r.json()["run"]["status"] == "failed"
+        assert app.state.event_hub.events[-1][0] == "workflow.aborted"

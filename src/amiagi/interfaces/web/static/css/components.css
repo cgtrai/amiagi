@@ -1,9 +1,3 @@
-/* ================================================================
-   Amiagi Component Library — Liquid Glass
-   ================================================================ */
-
-/* ── Glass Panel ─────────────────────────────────────────────── */
-
 .glass-panel {
     background: var(--glass-bg);
     -webkit-backdrop-filter: var(--glass-blur);
@@ -18,7 +12,6 @@
     background: var(--glass-bg-hover);
 }
 
-/* ── Specular top-edge on glass panels ───────────────────────── */
 .glass-panel::before {
     content: '';
     position: absolute;
@@ -38,7 +31,6 @@
     opacity: 0.6;
 }
 
-/* ── Shimmer sweep on glass-card ─────────────────────────────── */
 .glass-card::before {
     content: '';
     position: absolute;
@@ -51,7 +43,6 @@
     z-index: 0;
 }
 
-/* ── Shimmer sweep on nav bar ────────────────────────────────── */
 .glass-nav {
     overflow: hidden;
 }
@@ -67,12 +58,10 @@
     z-index: 0;
 }
 
-/* ── Specular breathe on command rail ────────────────────────── */
 .command-rail {
     animation: specular-breathe 6s ease-in-out infinite;
 }
 
-/* ── Chromatic hover on glass-card ───────────────────────────── */
 .glass-card::after {
     content: '';
     position: absolute;
@@ -106,8 +95,6 @@
 .glass-card:hover {
     border-color: var(--glass-border-strong);
 }
-
-/* ── Navigation Bar ──────────────────────────────────────────── */
 
 .glass-nav {
     position: fixed;
@@ -145,8 +132,6 @@
     color: var(--text-primary);
 }
 
-/* ── Sidebar (legacy — preserved for compat) ─────────────────── */
-
 .glass-sidebar {
     position: fixed;
     top: var(--nav-height);
@@ -161,8 +146,6 @@
     padding: var(--space-4) 0;
     z-index: var(--z-rail);
 }
-
-/* ── Command Rail (replaces sidebar) ─────────────────────────── */
 
 .command-rail {
     position: fixed;
@@ -184,7 +167,6 @@
     overflow-x: hidden;
 }
 
-/* Specular top-edge highlight */
 .command-rail::before {
     content: '';
     position: absolute;
@@ -222,13 +204,15 @@
     text-decoration: none;
 }
 .command-rail-item.active {
-    background: var(--glass-bg-active);
-    color: var(--accent-blue);
-    box-shadow: inset 3px 0 0 var(--accent-blue);
-    border-radius: 0 var(--glass-radius-sm) var(--glass-radius-sm) 0;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.24));
+    color: var(--text-primary);
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    border-radius: var(--glass-radius-full);
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.22),
+                0 0 18px rgba(56, 189, 248, 0.16),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* Tooltip on hover */
 .command-rail-item[data-tooltip]::after {
     content: attr(data-tooltip);
     position: absolute;
@@ -253,7 +237,6 @@
     opacity: 1;
 }
 
-/* Badge overlay on rail icon */
 .command-rail-item .rail-badge {
     position: absolute;
     top: 2px;
@@ -285,7 +268,16 @@
     flex: 1;
 }
 
-/* ── Status Bar ──────────────────────────────────────────────── */
+.rail-group-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--glass-text-secondary, #94a3b8);
+    padding: 12px 0 4px;
+    text-align: center;
+    display: block;
+    flex-shrink: 0;
+}
 
 .status-bar {
     position: fixed;
@@ -306,7 +298,6 @@
     color: var(--text-secondary);
     overflow: hidden;
 }
-/* Specular top-edge */
 .status-bar::before {
     content: '';
     position: absolute;
@@ -323,6 +314,28 @@
     align-items: center;
     gap: var(--space-2);
     white-space: nowrap;
+}
+.status-task-breakdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.status-task-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: var(--glass-radius-full);
+    background: rgba(255, 255, 255, 0.05);
+}
+.status-task-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.status-task-divider {
+    color: var(--text-muted);
 }
 .status-bar-section .status-dot {
     display: inline-block;
@@ -350,7 +363,6 @@
     background: var(--glass-bg-hover);
 }
 
-/* Progress micro bar */
 .progress-micro {
     display: inline-block;
     width: 48px;
@@ -369,8 +381,6 @@
 .progress-micro-fill--yellow { background: var(--accent-amber); }
 .progress-micro-fill--red    { background: var(--accent-rose); }
 .progress-micro-fill--blue   { background: var(--accent-blue); }
-
-/* ── Detail Drawer ───────────────────────────────────────────── */
 
 .detail-drawer-overlay {
     display: none;
@@ -402,7 +412,6 @@
     transform: translateX(0);
 }
 
-/* Shimmer sweep on drawer edge */
 .detail-drawer::before {
     content: '';
     position: absolute;
@@ -424,7 +433,6 @@
     position: relative;
     overflow: hidden;
 }
-/* Shimmer sweep across drawer header */
 .detail-drawer-header::after {
     content: '';
     position: absolute;
@@ -461,8 +469,6 @@
     padding: var(--space-5);
 }
 
-/* ── Budget Bar ──────────────────────────────────────────────── */
-
 .budget-bar {
     width: 100%;
     height: 6px;
@@ -479,8 +485,6 @@
 .budget-bar-fill--warning {
     background: linear-gradient(90deg, var(--accent-amber), var(--accent-rose));
 }
-
-/* ── Status Indicator (for agent states) ─────────────────────── */
 
 .status-indicator {
     display: inline-flex;
@@ -501,8 +505,6 @@
 .status-indicator--paused::before  { background: var(--state-paused); }
 .status-indicator--error::before   { background: var(--state-error); }
 .status-indicator--terminated::before { background: var(--state-terminated); }
-
-/* ── Inputs ──────────────────────────────────────────────────── */
 
 .glass-input,
 .glass-textarea {
@@ -526,12 +528,38 @@
 .glass-textarea::placeholder {
     color: var(--text-muted);
 }
+.glass-select,
+select.glass-input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    padding-right: 2.75rem;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+        linear-gradient(135deg, var(--text-muted) 50%, transparent 50%),
+        linear-gradient(to right, rgba(148, 163, 184, 0.18), rgba(148, 163, 184, 0.18));
+    background-position:
+        calc(100% - 18px) calc(50% - 3px),
+        calc(100% - 12px) calc(50% - 3px),
+        calc(100% - 2.5rem) 50%;
+    background-size: 6px 6px, 6px 6px, 1px 1.4rem;
+    background-repeat: no-repeat;
+}
+.glass-select:hover,
+select.glass-input:hover {
+    border-color: var(--glass-border-strong);
+    background-color: var(--glass-bg-hover);
+}
+.glass-select:disabled,
+select.glass-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
 .glass-textarea {
     resize: vertical;
     min-height: 80px;
 }
-
-/* ── Buttons ─────────────────────────────────────────────────── */
 
 .glass-btn {
     display: inline-flex;
@@ -583,8 +611,6 @@
     font-size: var(--font-size-xs);
 }
 
-/* ── Badges ──────────────────────────────────────────────────── */
-
 .glass-badge {
     display: inline-flex;
     align-items: center;
@@ -604,8 +630,6 @@
 .badge-success  { background: rgba(34,197,94,0.15);  color: var(--color-success);    }
 .badge-danger   { background: rgba(244,63,94,0.15);  color: var(--color-danger);     }
 .badge-muted    { background: rgba(107,114,128,0.15); color: var(--text-muted);      }
-
-/* ── Admin setup verify ──────────────────────────────────────── */
 
 .setup-code-input {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -640,8 +664,6 @@
     width: 100%;
 }
 
-/* ── Table ───────────────────────────────────────────────────── */
-
 .glass-table {
     width: 100%;
     border-collapse: collapse;
@@ -662,8 +684,6 @@
 .glass-table tbody tr:hover {
     background: var(--glass-bg-hover);
 }
-
-/* ── Tabs ────────────────────────────────────────────────────── */
 
 .glass-tabs {
     display: flex;
@@ -687,8 +707,6 @@
     color: var(--accent-blue);
     border-bottom-color: var(--accent-blue);
 }
-
-/* ── Toast ───────────────────────────────────────────────────── */
 
 .glass-toast {
     position: fixed;
@@ -714,8 +732,6 @@
     transform: translateY(0);
     opacity: 1;
 }
-
-/* ── Toast container (partials/toast.html) ─────────────────── */
 
 .toast-container {
     position: fixed;
@@ -758,8 +774,6 @@
 }
 .toast-close:hover { color: var(--text-primary); }
 
-/* ── Modal ───────────────────────────────────────────────────── */
-
 .glass-modal-overlay {
     position: fixed;
     inset: 0;
@@ -792,8 +806,6 @@
     overflow-y: auto;
 }
 
-/* ── Dropdown ────────────────────────────────────────────────── */
-
 .glass-dropdown {
     position: absolute;
     min-width: 180px;
@@ -819,8 +831,6 @@
     color: var(--text-primary);
 }
 
-/* ── Avatar ──────────────────────────────────────────────────── */
-
 .glass-avatar {
     width: 36px;
     height: 36px;
@@ -832,8 +842,6 @@
     width: 64px;
     height: 64px;
 }
-
-/* ── Agent Card ──────────────────────────────────────────────── */
 
 .agent-card {
     display: flex;
@@ -864,8 +872,6 @@
     font-family: var(--font-mono);
 }
 
-/* ── Chat Bubbles ────────────────────────────────────────────── */
-
 .chat-bubble {
     max-width: 80%;
     padding: var(--space-3) var(--space-4);
@@ -886,8 +892,6 @@
     color: var(--text-primary);
     border-bottom-left-radius: var(--space-1);
 }
-
-/* ── File Card ───────────────────────────────────────────────── */
 
 .file-card {
     display: flex;
@@ -915,8 +919,6 @@
     font-size: var(--font-size-xs);
 }
 
-/* ── Hamburger ───────────────────────────────────────────────── */
-
 .hamburger {
     display: none;
     flex-direction: column;
@@ -936,8 +938,6 @@
 @media (max-width: 768px) {
     .hamburger { display: flex; }
 }
-
-/* ── Notification Bell ───────────────────────────────────────── */
 
 .nav-bell-wrapper { position: relative; }
 
@@ -1628,3 +1628,56 @@
     pointer-events: none;
     z-index: 0;
 }
+
+/* ── Utility css classes (replaces inline styles) ────────────── */
+.u-hidden          { display: none; }
+.u-flex             { display: flex; }
+.u-flex-center      { display: flex; align-items: center; }
+.u-flex-wrap        { flex-wrap: wrap; }
+.u-flex-end         { display: flex; justify-content: flex-end; }
+.u-flex-1           { flex: 1; }
+.u-gap-2            { gap: var(--space-2); }
+.u-gap-3            { gap: var(--space-3); }
+.u-mb-3             { margin-bottom: var(--space-3); }
+.u-mb-4             { margin-bottom: var(--space-4); }
+.u-mt-2             { margin-top: var(--space-2); }
+.u-mt-3             { margin-top: var(--space-3); }
+.u-m-0              { margin: 0; }
+.u-p-4              { padding: var(--space-4); }
+.u-p-5              { padding: var(--space-5); }
+.u-p-3              { padding: var(--space-3); }
+.u-cursor-pointer   { cursor: pointer; }
+.u-grid             { display: grid; gap: var(--space-3); }
+.u-inline-flex-center { display: inline-flex; align-items: center; gap: 4px; }
+.u-min-w-340        { min-width: 340px; }
+.u-gap-sm           { gap: 6px; }
+.u-mt-sm            { margin-top: 8px; }
+.u-mt-1             { margin-top: .5rem; }
+.u-ml-2             { margin-left: .5rem; }
+.u-w-auto           { width: auto; }
+
+/* ── Cron dialog layout ──────────────────────────────────────── */
+.cron-dialog        { max-width: 600px; width: min(600px, 90vw); }
+.cron-dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── Supervisor progress bar ─────────────────────────────────── */
+.ct-progress-bar    { height: 8px; padding: 0; overflow: hidden; }
+.ct-progress-fill   { height: 100%; background: var(--glass-accent-teal, #2dd4bf); transition: width .3s; }
+
+/* ── Model hub config editor ─────────────────────────────────── */
+.config-json-textarea { font-family: monospace; width: 100%; resize: vertical; }
+
+/* ── Tasks sortable header ───────────────────────────────────── */
+.th-sortable        { cursor: pointer; }
+
+/* ── Traces filter ───────────────────────────────────────────── */
+.traces-filter-input { max-width: 200px; }
+
+/* ── Skills grid layout ──────────────────────────────────────── */
+.skills-auto-grid   { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+
+/* ── Sessions agent filter ───────────────────────────────────── */
+.session-agent-filter { max-width: 180px; }
+
+/* ── Notification channel table ──────────────────────────────── */
+.notif-channel-table { font-size: 0.85em; }

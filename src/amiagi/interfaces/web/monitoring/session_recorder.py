@@ -118,23 +118,41 @@ class SessionRecorder:
         )
         return [_row_to_event(r) for r in rows]
 
-    async def list_sessions(self, *, limit: int = 50) -> list[dict[str, Any]]:
+    async def list_sessions(self, *, limit: int = 50, agent_id: str | None = None) -> list[dict[str, Any]]:
         """List distinct sessions with event counts."""
-        rows = await self._pool.fetch(
-            """
-            SELECT session_id, count(*) AS event_count,
-                   min(created_at) AS started_at, max(created_at) AS ended_at
-            FROM dbo.session_events
-            GROUP BY session_id
-            ORDER BY max(created_at) DESC
-            LIMIT $1
-            """,
-            limit,
-        )
+        if agent_id:
+            rows = await self._pool.fetch(
+                """
+                SELECT session_id, count(*) AS event_count,
+                       min(created_at) AS started_at, max(created_at) AS ended_at,
+                       max(agent_id) AS agent_id
+                FROM dbo.session_events
+                WHERE agent_id = $1
+                GROUP BY session_id
+                ORDER BY max(created_at) DESC
+                LIMIT $2
+                """,
+                agent_id,
+                limit,
+            )
+        else:
+            rows = await self._pool.fetch(
+                """
+                SELECT session_id, count(*) AS event_count,
+                       min(created_at) AS started_at, max(created_at) AS ended_at,
+                       max(agent_id) AS agent_id
+                FROM dbo.session_events
+                GROUP BY session_id
+                ORDER BY max(created_at) DESC
+                LIMIT $1
+                """,
+                limit,
+            )
         return [
             {
                 "session_id": r["session_id"],
                 "event_count": r["event_count"],
+                "agent_id": r.get("agent_id"),
                 "started_at": r["started_at"].isoformat() if r["started_at"] else None,
                 "ended_at": r["ended_at"].isoformat() if r["ended_at"] else None,
             }

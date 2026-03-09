@@ -6,74 +6,513 @@
 <link rel="stylesheet" href="/static/css/dashboard.css"/>
 <style>
 .metrics-page { padding: var(--space-6); }
-.metrics-page h2 { margin: 0 0 var(--space-6); color: var(--text-primary); }
+.metrics-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+  flex-wrap: wrap;
+}
+.metrics-page h2 { margin: 0; color: var(--text-primary); }
+.metrics-toolbar__subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.metrics-controls {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.metrics-control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.metrics-layout-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.metrics-select,
+.metrics-input {
+  background: rgba(15, 23, 42, 0.65);
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+.metrics-input { min-width: 170px; }
+.metrics-button {
+  border: 1px solid var(--glass-border);
+  background: rgba(59, 130, 246, 0.16);
+  color: var(--text-primary);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+.metrics-button:hover,
+.metrics-button:focus-visible {
+  background: rgba(59, 130, 246, 0.24);
+}
 .metrics-summary {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-4); margin-bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 .summary-card {
-  background: var(--glass-bg); border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius); padding: var(--space-5); text-align: center;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-5);
 }
-.summary-card .summary-value { font-size: 2rem; font-weight: 700; color: var(--text-primary); }
-.summary-card .summary-label { font-size: var(--font-size-sm); color: var(--text-muted); margin-top: var(--space-2); }
+.summary-card__label {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-3);
+}
+.summary-card__value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.summary-card__delta {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.summary-card__delta.is-positive { color: #7dd3fc; }
+.summary-card__delta.is-negative { color: #fca5a5; }
+.summary-card__delta.is-neutral { color: var(--text-muted); }
+.summary-card__sparkline {
+  width: 100%;
+  height: 34px;
+  margin-top: var(--space-3);
+}
 .metrics-panels {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
 }
-@media (max-width: 900px) { .metrics-panels { grid-template-columns: 1fr; } }
+.metrics-panels.layout-editing .metrics-panel {
+  cursor: move;
+  outline: 1px dashed rgba(96, 165, 250, 0.45);
+}
+.metrics-panels.layout-editing .metrics-panel__header {
+  position: relative;
+}
+.metrics-panels.layout-editing .metrics-panel__header::after {
+  content: 'Drag to reorder';
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .metrics-panel {
-  background: var(--glass-bg); border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius); padding: var(--space-5);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  padding: var(--space-5);
 }
-.metrics-panel h3 { margin: 0 0 var(--space-4); color: var(--text-primary); }
+.metrics-panel.is-dragging {
+  opacity: 0.45;
+}
+.metrics-panel.is-drop-target {
+  border-color: rgba(96, 165, 250, 0.75);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
 .metrics-panel--full { grid-column: 1 / -1; }
+.metrics-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+.metrics-panel__header h3 { margin: 0; color: var(--text-primary); }
+.metrics-panel__meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.metrics-list {
+  display: grid;
+  gap: var(--space-3);
+  max-height: 420px;
+  overflow: auto;
+}
+.metrics-grid-2 {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+}
+.metrics-item {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  background: rgba(15, 23, 42, 0.45);
+}
+.metrics-item--clickable {
+  cursor: pointer;
+}
+.metrics-item--active {
+  border-color: rgba(96, 165, 250, 0.7);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
+.metrics-item__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+}
+.metrics-item__meta { font-size: var(--font-size-sm); color: var(--text-muted); }
+.metrics-item__message { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.metrics-item__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+.metrics-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.metrics-badge--error { background: color-mix(in srgb, var(--state-error) 18%, transparent); color: #ffb4b4; }
+.metrics-badge--warning { background: color-mix(in srgb, var(--state-warning) 18%, transparent); color: #ffd36f; }
+.metrics-badge--info { background: color-mix(in srgb, var(--accent-blue) 18%, transparent); color: #9cc7ff; }
+.metrics-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.metrics-link:hover,
+.metrics-link:focus-visible { text-decoration: underline; }
+.metrics-summary-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.metrics-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.metrics-summary-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.metrics-summary-key { color: var(--text-muted); font-size: var(--font-size-sm); }
+.metrics-summary-value { color: var(--text-primary); font-weight: 600; text-align: right; }
+.event-ticker-controls {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.event-ticker-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.event-ticker-item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(15, 23, 42, 0.35);
+}
+.event-ticker-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.event-ticker-item__title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.event-ticker-item__message {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.event-ticker-item__meta {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.event-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-primary);
+}
+.event-source-badge[data-source="alert"] { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
+.event-source-badge[data-source="session"] { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+.event-source-badge[data-source="trace"] { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
 .health-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-4); margin-top: var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
 }
 .health-card {
-  background: var(--glass-bg); border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius-sm); padding: var(--space-4);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
 }
 .health-card .health-title { font-size: var(--font-size-sm); color: var(--text-muted); margin-bottom: var(--space-2); }
 .health-card .health-value { font-size: var(--font-size-lg); font-weight: 600; color: var(--text-primary); }
 .health-card.ok { border-left: 3px solid var(--state-success); }
 .health-card.warn { border-left: 3px solid var(--state-warning); }
 .health-card.error { border-left: 3px solid var(--state-error); }
-.cost-table { width: 100%; }
-.cost-table th { text-align: left; padding: var(--space-2) var(--space-3); color: var(--text-muted); font-size: var(--font-size-xs); text-transform: uppercase; border-bottom: 1px solid var(--glass-border); }
-.cost-table td { padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); color: var(--text-primary); border-bottom: 1px solid var(--glass-border); }
+.cost-table,
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cost-table th,
+.comparison-table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--glass-border);
+}
+.cost-table td,
+.comparison-table td {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--glass-border);
+}
+.comparison-table button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.trace-detail {
+  min-height: 280px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-4);
+  background: rgba(15, 23, 42, 0.35);
+}
+.trace-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.trace-detail__card {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-3);
+}
+.trace-detail__card strong {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+.trace-tree,
+.trace-timeline,
+.trace-logs {
+  display: grid;
+  gap: var(--space-2);
+}
+.trace-tree__node,
+.trace-timeline__item,
+.trace-log {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+  padding: var(--space-3);
+  background: rgba(15, 23, 42, 0.35);
+}
+.trace-tree__children {
+  margin-left: var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 1px solid rgba(148, 163, 184, 0.2);
+}
+.trace-log pre {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.text-muted { color: var(--text-muted); }
+@media (max-width: 1100px) {
+  .metrics-panels,
+  .metrics-grid-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .metrics-toolbar { flex-direction: column; align-items: stretch; }
+  .metrics-controls { justify-content: space-between; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="metrics-page">
-  <h2>📊 {{ _("metrics.title") }}</h2>
+  <div class="metrics-toolbar">
+    <div>
+      <h2>📊 {{ _("metrics.title") }}</h2>
+      <p class="metrics-toolbar__subtitle">Operations dashboard with filters, comparison table, alerts, sessions and trace viewer.</p>
+    </div>
+    <div class="metrics-controls">
+      <div class="metrics-control-group">
+        <label for="metrics-window" class="text-muted">{{ _("metrics.time_window") }}</label>
+        <select id="metrics-window" class="metrics-select">
+          <option value="1h">{{ _("metrics.window_1h") }}</option>
+          <option value="6h">{{ _("metrics.window_6h") }}</option>
+          <option value="24h" selected>{{ _("metrics.window_24h") }}</option>
+          <option value="7d">{{ _("metrics.window_7d") }}</option>
+        </select>
+      </div>
+      <input id="metrics-agent-filter" class="metrics-input" placeholder="Filter by agent">
+      <input id="metrics-model-filter" class="metrics-input" placeholder="Filter by model">
+      <div class="metrics-layout-controls">
+        <button id="btn-customize-layout" class="metrics-button" type="button">Customize layout</button>
+        <button id="btn-reset-layout" class="metrics-button" type="button">Reset layout</button>
+      </div>
+      <button id="btn-refresh-metrics" class="metrics-button" type="button">Refresh</button>
+      <button id="btn-export-metrics" class="metrics-button" type="button">Export</button>
+    </div>
+  </div>
 
-  <!-- Metrics summary cards -->
   <div class="metrics-summary" id="metrics-summary"></div>
 
-  <div class="metrics-panels">
-    <!-- Performance chart -->
-    <div class="metrics-panel metrics-panel--full">
-      <h3>{{ _("metrics.performance_over_time") }}</h3>
-      <performance-chart metric="latency" auto-refresh="30"></performance-chart>
+  <div class="metrics-panels" id="metrics-panels">
+    <div class="metrics-panel metrics-panel--full" data-panel-id="performance-chart">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.performance_over_time") }}</h3>
+        <div class="metrics-panel__meta" id="metrics-time-range-label">Last 24h</div>
+      </div>
+      <performance-chart id="performance-chart" metric="latency" interval="30"></performance-chart>
     </div>
 
-    <!-- Budget / costs -->
-    <div class="metrics-panel">
-      <h3>{{ _("metrics.costs") }}</h3>
+    <div class="metrics-panel" data-panel-id="performance-summary">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.performance_summary") }}</h3>
+        <span class="metrics-panel__meta">Live aggregates</span>
+      </div>
+      <div class="metrics-summary-list" id="performance-summary"></div>
+    </div>
+
+    <div class="metrics-panel" data-panel-id="costs">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.costs") }}</h3>
+        <span class="metrics-panel__meta">Top task spend</span>
+      </div>
       <div id="budget-info"></div>
       <table class="cost-table" id="cost-table">
-        <thead><tr><th>{{ _("metrics.task") }}</th><th>{{ _("metrics.tokens") }}</th><th>{{ _("metrics.cost") }}</th></tr></thead>
+        <thead>
+          <tr><th>{{ _("metrics.task") }}</th><th>{{ _("metrics.tokens") }}</th><th>{{ _("metrics.cost") }}</th></tr>
+        </thead>
         <tbody id="cost-tbody"></tbody>
       </table>
     </div>
 
-    <!-- System health -->
-    <div class="metrics-panel">
-      <h3>{{ _("metrics.system_health") }}</h3>
+    <div class="metrics-panel metrics-panel--full" data-panel-id="comparison">
+      <div class="metrics-panel__header">
+        <h3>Performance comparison</h3>
+        <span class="metrics-panel__meta">Per agent/model sortable table</span>
+      </div>
+      <table class="comparison-table" id="comparison-table">
+        <thead>
+          <tr>
+            <th><button type="button" data-sort-key="agent_role">Agent / model</button></th>
+            <th><button type="button" data-sort-key="avg_time_ms">Avg time</button></th>
+            <th><button type="button" data-sort-key="p95_ms">P95</button></th>
+            <th><button type="button" data-sort-key="success_rate">Success</button></th>
+            <th><button type="button" data-sort-key="cost_per_1k_tokens">$/1k tok</button></th>
+            <th><button type="button" data-sort-key="runs">Runs</button></th>
+          </tr>
+        </thead>
+        <tbody id="comparison-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="metrics-panel" data-panel-id="health">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.system_health") }}</h3>
+        <span class="metrics-panel__meta">Detailed infra snapshot</span>
+      </div>
       <div class="health-grid" id="health-grid"></div>
+    </div>
+
+    <div class="metrics-panel" data-panel-id="alerts">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.alerts") }}</h3>
+        <span class="metrics-panel__meta">Window-aware alert ticker</span>
+      </div>
+      <div class="metrics-list" id="alerts-list"></div>
+    </div>
+
+    <div class="metrics-panel" data-panel-id="sessions">
+      <div class="metrics-panel__header">
+        <h3>{{ _("metrics.sessions") }}</h3>
+        <span class="metrics-panel__meta">Recent replayable sessions</span>
+      </div>
+      <div class="metrics-list" id="sessions-list"></div>
+    </div>
+
+    <div class="metrics-panel metrics-panel--full" data-panel-id="event-ticker" id="event-ticker-panel">
+      <div class="metrics-panel__header">
+        <h3>Event ticker</h3>
+        <div class="event-ticker-controls">
+          <select class="metrics-select" id="event-ticker-source" aria-label="Event ticker source filter">
+            <option value="all">All sources</option>
+            <option value="alert">Alerts</option>
+            <option value="session">Sessions</option>
+            <option value="trace">Traces</option>
+          </select>
+          <input class="metrics-input" id="event-ticker-search" placeholder="Search events, sessions or traces">
+        </div>
+      </div>
+      <div class="event-ticker-list" id="event-ticker-list"></div>
+    </div>
+
+    <div class="metrics-panel metrics-panel--full" data-panel-id="traces" id="traces-panel">
+      <div class="metrics-panel__header">
+        <h3>Trace viewer</h3>
+        <div class="metrics-controls">
+          <input class="metrics-input" id="traces-query-filter" placeholder="Search trace or operation">
+          <input class="metrics-input" id="traces-agent-filter" placeholder="Filter by agent...">
+          <button class="metrics-button" id="btn-load-traces" type="button">Load</button>
+        </div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="metrics-list" id="traces-list"></div>
+        <div class="trace-detail" id="trace-detail">
+          <p class="text-muted">Select a trace to inspect span tree, timeline and logs.</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -82,21 +521,325 @@
 {% block scripts %}
 <script>
 (function() {
-  async function loadMetrics() {
+  const state = {
+    summary: null,
+    alerts: [],
+    sessions: [],
+    traces: [],
+    activeTraceId: '',
+    comparisonSort: { key: 'avg_time_ms', direction: 'asc' },
+    layoutMode: false,
+    panelOrder: [],
+    draggedPanelId: '',
+  };
+
+  const elements = {
+    windowSelect: document.getElementById('metrics-window'),
+    agentFilter: document.getElementById('metrics-agent-filter'),
+    modelFilter: document.getElementById('metrics-model-filter'),
+    refreshButton: document.getElementById('btn-refresh-metrics'),
+    exportButton: document.getElementById('btn-export-metrics'),
+    customizeLayoutButton: document.getElementById('btn-customize-layout'),
+    resetLayoutButton: document.getElementById('btn-reset-layout'),
+    chart: document.getElementById('performance-chart'),
+    timeRangeLabel: document.getElementById('metrics-time-range-label'),
+    summary: document.getElementById('metrics-summary'),
+    panelsHost: document.getElementById('metrics-panels'),
+    performanceSummary: document.getElementById('performance-summary'),
+    budgetInfo: document.getElementById('budget-info'),
+    costBody: document.getElementById('cost-tbody'),
+    healthGrid: document.getElementById('health-grid'),
+    alertsList: document.getElementById('alerts-list'),
+    sessionsList: document.getElementById('sessions-list'),
+    comparisonBody: document.getElementById('comparison-tbody'),
+    tracesList: document.getElementById('traces-list'),
+    traceDetail: document.getElementById('trace-detail'),
+    tracesAgentFilter: document.getElementById('traces-agent-filter'),
+    tracesQueryFilter: document.getElementById('traces-query-filter'),
+    tracesLoadButton: document.getElementById('btn-load-traces'),
+    eventTickerList: document.getElementById('event-ticker-list'),
+    eventTickerSource: document.getElementById('event-ticker-source'),
+    eventTickerSearch: document.getElementById('event-ticker-search'),
+  };
+
+  const defaultPanelOrder = Array.from(elements.panelsHost?.querySelectorAll('[data-panel-id]') || []).map(panel => panel.dataset.panelId).filter(Boolean);
+
+  function selectedWindow() {
+    return elements.windowSelect ? elements.windowSelect.value : '24h';
+  }
+
+  function currentFilters() {
+    return {
+      window: selectedWindow(),
+      agent: elements.agentFilter?.value.trim() || '',
+      model: elements.modelFilter?.value.trim() || '',
+    };
+  }
+
+  function formatDateTime(timestamp) {
+    if (!timestamp) return '—';
+    const value = typeof timestamp === 'number' ? timestamp * 1000 : timestamp;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  }
+
+  function formatNumber(value, digits = 0) {
+    if (value === null || value === undefined || value === '') return '—';
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) return '—';
+    return numeric.toLocaleString(undefined, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  }
+
+  function formatDelta(value, prefix = '') {
+    const numeric = Number(value || 0);
+    const sign = numeric > 0 ? '+' : '';
+    return `${sign}${prefix}${formatNumber(numeric, prefix === '$' ? 4 : 0)}`;
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function badgeClass(status) {
+    const value = String(status || 'info').toLowerCase();
+    if (['error', 'failed', 'critical'].includes(value)) return 'metrics-badge--error';
+    if (['warning', 'running', 'pending'].includes(value)) return 'metrics-badge--warning';
+    return 'metrics-badge--info';
+  }
+
+  function normalizePanelOrder(order) {
+    const next = [];
+    (Array.isArray(order) ? order : []).forEach((panelId) => {
+      const value = String(panelId || '').trim();
+      if (!value || !defaultPanelOrder.includes(value) || next.includes(value)) return;
+      next.push(value);
+    });
+    defaultPanelOrder.forEach((panelId) => {
+      if (!next.includes(panelId)) next.push(panelId);
+    });
+    return next;
+  }
+
+  function applyPanelLayout(order) {
+    if (!elements.panelsHost) return;
+    const normalized = normalizePanelOrder(order);
+    const map = new Map(Array.from(elements.panelsHost.querySelectorAll('[data-panel-id]')).map(panel => [panel.dataset.panelId, panel]));
+    normalized.forEach((panelId) => {
+      const panel = map.get(panelId);
+      if (panel) elements.panelsHost.appendChild(panel);
+    });
+    state.panelOrder = normalized;
+  }
+
+  async function savePanelLayout(order) {
+    const normalized = normalizePanelOrder(order);
+    state.panelOrder = normalized;
     try {
-      const res = await fetch('/api/metrics');
-      const data = await res.json();
-      const summary = document.getElementById('metrics-summary');
-      const items = [
-        {label:'{{ _("metrics.cycles") }}',value:data.total_cycles||0,color:'var(--accent-blue)'},
-        {label:'{{ _("metrics.tasks_completed") }}',value:data.tasks_completed||0,color:'var(--state-success)'},
-        {label:'{{ _("metrics.errors") }}',value:data.errors||0,color:'var(--state-error)'},
-        {label:'{{ _("metrics.avg_cycle") }}',value:(data.avg_cycle_time||0).toFixed(1)+'s',color:'var(--accent-teal)'},
-        {label:'{{ _("metrics.input_tokens") }}',value:data.total_input_tokens||0,color:'var(--accent-purple)'},
-        {label:'{{ _("metrics.output_tokens") }}',value:data.total_output_tokens||0,color:'var(--accent-amber)'},
-      ];
-      summary.innerHTML = items.map(i => `<div class="summary-card"><div class="summary-value" style="color:${i.color}">${i.value}</div><div class="summary-label">${i.label}</div></div>`).join('');
-    } catch(e) { console.error('metrics',e); }
+      await fetch('/api/monitoring/layout', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ panel_order: normalized }),
+      });
+    } catch (error) {
+      console.error('monitoring-layout-save', error);
+    }
+  }
+
+  async function loadPanelLayout() {
+    applyPanelLayout(defaultPanelOrder);
+    try {
+      const response = await fetch('/api/monitoring/layout');
+      if (!response.ok) return;
+      const payload = await response.json();
+      applyPanelLayout(payload.layout?.panel_order || defaultPanelOrder);
+    } catch (error) {
+      console.error('monitoring-layout-load', error);
+    }
+  }
+
+  function setLayoutMode(enabled) {
+    state.layoutMode = !!enabled;
+    elements.panelsHost?.classList.toggle('layout-editing', state.layoutMode);
+    elements.panelsHost?.querySelectorAll('[data-panel-id]').forEach((panel) => {
+      panel.draggable = state.layoutMode;
+    });
+    if (elements.customizeLayoutButton) {
+      elements.customizeLayoutButton.textContent = state.layoutMode ? 'Done arranging' : 'Customize layout';
+    }
+  }
+
+  function currentPanelOrder() {
+    return Array.from(elements.panelsHost?.querySelectorAll('[data-panel-id]') || []).map(panel => panel.dataset.panelId).filter(Boolean);
+  }
+
+  async function resetPanelLayout() {
+    applyPanelLayout(defaultPanelOrder);
+    await savePanelLayout(defaultPanelOrder);
+    setLayoutMode(false);
+  }
+
+  function attachPanelDragAndDrop() {
+    elements.panelsHost?.querySelectorAll('[data-panel-id]').forEach((panel) => {
+      panel.addEventListener('dragstart', (event) => {
+        if (!state.layoutMode) {
+          event.preventDefault();
+          return;
+        }
+        state.draggedPanelId = panel.dataset.panelId || '';
+        panel.classList.add('is-dragging');
+        event.dataTransfer?.setData('text/plain', state.draggedPanelId);
+        event.dataTransfer?.setDragImage(panel, 20, 20);
+      });
+      panel.addEventListener('dragend', () => {
+        panel.classList.remove('is-dragging');
+        elements.panelsHost?.querySelectorAll('.is-drop-target').forEach((item) => item.classList.remove('is-drop-target'));
+      });
+      panel.addEventListener('dragover', (event) => {
+        if (!state.layoutMode) return;
+        event.preventDefault();
+        panel.classList.add('is-drop-target');
+      });
+      panel.addEventListener('dragleave', () => {
+        panel.classList.remove('is-drop-target');
+      });
+      panel.addEventListener('drop', async (event) => {
+        if (!state.layoutMode) return;
+        event.preventDefault();
+        panel.classList.remove('is-drop-target');
+        const draggedId = state.draggedPanelId || event.dataTransfer?.getData('text/plain') || '';
+        const targetId = panel.dataset.panelId || '';
+        if (!draggedId || !targetId || draggedId === targetId || !elements.panelsHost) return;
+        const draggedPanel = elements.panelsHost.querySelector(`[data-panel-id="${draggedId}"]`);
+        const targetPanel = elements.panelsHost.querySelector(`[data-panel-id="${targetId}"]`);
+        if (!draggedPanel || !targetPanel) return;
+        const children = Array.from(elements.panelsHost.querySelectorAll('[data-panel-id]'));
+        const draggedIndex = children.indexOf(draggedPanel);
+        const targetIndex = children.indexOf(targetPanel);
+        if (draggedIndex < 0 || targetIndex < 0) return;
+        if (draggedIndex < targetIndex) {
+          elements.panelsHost.insertBefore(draggedPanel, targetPanel.nextElementSibling);
+        } else {
+          elements.panelsHost.insertBefore(draggedPanel, targetPanel);
+        }
+        await savePanelLayout(currentPanelOrder());
+      });
+    });
+  }
+
+  function sparklineSvg(points) {
+    if (!Array.isArray(points) || !points.length) {
+      return '<svg viewBox="0 0 100 24" class="summary-card__sparkline"><path d="M0 16 L100 16" fill="none" stroke="rgba(148,163,184,.25)" stroke-width="2"/></svg>';
+    }
+    const max = Math.max(...points, 1);
+    const min = Math.min(...points, 0);
+    const coords = points.map((value, index) => {
+      const x = (index / Math.max(points.length - 1, 1)) * 100;
+      const y = 22 - (((value - min) / (max - min || 1)) * 20);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+    return `<svg viewBox="0 0 100 24" class="summary-card__sparkline" preserveAspectRatio="none"><polyline fill="none" stroke="#60a5fa" stroke-width="2" points="${coords}"/></svg>`;
+  }
+
+  function buildQuery(extra = {}) {
+    const filters = currentFilters();
+    const params = new URLSearchParams();
+    if (filters.window) params.set('window', filters.window);
+    if (filters.agent) {
+      params.set('agent', filters.agent);
+      params.set('agent_id', filters.agent);
+    }
+    if (filters.model) params.set('model', filters.model);
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== '') {
+        params.set(key, value);
+      }
+    });
+    return params;
+  }
+
+  function updateChartEndpoint() {
+    if (!elements.chart) return;
+    const params = buildQuery();
+    elements.chart.setAttribute('endpoint', '/api/performance?' + params.toString());
+    const windowValue = selectedWindow();
+    elements.timeRangeLabel.textContent = `Window: ${windowValue}`;
+  }
+
+  function renderSummary(summary) {
+    const cards = summary?.cards || [];
+    elements.summary.innerHTML = cards.map(card => {
+      const delta = Number(card.delta || 0);
+      const deltaClass = delta > 0 ? 'is-positive' : delta < 0 ? 'is-negative' : 'is-neutral';
+      const prefix = card.key === 'cost' ? '$' : '';
+      const value = card.key === 'cost' ? `$${formatNumber(card.value, 4)}` : formatNumber(card.value, 0);
+      return `
+        <section class="summary-card" data-card-key="${escapeHtml(card.key)}">
+          <div class="summary-card__label">${escapeHtml(card.label)}</div>
+          <div class="summary-card__value">${value}</div>
+          <div class="summary-card__delta ${deltaClass}">Δ ${formatDelta(delta, prefix)}</div>
+          ${sparklineSvg(card.sparkline || [])}
+        </section>`;
+    }).join('') || '<p class="text-muted">No summary available.</p>';
+  }
+
+  function renderPerformanceSummary(summary, perfSummary) {
+    const items = [
+      ['{{ _("metrics.performance_total_runs") }}', formatNumber(perfSummary.total || 0)],
+      ['{{ _("metrics.performance_avg_duration") }}', perfSummary.avg_duration_ms == null ? '—' : `${formatNumber(perfSummary.avg_duration_ms, 1)} ms`],
+      ['{{ _("metrics.performance_p95") }}', perfSummary.p95_ms == null ? '—' : `${formatNumber(perfSummary.p95_ms, 1)} ms`],
+      ['{{ _("metrics.performance_success") }}', perfSummary.success_rate == null ? '—' : `${formatNumber((perfSummary.success_rate || 0) * 100, 1)}%`],
+      ['{{ _("metrics.input_tokens") }}', formatNumber(perfSummary.total_tokens_in || 0)],
+      ['{{ _("metrics.output_tokens") }}', formatNumber(perfSummary.total_tokens_out || 0)],
+      ['{{ _("metrics.total_cost") }}', `$${formatNumber(perfSummary.total_cost_usd || 0, 4)}`],
+      ['Errors', formatNumber(summary?.totals?.errors || 0)],
+    ];
+    elements.performanceSummary.innerHTML = items.map(([label, value]) => `
+      <div class="metrics-summary-row">
+        <span class="metrics-summary-key">${label}</span>
+        <strong class="metrics-summary-value">${value}</strong>
+      </div>`).join('');
+  }
+
+  function renderComparison(summary) {
+    const rows = [...(summary?.comparison || [])];
+    const { key, direction } = state.comparisonSort;
+    rows.sort((a, b) => {
+      const left = a[key];
+      const right = b[key];
+      const leftValue = typeof left === 'string' ? left.toLowerCase() : Number(left ?? -1);
+      const rightValue = typeof right === 'string' ? right.toLowerCase() : Number(right ?? -1);
+      if (leftValue < rightValue) return direction === 'asc' ? -1 : 1;
+      if (leftValue > rightValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    elements.comparisonBody.innerHTML = rows.map(row => `
+      <tr>
+        <td>${escapeHtml(row.agent_role || '—')} / ${escapeHtml(row.model || '—')}</td>
+        <td>${row.avg_time_ms == null ? '—' : `${formatNumber(row.avg_time_ms, 1)} ms`}</td>
+        <td>${row.p95_ms == null ? '—' : `${formatNumber(row.p95_ms, 1)} ms`}</td>
+        <td>${row.success_rate == null ? '—' : `${formatNumber(row.success_rate * 100, 1)}%`}</td>
+        <td>${row.cost_per_1k_tokens == null ? '—' : `$${formatNumber(row.cost_per_1k_tokens, 4)}`}</td>
+        <td>${formatNumber(row.runs || 0)}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="text-muted">No comparison data.</td></tr>';
+  }
+
+  async function loadMonitoringSummary() {
+    const params = buildQuery();
+    const [summaryRes, perfSummaryRes] = await Promise.all([
+      fetch('/api/monitoring/summary?' + params.toString()),
+      fetch('/api/performance/summary?' + params.toString()),
+    ]);
+    const summary = await summaryRes.json();
+    const perfSummary = await perfSummaryRes.json();
+    state.summary = summary;
+    renderSummary(summary);
+    renderPerformanceSummary(summary, perfSummary);
+    renderComparison(summary);
   }
 
   async function loadBudget() {
@@ -104,41 +847,336 @@
       const [budgetRes, tasksRes] = await Promise.all([fetch('/api/budget'), fetch('/api/budget/tasks')]);
       const budget = await budgetRes.json();
       const tasks = await tasksRes.json();
-
-      document.getElementById('budget-info').innerHTML = `
+      const session = budget.session || budget;
+      elements.budgetInfo.innerHTML = `
         <p style="color:var(--text-secondary);font-size:var(--font-size-sm)">
-          Sesja: <strong>$${(budget.session_cost||0).toFixed(4)}</strong> |
-          Łącznie: <strong>$${(budget.total_cost||0).toFixed(4)}</strong>
+          {{ _("metrics.session_cost") }}: <strong>$${formatNumber(session.session_cost || 0, 4)}</strong> |
+          {{ _("metrics.total_cost") }}: <strong>$${formatNumber(session.total_cost || 0, 4)}</strong>
         </p>`;
 
-      const tbody = document.getElementById('cost-tbody');
       const taskList = tasks.tasks || tasks || [];
-      tbody.innerHTML = taskList.slice(0,20).map(t => `<tr><td>${t.title||t.task_id||'—'}</td><td>${t.tokens||0}</td><td>$${(t.cost||0).toFixed(4)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">{{ _("common.loading") }}</td></tr>';
-    } catch(e) { console.error('budget',e); }
+      elements.costBody.innerHTML = taskList.slice(0, 20).map(task => `
+        <tr>
+          <td>${escapeHtml(task.title || task.task_id || '—')}</td>
+          <td>${formatNumber(task.tokens || 0)}</td>
+          <td>$${formatNumber(task.cost || 0, 4)}</td>
+        </tr>`).join('') || '<tr><td colspan="3" class="text-muted">No cost data.</td></tr>';
+    } catch (error) {
+      console.error('budget', error);
+    }
   }
 
   async function loadHealth() {
     try {
       const res = await fetch('/health/detailed');
       const data = await res.json();
-      const grid = document.getElementById('health-grid');
       const cards = [];
-      if (data.memory) cards.push({title:'RAM',value:data.memory.percent+'%',cls:data.memory.percent>90?'error':data.memory.percent>75?'warn':'ok'});
-      if (data.cpu !== undefined) cards.push({title:'CPU',value:data.cpu+'%',cls:data.cpu>90?'error':data.cpu>75?'warn':'ok'});
-      if (data.disk) cards.push({title:'Dysk',value:data.disk.percent+'%',cls:data.disk.percent>90?'error':'ok'});
-      if (data.db_pool) cards.push({title:'DB Pool',value:data.db_pool.size+'/'+data.db_pool.max_size,cls:'ok'});
-      if (data.ollama) cards.push({title:'Ollama',value:data.ollama.status||'—',cls:data.ollama.status==='ok'?'ok':'warn'});
-      if (data.agents) cards.push({title:'Agenci',value:data.agents.total+' ('+data.agents.working+' aktyw.)',cls:'ok'});
-      if (data.uptime) cards.push({title:'Uptime',value:Math.floor(data.uptime/60)+'m',cls:'ok'});
-      grid.innerHTML = cards.map(c => `<div class="health-card ${c.cls}"><div class="health-title">${c.title}</div><div class="health-value">${c.value}</div></div>`).join('') || '<p class="text-muted">{{ _("common.loading") }}</p>';
-    } catch(e) { console.error('health',e); }
+      if (data.memory) cards.push({ title: 'RAM', value: `${data.memory.percent}%`, cls: data.memory.percent > 90 ? 'error' : data.memory.percent > 75 ? 'warn' : 'ok' });
+      if (data.cpu !== undefined) cards.push({ title: 'CPU', value: `${data.cpu}%`, cls: data.cpu > 90 ? 'error' : data.cpu > 75 ? 'warn' : 'ok' });
+      if (data.disk) cards.push({ title: 'Disk', value: `${data.disk.percent}%`, cls: data.disk.percent > 90 ? 'error' : 'ok' });
+      if (data.db_pool) cards.push({ title: 'DB Pool', value: `${data.db_pool.size}/${data.db_pool.max_size}`, cls: 'ok' });
+      if (data.ollama) cards.push({ title: 'Ollama', value: data.ollama.status || '—', cls: data.ollama.status === 'ok' ? 'ok' : 'warn' });
+      if (data.agents) cards.push({ title: 'Agents', value: `${data.agents.total} (${data.agents.working} active)`, cls: 'ok' });
+      if (data.uptime) cards.push({ title: 'Uptime', value: `${Math.floor(data.uptime / 60)}m`, cls: 'ok' });
+      elements.healthGrid.innerHTML = cards.map(card => `<div class="health-card ${card.cls}"><div class="health-title">${card.title}</div><div class="health-value">${card.value}</div></div>`).join('') || '<p class="text-muted">No health data.</p>';
+    } catch (error) {
+      console.error('health', error);
+    }
   }
 
-  loadMetrics();
-  loadBudget();
-  loadHealth();
-  setInterval(loadMetrics, 30000);
-  setInterval(loadHealth, 30000);
+  async function loadAlerts() {
+    try {
+      const res = await fetch('/api/alerts?' + buildQuery({ limit: 20 }).toString());
+      const alerts = await res.json();
+      state.alerts = alerts;
+      if (!alerts.length) {
+        elements.alertsList.innerHTML = '<p class="text-muted">{{ _("metrics.no_alerts") }}</p>';
+        renderEventTicker();
+        return;
+      }
+      elements.alertsList.innerHTML = alerts.map(alert => `
+        <article class="metrics-item">
+          <div class="metrics-item__title">
+            <strong>${escapeHtml(alert.rule_name || 'alert')}</strong>
+            <span class="metrics-badge ${badgeClass(alert.severity)}">${escapeHtml(alert.severity || 'info')}</span>
+          </div>
+          <div class="metrics-item__message">${escapeHtml(alert.message || '—')}</div>
+          <div class="metrics-item__meta">${formatDateTime(alert.timestamp)}</div>
+        </article>`).join('');
+      renderEventTicker();
+    } catch (error) {
+      console.error('alerts', error);
+      state.alerts = [];
+      renderEventTicker();
+    }
+  }
+
+  async function loadSessions() {
+    try {
+      const res = await fetch('/api/sessions?' + buildQuery({ limit: 10 }).toString());
+      const data = await res.json();
+      const sessions = (data.sessions || data || []).slice(0, 10);
+      state.sessions = sessions;
+      if (!sessions.length) {
+        elements.sessionsList.innerHTML = '<p class="text-muted">{{ _("metrics.no_sessions") }}</p>';
+        renderEventTicker();
+        return;
+      }
+      elements.sessionsList.innerHTML = sessions.map(session => `
+        <article class="metrics-item">
+          <div class="metrics-item__title">
+            <strong>${escapeHtml(session.title || session.session_id || 'session')}</strong>
+            <span class="metrics-item__meta">${formatNumber(session.event_count || 0)} {{ _("sessions.events") }}</span>
+          </div>
+          <div class="metrics-item__message">${escapeHtml(session.agent_id || session.session_id || '—')}</div>
+          <div class="metrics-item__meta">${formatDateTime(session.started_at || session.created_at || session.ended_at)}</div>
+          <div class="metrics-item__actions">
+            <a class="metrics-link" href="/sessions?session_id=${encodeURIComponent(session.session_id || '')}">{{ _("metrics.open_replay") }}</a>
+          </div>
+        </article>`).join('');
+      renderEventTicker();
+    } catch (error) {
+      console.error('sessions', error);
+      state.sessions = [];
+      renderEventTicker();
+    }
+  }
+
+  function buildTickerEvents() {
+    const alertEvents = (state.alerts || []).map((alert) => ({
+      source: 'alert',
+      id: `alert:${alert.rule_name || alert.timestamp || Math.random()}`,
+      ts: alert.timestamp,
+      title: alert.rule_name || 'alert',
+      message: alert.message || '—',
+      severity: alert.severity || 'info',
+      meta: [alert.severity || 'info'],
+      url: '',
+    }));
+    const sessionEvents = (state.sessions || []).map((session) => ({
+      source: 'session',
+      id: `session:${session.session_id || session.id || Math.random()}`,
+      ts: session.started_at || session.created_at || session.ended_at,
+      title: session.title || session.session_id || 'session',
+      message: `${session.agent_id || '—'} · ${formatNumber(session.event_count || 0)} events`,
+      severity: 'info',
+      meta: [session.agent_id || '—'],
+      url: `/sessions?session_id=${encodeURIComponent(session.session_id || '')}`,
+    }));
+    const traceEvents = (state.traces || []).slice(0, 12).map((trace) => ({
+      source: 'trace',
+      id: `trace:${trace.trace_id || trace.id || Math.random()}`,
+      ts: trace.timestamp || trace.created_at,
+      title: trace.trace_id || trace.id || 'trace',
+      message: `${trace.agent_role || trace.agent_id || '—'} · ${trace.model || '—'} · ${formatNumber(trace.duration_ms, 1)} ms`,
+      severity: trace.status || 'info',
+      meta: [trace.agent_role || trace.agent_id || '—', trace.model || '—'],
+      url: trace.trace_id || trace.id ? `#trace:${trace.trace_id || trace.id}` : '',
+    }));
+    return [...alertEvents, ...sessionEvents, ...traceEvents].sort((left, right) => {
+      return (new Date(right.ts || 0).getTime() || 0) - (new Date(left.ts || 0).getTime() || 0);
+    });
+  }
+
+  function renderEventTicker() {
+    if (!elements.eventTickerList) return;
+    const sourceFilter = elements.eventTickerSource?.value || 'all';
+    const searchValue = (elements.eventTickerSearch?.value || '').trim().toLowerCase();
+    const items = buildTickerEvents().filter((item) => {
+      if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
+      if (!searchValue) return true;
+      const haystack = [item.title, item.message, ...(item.meta || [])].join(' ').toLowerCase();
+      return haystack.includes(searchValue);
+    });
+    if (!items.length) {
+      elements.eventTickerList.innerHTML = '<p class="text-muted">No ticker events for current filters.</p>';
+      return;
+    }
+    elements.eventTickerList.innerHTML = items.map((item) => `
+      <article class="event-ticker-item">
+        <div class="event-ticker-item__header">
+          <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+            <span class="event-source-badge" data-source="${escapeHtml(item.source)}">${escapeHtml(item.source)}</span>
+            <strong class="event-ticker-item__title">${escapeHtml(item.title)}</strong>
+          </div>
+          <span class="metrics-badge ${badgeClass(item.severity)}">${escapeHtml(item.severity || 'info')}</span>
+        </div>
+        <div class="event-ticker-item__message">${escapeHtml(item.message)}</div>
+        <div class="event-ticker-item__meta">
+          <span>${formatDateTime(item.ts)}</span>
+          ${(item.meta || []).map((meta) => `<span>${escapeHtml(meta)}</span>`).join('')}
+          ${item.url ? `<a class="metrics-link" href="${escapeHtml(item.url)}">Open</a>` : ''}
+        </div>
+      </article>`).join('');
+  }
+
+  function renderTraceTree(node) {
+    if (!node || typeof node !== 'object' || !Object.keys(node).length) {
+      return '<p class="text-muted">No span tree available.</p>';
+    }
+    const children = Array.isArray(node.children) ? node.children : [];
+    return `
+      <div class="trace-tree__node">
+        <strong>${escapeHtml(node.operation || node.span_id || 'span')}</strong>
+        <div class="metrics-item__meta">${escapeHtml(node.agent_id || '—')} · ${formatNumber(node.duration_ms, 1)} ms · ${escapeHtml(node.status || 'unknown')}</div>
+        ${children.length ? `<div class="trace-tree__children">${children.map(renderTraceTree).join('')}</div>` : ''}
+      </div>`;
+  }
+
+  function renderTraceDetail(detail) {
+    const spans = detail.spans || [];
+    const timeline = detail.timeline || spans;
+    const logs = spans.flatMap(span => Array.isArray(span.logs) ? span.logs.map(log => ({ ...log, span_id: span.span_id, operation: span.operation })) : []);
+    elements.traceDetail.innerHTML = `
+      <div class="trace-detail__grid" id="trace-detail-grid">
+        <div class="trace-detail__card"><strong>Trace</strong>${escapeHtml(detail.trace_id || '—')}</div>
+        <div class="trace-detail__card"><strong>Spans</strong>${formatNumber(detail.span_count || spans.length || 0)}</div>
+        <div class="trace-detail__card"><strong>Duration</strong>${detail.duration_ms == null ? '—' : `${formatNumber(detail.duration_ms, 1)} ms`}</div>
+        <div class="trace-detail__card"><strong>Status</strong>${escapeHtml((detail.metadata || {}).status || (spans[0] || {}).status || (detail.is_complete ? 'completed' : 'running'))}</div>
+      </div>
+      <div class="metrics-grid-2">
+        <section>
+          <h4>Span tree</h4>
+          <div class="trace-tree" id="trace-tree">${renderTraceTree(detail.tree || {})}</div>
+        </section>
+        <section>
+          <h4>Timeline</h4>
+          <div class="trace-timeline" id="trace-timeline">
+            ${timeline.length ? timeline.map(span => `
+              <div class="trace-timeline__item">
+                <strong>${escapeHtml(span.operation || span.span_id || 'span')}</strong>
+                <div class="metrics-item__meta">${formatDateTime(span.start_time || span.timestamp)} · ${formatNumber(span.duration_ms, 1)} ms · ${escapeHtml(span.agent_id || '—')}</div>
+              </div>`).join('') : '<p class="text-muted">No timeline events.</p>'}
+          </div>
+        </section>
+      </div>
+      <section style="margin-top: var(--space-4)">
+        <h4>Logs</h4>
+        <div class="trace-logs" id="trace-logs">
+          ${logs.length ? logs.map(log => `
+            <div class="trace-log">
+              <strong>${escapeHtml(log.operation || log.span_id || 'span')}</strong>
+              <div class="metrics-item__meta">${formatDateTime(log.timestamp)}</div>
+              <pre>${escapeHtml(JSON.stringify(log, null, 2))}</pre>
+            </div>`).join('') : '<p class="text-muted">No span logs recorded.</p>'}
+        </div>
+      </section>`;
+  }
+
+  async function loadTraceDetail(traceId) {
+    if (!traceId) return;
+    try {
+      const res = await fetch(`/api/traces/${encodeURIComponent(traceId)}`);
+      if (!res.ok) throw new Error(`trace ${traceId}`);
+      const detail = await res.json();
+      state.activeTraceId = traceId;
+      renderTraceDetail(detail);
+      elements.tracesList.querySelectorAll('[data-trace-id]').forEach(item => {
+        item.classList.toggle('metrics-item--active', item.dataset.traceId === traceId);
+      });
+    } catch (error) {
+      console.error('trace-detail', error);
+      elements.traceDetail.innerHTML = '<p class="text-muted">Failed to load trace detail.</p>';
+    }
+  }
+
+  async function loadTraces() {
+    try {
+      const params = buildQuery({
+        limit: 30,
+        q: elements.tracesQueryFilter?.value.trim() || '',
+        agent_id: elements.tracesAgentFilter?.value.trim() || currentFilters().agent,
+      });
+      const res = await fetch('/api/traces?' + params.toString());
+      const data = await res.json();
+      const traces = data.traces || [];
+      state.traces = traces;
+      if (!traces.length) {
+        elements.tracesList.innerHTML = '<p class="text-muted">No traces found</p>';
+        elements.traceDetail.innerHTML = '<p class="text-muted">No trace detail available.</p>';
+        renderEventTicker();
+        return;
+      }
+      elements.tracesList.innerHTML = traces.map(trace => {
+        const traceId = trace.trace_id || trace.id || '';
+        const isActive = state.activeTraceId && state.activeTraceId === traceId;
+        const tokens = `${formatNumber(trace.tokens_in || 0)} in / ${formatNumber(trace.tokens_out || 0)} out`;
+        return `
+          <article class="metrics-item metrics-item--clickable ${isActive ? 'metrics-item--active' : ''}" data-trace-id="${escapeHtml(traceId)}">
+            <div class="metrics-item__title">
+              <strong>${escapeHtml(trace.agent_role || trace.agent_id || trace.trace_id || '—')}</strong>
+              <span class="metrics-badge ${badgeClass(trace.status)}">${escapeHtml(trace.status || 'unknown')}</span>
+            </div>
+            <div class="metrics-item__message">${escapeHtml(trace.model || '—')} · ${formatNumber(trace.duration_ms, 1)} ms · ${tokens}</div>
+            <div class="metrics-item__meta">${formatDateTime(trace.timestamp || trace.created_at)}</div>
+          </article>`;
+      }).join('');
+      elements.tracesList.querySelectorAll('[data-trace-id]').forEach(item => {
+        item.addEventListener('click', () => loadTraceDetail(item.dataset.traceId));
+      });
+      const nextTraceId = state.activeTraceId && traces.some(trace => (trace.trace_id || trace.id) === state.activeTraceId)
+        ? state.activeTraceId
+        : (traces[0].trace_id || traces[0].id || '');
+      renderEventTicker();
+      await loadTraceDetail(nextTraceId);
+    } catch (error) {
+      console.error('traces', error);
+      elements.tracesList.innerHTML = '<p class="text-muted">Failed to load traces.</p>';
+      state.traces = [];
+      renderEventTicker();
+    }
+  }
+
+  function exportMetrics() {
+    const params = buildQuery({ format: 'json' });
+    window.open('/api/metrics/export?' + params.toString(), '_blank', 'noopener');
+  }
+
+  async function refreshAll() {
+    updateChartEndpoint();
+    await Promise.all([
+      loadMonitoringSummary(),
+      loadBudget(),
+      loadHealth(),
+      loadAlerts(),
+      loadSessions(),
+      loadTraces(),
+    ]);
+  }
+
+  elements.refreshButton?.addEventListener('click', refreshAll);
+  elements.exportButton?.addEventListener('click', exportMetrics);
+  elements.customizeLayoutButton?.addEventListener('click', () => setLayoutMode(!state.layoutMode));
+  elements.resetLayoutButton?.addEventListener('click', resetPanelLayout);
+  elements.tracesLoadButton?.addEventListener('click', loadTraces);
+  elements.windowSelect?.addEventListener('change', refreshAll);
+  elements.agentFilter?.addEventListener('change', refreshAll);
+  elements.modelFilter?.addEventListener('change', refreshAll);
+  elements.eventTickerSource?.addEventListener('change', renderEventTicker);
+  elements.eventTickerSearch?.addEventListener('input', renderEventTicker);
+  elements.tracesQueryFilter?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') loadTraces();
+  });
+  elements.tracesAgentFilter?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') loadTraces();
+  });
+  document.querySelectorAll('[data-sort-key]').forEach(button => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.sortKey;
+      if (!key) return;
+      if (state.comparisonSort.key === key) {
+        state.comparisonSort.direction = state.comparisonSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.comparisonSort = { key, direction: 'asc' };
+      }
+      renderComparison(state.summary);
+    });
+  });
+
+  attachPanelDragAndDrop();
+  setLayoutMode(false);
+  loadPanelLayout().finally(refreshAll);
+  setInterval(refreshAll, 30000);
 })();
 </script>
 {% endblock %}

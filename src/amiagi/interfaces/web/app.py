@@ -109,6 +109,7 @@ def create_app(
     from amiagi.interfaces.web.routes.prompt_routes import prompt_routes
     from amiagi.interfaces.web.routes.search_routes import search_routes
     from amiagi.interfaces.web.routes.snippet_routes import snippet_routes
+    from amiagi.interfaces.web.routes.settings_routes import settings_routes
     from amiagi.interfaces.web.routes.monitoring_routes import monitoring_routes
     from amiagi.interfaces.web.routes.template_routes import template_routes
     from amiagi.interfaces.web.routes.i18n_routes import i18n_routes
@@ -123,6 +124,7 @@ def create_app(
     from amiagi.interfaces.web.routes.eval_routes import eval_routes
     from amiagi.interfaces.web.routes.knowledge_routes import knowledge_routes
     from amiagi.interfaces.web.routes.sandbox_routes import sandbox_routes
+    from amiagi.interfaces.web.routes.permission_routes import permission_routes
     from amiagi.interfaces.web.ws.agent_stream import ws_agent_stream
     from amiagi.interfaces.web.ws.event_hub import EventHub
 
@@ -141,6 +143,7 @@ def create_app(
         *prompt_routes,
         *search_routes,
         *snippet_routes,
+        *settings_routes,
         *monitoring_routes,
         *template_routes,
         *i18n_routes,
@@ -155,6 +158,7 @@ def create_app(
         *eval_routes,
         *knowledge_routes,
         *sandbox_routes,
+        *permission_routes,
         WebSocketRoute("/ws/events", _ws_events),
         WebSocketRoute("/ws/agent/{agent_id}", ws_agent_stream),
     ]
@@ -195,9 +199,16 @@ def create_app(
         app.state.binary_store = BinaryStore(pool, workspace_base)
 
         # 3c. Activity logger (audit trail)
-        from amiagi.interfaces.web.audit.activity_logger import WebActivityLogger
+        from amiagi.interfaces.web.audit.activity_logger import DEFAULT_RETENTION_DAYS, WebActivityLogger
+        from amiagi.interfaces.web.audit.retention_store import AuditRetentionStore
 
-        app.state.activity_logger = WebActivityLogger(pool)
+        audit_retention_store = AuditRetentionStore("data/audit_retention.json")
+        app.state.audit_retention_store = audit_retention_store
+        retention_found, persisted_retention_days = audit_retention_store.load()
+        app.state.activity_logger = WebActivityLogger(
+            pool,
+            retention_days=persisted_retention_days if retention_found else DEFAULT_RETENTION_DAYS,
+        )
 
         # 3d. Workspace manager (per-user directories)
         from amiagi.interfaces.web.audit.workspace_manager import WorkspaceManager
@@ -207,9 +218,11 @@ def create_app(
         # 3e. Skill repository and selector
         from amiagi.interfaces.web.skills.skill_repository import SkillRepository
         from amiagi.interfaces.web.skills.skill_selector import SkillSelector
+        from amiagi.interfaces.web.settings.user_settings_repository import UserSettingsRepository
 
         app.state.skill_repository = SkillRepository(pool)
         app.state.skill_selector = SkillSelector(pool)
+        app.state.user_settings_repo = UserSettingsRepository(pool)
 
         # 3f. Productivity: prompts, search, snippets
         from amiagi.interfaces.web.productivity.prompt_repository import PromptRepository
@@ -373,7 +386,7 @@ def create_app(
             _event_bus.on(_evt_cls, _session_buf.on_event)
 
         # 5. Jinja2 templates with i18n context injection
-        from amiagi.interfaces.web.i18n_web import make_translator
+        from amiagi.interfaces.web.i18n_web import make_translator, get_translations_json
 
         _base_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
@@ -427,11 +440,27 @@ def create_app(
 
                 # ── Active tasks ──
                 task_queue = getattr(state, "task_queue", None)
+                running_tasks = 0
+                pending_tasks = 0
                 if task_queue is not None:
                     try:
-                        ctx["active_tasks"] = task_queue.pending_count()
+                        stats = task_queue.stats() if hasattr(task_queue, "stats") else {}
+                        if isinstance(stats, dict) and stats:
+                            running_tasks = int(stats.get("in_progress", 0)) + int(stats.get("running", 0))
+                            pending_tasks = int(stats.get("pending", 0)) + int(stats.get("assigned", 0))
+                        elif hasattr(task_queue, "list_all"):
+                            for task in task_queue.list_all():
+                                status = str(getattr(getattr(task, "status", ""), "value", getattr(task, "status", ""))).lower()
+                                if status in {"in_progress", "running"}:
+                                    running_tasks += 1
+                                elif status in {"pending", "assigned"}:
+                                    pending_tasks += 1
                     except Exception:
-                        ctx["active_tasks"] = 0
+                        running_tasks = 0
+                        pending_tasks = 0
+                ctx["running_tasks"] = running_tasks
+                ctx["pending_tasks"] = pending_tasks
+                ctx["active_tasks"] = pending_tasks
 
                 # ── Inbox pending (notifications) ──
                 notif_svc = getattr(state, "notification_service", None)
@@ -469,6 +498,7 @@ def create_app(
                 translator, lang = make_translator(request)
                 ctx.setdefault("_", translator)
                 ctx.setdefault("lang", lang)
+                ctx.setdefault("translations_json", get_translations_json(lang))
                 # Inject status-bar data (can be overridden by route-level ctx)
                 for k, v in self._status_bar_context(request).items():
                     ctx.setdefault(k, v)

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -27,6 +28,27 @@ from starlette.routing import Route
 logger = logging.getLogger(__name__)
 
 _CLOUD_CONFIG_PATH = Path("data/cloud_models.json")
+
+
+def _extract_context_length(show_payload: dict) -> int | None:
+    details = show_payload.get("details") if isinstance(show_payload, dict) else None
+    if isinstance(details, dict):
+        for key in ("context_length", "num_ctx"):
+            value = details.get(key)
+            if isinstance(value, int):
+                return value
+    text_blobs = [
+        str(show_payload.get("modelfile", "")),
+        json.dumps(show_payload.get("parameters", {}), ensure_ascii=False),
+    ]
+    for text in text_blobs:
+        match = re.search(r"(?:context_length|num_ctx)\D+(\d+)", text)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                continue
+    return None
 
 
 # ── Helpers: cloud config persistence ─────────────────────────
@@ -271,6 +293,7 @@ async def local_models_list(request: Request) -> JSONResponse:
     Falls back to the Ollama API ``/api/tags`` if the CLI is unavailable.
     """
     models: list[dict] = []
+    ollama = getattr(request.app.state, "ollama_client", None)
     try:
         completed = subprocess.run(
             ["ollama", "list"],
@@ -285,24 +308,62 @@ async def local_models_list(request: Request) -> JSONResponse:
                     continue
                 name = parts[0]
                 size = parts[2] + " " + parts[3] if len(parts) >= 4 else ""
-                models.append({"name": name, "size": size, "source": "ollama"})
+                models.append({
+                    "name": name,
+                    "size": size,
+                    "source": "ollama",
+                    "context_length": None,
+                    "vram_mb": None,
+                    "cost_per_1k": None,
+                })
         else:
             # Fallback to API
-            ollama = getattr(request.app.state, "ollama_client", None)
             if ollama:
                 for m in ollama.list_models():
-                    models.append({"name": m, "size": "", "source": "ollama"})
+                    models.append({
+                        "name": m,
+                        "size": "",
+                        "source": "ollama",
+                        "context_length": None,
+                        "vram_mb": None,
+                        "cost_per_1k": None,
+                    })
     except FileNotFoundError:
         # ollama CLI not installed — fallback to API
-        ollama = getattr(request.app.state, "ollama_client", None)
         if ollama:
             try:
                 for m in ollama.list_models():
-                    models.append({"name": m, "size": "", "source": "ollama"})
+                    models.append({
+                        "name": m,
+                        "size": "",
+                        "source": "ollama",
+                        "context_length": None,
+                        "vram_mb": None,
+                        "cost_per_1k": None,
+                    })
             except Exception:
                 pass
     except Exception as exc:
         logger.warning("ollama list failed: %s", exc)
+
+    if ollama is not None and hasattr(ollama, "_post_json"):
+        for model in models:
+            try:
+                show_payload = ollama._post_json("/api/show", {"name": model["name"]})
+            except Exception:
+                continue
+            model["context_length"] = _extract_context_length(show_payload)
+            details = show_payload.get("details") if isinstance(show_payload, dict) else {}
+            if isinstance(details, dict):
+                parameter_size = details.get("parameter_size") or ""
+                if isinstance(parameter_size, str):
+                    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*B", parameter_size)
+                    if match:
+                        try:
+                            billions = float(match.group(1))
+                            model["vram_mb"] = int(billions * 1024)
+                        except ValueError:
+                            pass
 
     return JSONResponse({"ok": True, "models": models})
 
@@ -407,6 +468,7 @@ async def cloud_model_test(request: Request) -> JSONResponse:
         defaults = {
             "openai": "https://api.openai.com/v1",
             "anthropic": "https://api.anthropic.com",
+            "google": "https://generativelanguage.googleapis.com/v1beta",
         }
         base_url = defaults.get(provider, "https://api.openai.com/v1")
 
@@ -423,6 +485,12 @@ async def cloud_model_test(request: Request) -> JSONResponse:
             req = UrlRequest(url=url, headers={
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
+            }, method="GET")
+        elif provider == "google":
+            # Google Generative AI: API key is passed as query param.
+            url = f"{base_url.rstrip('/')}/models?key={api_key}"
+            req = UrlRequest(url=url, headers={
+                "Content-Type": "application/json",
             }, method="GET")
         else:
             # OpenAI-compatible: GET /models with Bearer token
@@ -476,6 +544,82 @@ def _mask_key(key: str) -> str:
     return f"{key[:4]}…{key[-4:]}"
 
 
+# ── M6: POST /api/models/{name}/unload ──────────────────────
+
+async def model_unload(request: Request) -> JSONResponse:
+    """Unload a model from Ollama VRAM (keepalive=0)."""
+    model_name = request.path_params.get("name", "")
+    if not model_name:
+        return JSONResponse({"error": "model_name_required"}, status_code=400)
+
+    ollama = getattr(request.app.state, "ollama_client", None)
+    if ollama is None:
+        return JSONResponse({"error": "ollama_client_not_configured"}, status_code=503)
+
+    try:
+        import httpx
+        base_url = getattr(ollama, "base_url", "http://localhost:11434")
+        url = f"{base_url.rstrip('/')}/api/generate"
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            resp = await client.post(url, json={
+                "model": model_name,
+                "keep_alive": 0,
+            })
+            if resp.status_code < 300:
+                return JSONResponse({"ok": True, "model": model_name})
+            return JSONResponse({"error": f"Ollama returned {resp.status_code}"}, status_code=502)
+    except Exception as exc:
+        logger.warning("model_unload error: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── M7: GET /api/models/{name}/performance ───────────────────
+
+async def model_performance(request: Request) -> JSONResponse:
+    """Return historical benchmark results for a model."""
+    model_name = request.path_params.get("name", "")
+    if not model_name:
+        return JSONResponse({"error": "model_name_required"}, status_code=400)
+
+    bench_path = Path("data/benchmarks.json")
+    if not bench_path.exists():
+        return JSONResponse({"model": model_name, "results": []})
+
+    try:
+        all_results = json.loads(bench_path.read_text(encoding="utf-8"))
+        if not isinstance(all_results, list):
+            all_results = []
+        filtered = [r for r in all_results if r.get("model") == model_name]
+        return JSONResponse({"model": model_name, "results": filtered[-50:]})
+    except Exception:
+        return JSONResponse({"model": model_name, "results": []})
+
+
+# ── M5: GET /api/models/queue ────────────────────────────────
+
+async def model_queue(request: Request) -> JSONResponse:
+    """Return models waiting for VRAM allocation."""
+    vram_sched = getattr(request.app.state, "vram_scheduler", None)
+    if vram_sched is None:
+        return JSONResponse({"queue": []})
+
+    try:
+        queue = getattr(vram_sched, "waiting_queue", getattr(vram_sched, "queue", []))
+        items = []
+        for entry in queue:
+            if isinstance(entry, dict):
+                items.append(entry)
+            else:
+                items.append({
+                    "model_name": getattr(entry, "model_name", str(entry)),
+                    "agent_id": getattr(entry, "agent_id", ""),
+                    "waiting_since": getattr(entry, "waiting_since", ""),
+                })
+        return JSONResponse({"queue": items})
+    except Exception:
+        return JSONResponse({"queue": []})
+
+
 # ── Route table ──────────────────────────────────────────────
 
 model_hub_routes: list[Route] = [
@@ -488,4 +632,7 @@ model_hub_routes: list[Route] = [
     Route("/api/models/cloud", cloud_model_save, methods=["POST"]),
     Route("/api/models/cloud/test", cloud_model_test, methods=["POST"]),
     Route("/api/models/cloud/{provider}/{model:path}", cloud_model_delete, methods=["DELETE"]),
+    Route("/api/models/queue", model_queue, methods=["GET"]),
+    Route("/api/models/{name:path}/unload", model_unload, methods=["POST"]),
+    Route("/api/models/{name:path}/performance", model_performance, methods=["GET"]),
 ]

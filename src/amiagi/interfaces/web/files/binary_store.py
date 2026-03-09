@@ -158,6 +158,20 @@ class BinaryStore:
                 p.unlink()
         return True
 
+    async def delete_by_workspace_path(self, user_id: str, workspace: str, path: str) -> bool:
+        """Delete a file by its workspace-relative path."""
+        disk_path = self._user_dir(user_id, workspace) / path
+        if not disk_path.exists() or not disk_path.is_file():
+            return False
+
+        await self._pool.execute(
+            "DELETE FROM dbo.binary_assets WHERE owner_id = $1 AND disk_path = $2",
+            user_id,
+            str(disk_path),
+        )
+        disk_path.unlink(missing_ok=True)
+        return True
+
     # ------------------------------------------------------------------
     # Workspace browsing
     # ------------------------------------------------------------------

@@ -231,6 +231,39 @@ class RbacRepository:
             roles = await self._user_roles(conn, row["id"])
         return self._row_to_user(row, roles)
 
+    async def create_user(
+        self,
+        *,
+        email: str,
+        display_name: str,
+        avatar_url: str | None = None,
+        provider: str = "local",
+        provider_sub: str | None = None,
+        is_active: bool = True,
+        is_blocked: bool = False,
+    ) -> User:
+        provider_subject = provider_sub or email
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO users (
+                    email, display_name, avatar_url, provider, provider_sub, is_active, is_blocked
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id, email, display_name, avatar_url, provider, provider_sub,
+                          is_active, is_blocked, created_at, updated_at
+                """,
+                email,
+                display_name,
+                avatar_url,
+                provider,
+                provider_subject,
+                is_active,
+                is_blocked,
+            )
+            roles = await self._user_roles(conn, row["id"])
+        return self._row_to_user(row, roles)
+
     async def update_user(self, user_id: UUID, **data: Any) -> User | None:
         allowed = {"display_name", "avatar_url", "is_active", "is_blocked"}
         fields = {k: v for k, v in data.items() if k in allowed}

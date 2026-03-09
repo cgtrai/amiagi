@@ -67,6 +67,20 @@ class TestSandboxManager:
     def test_sandbox_size_no_sandbox(self, sandboxes: SandboxManager) -> None:
         assert sandboxes.sandbox_size("nope") == 0
 
+    def test_list_files_returns_top_level_items(self, sandboxes: SandboxManager) -> None:
+        sandboxes.create("a1")
+        sb = sandboxes.get("a1")
+        assert sb is not None
+        (sb / "b.txt").write_text("b", encoding="utf-8")
+        (sb / "folder").mkdir()
+
+        items = sandboxes.list_files("a1")
+
+        assert [item.name for item in items] == ["folder", "b.txt"]
+
+    def test_list_files_missing_sandbox_returns_empty(self, sandboxes: SandboxManager) -> None:
+        assert sandboxes.list_files("missing") == []
+
     def test_root_property(self, sandboxes: SandboxManager) -> None:
         assert sandboxes.root.exists()
 

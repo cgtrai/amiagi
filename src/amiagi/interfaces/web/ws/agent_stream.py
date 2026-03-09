@@ -151,10 +151,22 @@ class AgentStream:
         if msg_type == "user_prompt":
             prompt = msg.get("message", "").strip()
             if prompt:
-                adapter.submit_user_turn(prompt)
+                # Slash commands are handled directly — never wrap them
+                # with the [Sponsor -> agent] prefix so the router sees
+                # them as plain slash commands and can bypass the
+                # permission gate.
+                if prompt.startswith("/"):
+                    submitted_prompt = prompt
+                else:
+                    submitted_prompt = prompt
+                    if self._agent_id and not prompt.startswith("["):
+                        submitted_prompt = f"[Sponsor -> {self._agent_id}] {prompt}"
+
+                adapter.submit_user_turn(submitted_prompt)
                 await self._ws.send_text(json.dumps({
                     "type": "prompt_ack",
                     "agent_id": self._agent_id,
+                    "submitted_message": submitted_prompt,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }))
                 # Audit log: prompt.submit (server-side)

@@ -7,26 +7,69 @@
 {% endblock %}
 
 {% block content %}
-<div class="files-layout">
+<div class="files-shell">
   <div class="files-header">
-    <h1>📁 {{ _("files.title") }}</h1>
-    <span id="file-count" class="meta"></span>
+    <div>
+      <h1>📁 {{ _("files.title") }}</h1>
+      <p class="files-subtitle">Workspace browser, recent uploads and result artifacts in one operator view.</p>
+    </div>
+    <div class="files-header__meta">
+      <span id="file-count" class="meta"></span>
+      <a class="glass-btn glass-btn--ghost" href="/workspace/download-zip">{{ _("files.download_zip") if _("files.download_zip") != "files.download_zip" else "Download ZIP" }}</a>
+    </div>
   </div>
 
-  <!-- Upload zone -->
-  <div class="upload-zone" id="upload-zone"
-       ondragover="event.preventDefault(); this.classList.add('dragover')"
-       ondragleave="this.classList.remove('dragover')"
-       ondrop="handleDrop(event)">
-    <p>{{ _("files.drag_drop") }} <label for="file-input" class="file-browse-label">{{ _("files.browse") }}</label></p>
-    <input type="file" id="file-input" multiple hidden onchange="handleFiles(this.files)"/>
+  <div class="files-tabs" aria-label="Files sections">
+    <button class="glass-btn glass-btn--ghost files-tab active" type="button" data-panel="uploads">Uploads</button>
+    <button class="glass-btn glass-btn--ghost files-tab" type="button" data-panel="workspace">Workspace</button>
+    <button class="glass-btn glass-btn--ghost files-tab" type="button" data-panel="results">Results</button>
   </div>
-  <div id="upload-status"></div>
 
-  <!-- File list -->
-  <ul class="file-list" id="file-list">
-    <li class="empty-state" id="empty-msg">{{ _("files.loading") }}</li>
-  </ul>
+  <section class="glass-card files-panel active" id="uploads-panel" data-panel="uploads">
+    <div class="upload-zone" id="upload-zone" tabindex="0" role="button" aria-label="Upload files by click or drag and drop">
+      <p>{{ _("files.drag_drop") }} <label for="file-input" class="file-browse-label">{{ _("files.browse") }}</label></p>
+      <input type="file" id="file-input" multiple hidden />
+    </div>
+    <div id="upload-status" class="upload-status-list"></div>
+    <div class="panel-header">
+      <h2>Recent uploads</h2>
+      <span class="meta" id="uploads-count"></span>
+    </div>
+    <div class="uploads-grid" id="uploads-grid">
+      <div class="empty-state">{{ _("files.loading") }}</div>
+    </div>
+  </section>
+
+  <section class="glass-card files-panel" id="workspace-panel" data-panel="workspace" hidden>
+    <div class="panel-header">
+      <h2>Workspace tree</h2>
+      <span class="meta">Preview opens in drawer</span>
+    </div>
+    <div class="workspace-browser">
+      <div class="workspace-tree" id="file-tree">
+        <div class="empty-state" id="empty-msg">{{ _("files.loading") }}</div>
+      </div>
+      <div class="workspace-preview-hint">
+        <h3>Quick actions</h3>
+        <p class="text-muted">Preview, copy path, delete, attach or send a file to an agent task directly from the tree.</p>
+        <div class="preview-stats" id="preview-stats">
+          <div class="stat-chip">Workspace: <strong id="workspace-name">default</strong></div>
+          <div class="stat-chip">Files: <strong id="workspace-file-total">0</strong></div>
+          <div class="stat-chip">Results: <strong id="results-total">0</strong></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="glass-card files-panel" id="results-panel" data-panel="results" hidden>
+    <div class="panel-header">
+      <h2>Results & artifacts</h2>
+      <span class="meta">Auto-grouped from result-like folders</span>
+    </div>
+    <div class="results-grid" id="results-grid">
+      <div class="empty-state">{{ _("files.loading") }}</div>
+    </div>
+  </section>
 </div>
 {% endblock %}
 
@@ -36,71 +79,415 @@
   'use strict';
 
   var workspace = new URLSearchParams(location.search).get('workspace') || 'default';
+  var browseFiles = [];
+  var uploadFiles = [];
+  var agentCache = null;
+
+  document.getElementById('workspace-name').textContent = workspace;
+
+  function showNotice(message, kind) {
+    if (typeof showToast === 'function') {
+      showToast(message, kind || 'info');
+      return;
+    }
+    window.alert(message);
+  }
+
+  function setPanel(panel) {
+    document.querySelectorAll('.files-tab').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.panel === panel);
+    });
+    document.querySelectorAll('.files-panel').forEach(function(section) {
+      var active = section.dataset.panel === panel;
+      section.hidden = !active;
+      section.classList.toggle('active', active);
+    });
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function formatBytes(value) {
+    var size = Number(value || 0);
+    if (!size) return '0 B';
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var idx = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+    var scaled = size / Math.pow(1024, idx);
+    return scaled.toFixed(idx === 0 ? 0 : 1) + ' ' + units[idx];
+  }
+
+  function iconFor(path, isDir) {
+    if (isDir) return '📁';
+    var ext = (path.split('.').pop() || '').toLowerCase();
+    var map = {
+      py: '🐍', js: '🟨', ts: '🟦', json: '🧾', md: '📝', csv: '📊', yml: '⚙️', yaml: '⚙️',
+      png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', pdf: '📕', zip: '🗜️', txt: '📄', html: '🌐',
+      css: '🎨', sh: '🖥️', log: '📜'
+    };
+    return map[ext] || '📄';
+  }
+
+  function buildTree(files) {
+    var root = {};
+    files.forEach(function(file) {
+      var path = typeof file === 'string' ? file : (file.path || file.name || '');
+      var parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
+      var node = root;
+      parts.forEach(function(part, index) {
+        if (!node[part]) {
+          node[part] = index === parts.length - 1 ? Object.assign({}, file, { path: path }) : { _children: {}, _path: parts.slice(0, index + 1).join('/') };
+        }
+        if (index !== parts.length - 1) {
+          node[part]._children = node[part]._children || {};
+          node = node[part]._children;
+        }
+      });
+    });
+    return root;
+  }
+
+  function renderTreeNodes(tree, depth) {
+    var entries = Object.keys(tree).sort(function(a, b) {
+      var aVal = tree[a];
+      var bVal = tree[b];
+      var aDir = !!(aVal && aVal._children);
+      var bDir = !!(bVal && bVal._children);
+      if (aDir && !bDir) return -1;
+      if (!aDir && bDir) return 1;
+      return a.localeCompare(b);
+    });
+    return entries.map(function(name) {
+      var value = tree[name];
+      if (value && value._children) {
+        return '<details class="tree-folder" open>' +
+          '<summary><span class="tree-icon">' + iconFor(name, true) + '</span><span>' + esc(name) + '</span></summary>' +
+          '<div class="tree-children depth-' + depth + '">' + renderTreeNodes(value._children, depth + 1) + '</div>' +
+        '</details>';
+      }
+      var path = value.path || name;
+      return '<div class="tree-file">' +
+        '<div class="tree-file__main">' +
+          '<span class="tree-icon">' + iconFor(path, false) + '</span>' +
+          '<button class="tree-link" type="button" data-action="preview" data-path="' + esc(path) + '">' + esc(name) + '</button>' +
+          '<span class="meta">' + formatBytes(value.size) + '</span>' +
+        '</div>' +
+        '<div class="tree-actions">' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="preview" data-path="' + esc(path) + '">Preview</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="copy" data-path="' + esc(path) + '">Copy</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="attach" data-path="' + esc(path) + '">Attach</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="send" data-path="' + esc(path) + '">Send to Agent</button>' +
+          '<button class="glass-btn glass-btn--xs glass-btn--danger" type="button" data-action="delete" data-path="' + esc(path) + '">Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function isResultFile(path) {
+    return /(results?|outputs?|artifacts?|reports?|benchmarks?|eval)/i.test(path || '');
+  }
+
+  function renderResults(files) {
+    var items = files.filter(function(file) {
+      return !file.is_dir && isResultFile(file.path || file.name || '');
+    });
+    document.getElementById('results-total').textContent = String(items.length);
+    var grid = document.getElementById('results-grid');
+    if (!items.length) {
+      grid.innerHTML = '<div class="empty-state">No result artifacts detected yet.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(function(file) {
+      var path = file.path || file.name;
+      return '<article class="result-card">' +
+        '<div class="result-card__header"><span>' + iconFor(path, false) + '</span><strong>' + esc(file.name || path.split('/').pop()) + '</strong></div>' +
+        '<div class="result-card__path">' + esc(path) + '</div>' +
+        '<div class="result-card__meta"><span>' + formatBytes(file.size) + '</span></div>' +
+        '<div class="tree-actions">' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="preview" data-path="' + esc(path) + '">Preview</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="copy" data-path="' + esc(path) + '">Copy</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="send" data-path="' + esc(path) + '">Send to Agent</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
+
+  function renderUploads(files) {
+    var grid = document.getElementById('uploads-grid');
+    document.getElementById('uploads-count').textContent = files.length + ' item(s)';
+    if (!files.length) {
+      grid.innerHTML = '<div class="empty-state">No uploads yet.</div>';
+      return;
+    }
+    grid.innerHTML = files.map(function(file) {
+      var path = file.path || file.filename || '';
+      return '<article class="upload-card">' +
+        '<div class="upload-card__header"><span>' + iconFor(path, false) + '</span><strong>' + esc(file.filename || path) + '</strong></div>' +
+        '<div class="upload-card__meta"><span>' + formatBytes(file.size_bytes || file.size) + '</span><span>' + esc(file.content_type || 'unknown') + '</span></div>' +
+        '<div class="tree-actions">' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="preview" data-path="' + esc(path) + '">Preview</button>' +
+          '<button class="glass-btn glass-btn--xs" type="button" data-action="copy" data-path="' + esc(path) + '">Copy</button>' +
+          '<button class="glass-btn glass-btn--xs glass-btn--danger" type="button" data-action="delete" data-path="' + esc(path) + '">Delete</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
 
   function loadFiles() {
     fetch('/workspace/browse?workspace=' + encodeURIComponent(workspace))
       .then(function(r) { return r.json(); })
-      .then(function(data) { renderFiles(data.files || []); })
-      .catch(function() { document.getElementById('empty-msg').textContent = 'Failed to load files.'; });
+      .then(function(data) {
+        browseFiles = (data.files || []).filter(function(file) { return !file.is_dir; });
+        document.getElementById('file-count').textContent = browseFiles.length + ' file(s)';
+        document.getElementById('workspace-file-total').textContent = String(browseFiles.length);
+        renderFiles(browseFiles);
+        renderResults(browseFiles);
+      })
+      .catch(function() {
+        document.getElementById('empty-msg').textContent = 'Failed to load files.';
+      });
   }
 
   function renderFiles(files) {
-    var list = document.getElementById('file-list');
-    var countEl = document.getElementById('file-count');
-    list.innerHTML = '';
-    countEl.textContent = files.length + ' file(s)';
+    var list = document.getElementById('file-tree');
     if (files.length === 0) {
-      list.innerHTML = '<li class="empty-state">{{ _("files.empty") }}</li>';
+      list.innerHTML = '<div class="empty-state">{{ _("files.empty") }}</div>';
       return;
     }
-    files.forEach(function(f) {
-      var name = typeof f === 'string' ? f : (f.name || f.path || f);
-      var li = document.createElement('li');
-      li.className = 'file-item';
-      li.innerHTML =
-        '<span class="icon">📄</span>' +
-        '<span class="name">' + _esc(name) + '</span>' +
-        '<span class="actions">' +
-          '<a href="/workspace/file?path=' + encodeURIComponent(name) + '&workspace=' + encodeURIComponent(workspace) + '" target="_blank">{{ _("files.view") }}</a>' +
-        '</span>';
-      list.appendChild(li);
-    });
+    list.innerHTML = renderTreeNodes(buildTree(files), 0);
   }
 
-  function _esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
+  function loadUploads() {
+    fetch('/workspace/uploads?workspace=' + encodeURIComponent(workspace))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        uploadFiles = data.files || [];
+        renderUploads(uploadFiles);
+      })
+      .catch(function() {
+        document.getElementById('uploads-grid').innerHTML = '<div class="empty-state">Failed to load uploads.</div>';
+      });
   }
 
-  window.handleDrop = function(e) {
-    e.preventDefault();
-    document.getElementById('upload-zone').classList.remove('dragover');
-    if (e.dataTransfer && e.dataTransfer.files) {
-      handleFiles(e.dataTransfer.files);
+  function previewFile(path) {
+    fetch('/workspace/file?path=' + encodeURIComponent(path) + '&workspace=' + encodeURIComponent(workspace))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          showNotice(data.error, 'error');
+          return;
+        }
+        var html;
+        if (data.type === 'binary') {
+          html = '<div class="file-preview-drawer"><div class="file-preview-title">' + esc(path) + '</div><div class="meta">Binary · ' + formatBytes(data.size) + '</div></div>';
+        } else {
+          html = '<div class="file-preview-drawer"><div class="file-preview-title">' + esc(path) + '</div><pre class="file-preview-code">' + esc(data.content || '') + '</pre></div>';
+        }
+        if (typeof openDetailDrawer === 'function') {
+          openDetailDrawer('File preview', html);
+        }
+      });
+  }
+
+  function copyPath(path) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(path).then(function() {
+        showNotice('Copied path to clipboard', 'success');
+      }).catch(function() {
+        showNotice('Could not copy path', 'error');
+      });
+      return;
     }
+    showNotice(path, 'info');
+  }
+
+  function attachFile(path) {
+    var key = 'amiagi.pendingAttachments';
+    var payload = [];
+    try {
+      payload = JSON.parse(localStorage.getItem(key) || '[]');
+    } catch (_) {}
+    payload.push({ kind: 'workspace-file', path: path, workspace: workspace, created_at: new Date().toISOString() });
+    localStorage.setItem(key, JSON.stringify(payload.slice(-20)));
+    copyPath(path);
+    showNotice('File added to pending attachments', 'success');
+  }
+
+  function ensureAgents() {
+    if (agentCache) return Promise.resolve(agentCache);
+    return fetch('/api/agents')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        agentCache = data.agents || [];
+        return agentCache;
+      });
+  }
+
+  function openSendToAgent(path) {
+    ensureAgents().then(function(agents) {
+      var options = (agents || []).map(function(agent) {
+        return '<option value="' + esc(agent.agent_id || agent.id || '') + '">' + esc(agent.name || agent.agent_id || agent.id || '') + '</option>';
+      }).join('');
+      var html = '<div class="file-send-form">' +
+        '<div class="field"><label>File</label><div class="file-preview-code">' + esc(path) + '</div></div>' +
+        '<div class="field"><label>Agent</label><select class="glass-input" id="file-agent-select">' + options + '</select></div>' +
+        '<div class="field"><label>Task title</label><input class="glass-input" id="file-agent-title" value="Review file: ' + esc(path.split('/').pop()) + '"></div>' +
+        '<div class="field"><label>Instruction</label><textarea class="glass-input" id="file-agent-body" rows="6">Review workspace file ' + esc(path) + ' and continue with the next required action.</textarea></div>' +
+        '<div class="btn-row"><button class="glass-btn glass-btn--primary" type="button" onclick="sendFileToAgentTask(\'' + esc(path) + '\')">Create task</button></div>' +
+      '</div>';
+      if (typeof openDetailDrawer === 'function') {
+        openDetailDrawer('Send file to agent', html);
+      }
+    }).catch(function() {
+      showNotice('Could not load agent list', 'error');
+    });
+  }
+
+  window.sendFileToAgentTask = function(path) {
+    var agentId = document.getElementById('file-agent-select') && document.getElementById('file-agent-select').value;
+    var title = document.getElementById('file-agent-title') && document.getElementById('file-agent-title').value;
+    var body = document.getElementById('file-agent-body') && document.getElementById('file-agent-body').value;
+    if (!agentId) {
+      showNotice('Select an agent first', 'error');
+      return;
+    }
+    fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: title || ('Review file: ' + path.split('/').pop()),
+        description: body || ('Review workspace file ' + path),
+        assigned_agent_id: agentId,
+        priority: 'medium',
+        origin: 'files-ui'
+      })
+    }).then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+      .then(function(result) {
+        if (result.ok) {
+          showNotice('Task created for agent', 'success');
+        } else {
+          showNotice(result.data && result.data.error ? result.data.error : 'Failed to create task', 'error');
+        }
+      }).catch(function() {
+        showNotice('Failed to create task', 'error');
+      });
   };
 
-  window.handleFiles = function(fileList) {
-    var status = document.getElementById('upload-status');
-    Array.from(fileList).forEach(function(file) {
+  function deletePath(path) {
+    if (!window.confirm('Delete ' + path + '?')) return;
+    fetch('/workspace/file?workspace=' + encodeURIComponent(workspace) + '&path=' + encodeURIComponent(path), { method: 'DELETE' })
+      .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+      .then(function(result) {
+        if (!result.ok) {
+          showNotice(result.data && result.data.error ? result.data.error : 'Delete failed', 'error');
+          return;
+        }
+        showNotice('File deleted', 'success');
+        loadFiles();
+        loadUploads();
+      })
+      .catch(function() { showNotice('Delete failed', 'error'); });
+  }
+
+  function handleTreeAction(target) {
+    var action = target.getAttribute('data-action');
+    var path = target.getAttribute('data-path');
+    if (!action || !path) return;
+    if (action === 'preview') previewFile(path);
+    if (action === 'copy') copyPath(path);
+    if (action === 'attach') attachFile(path);
+    if (action === 'send') openSendToAgent(path);
+    if (action === 'delete') deletePath(path);
+  }
+
+  function renderUploadProgress(id, name, progress, state) {
+    var host = document.getElementById('upload-status');
+    var item = document.getElementById(id);
+    if (!item) {
+      item = document.createElement('div');
+      item.id = id;
+      item.className = 'upload-progress';
+      host.appendChild(item);
+    }
+    item.innerHTML = '<div class="upload-progress__header"><strong>' + esc(name) + '</strong><span>' + esc(state) + '</span></div>' +
+      '<div class="upload-progress__bar"><span style="width:' + progress + '%"></span></div>';
+  }
+
+  function uploadFile(file) {
+    return new Promise(function(resolve) {
+      var xhr = new XMLHttpRequest();
       var fd = new FormData();
+      var itemId = 'upload-' + Math.random().toString(16).slice(2);
       fd.append('file', file);
-      status.textContent = '{{ _("files.uploading") }} ' + file.name + '…';
-      fetch('/files/upload', { method: 'POST', body: fd })
-        .then(function(r) {
-          if (r.ok) {
-            status.textContent = file.name + ' {{ _("files.uploaded") }}';
-            loadFiles();
-          } else {
-            return r.json().then(function(d) { status.textContent = 'Error: ' + (d.error || r.statusText); });
-          }
-        })
-        .catch(function(err) { status.textContent = 'Upload failed: ' + err; });
+      xhr.open('POST', '/files/upload');
+      xhr.upload.onprogress = function(event) {
+        if (!event.lengthComputable) return;
+        var progress = Math.round((event.loaded / event.total) * 100);
+        renderUploadProgress(itemId, file.name, progress, 'Uploading');
+      };
+      xhr.onload = function() {
+        renderUploadProgress(itemId, file.name, 100, xhr.status >= 200 && xhr.status < 300 ? 'Uploaded' : 'Error');
+        resolve();
+      };
+      xhr.onerror = function() {
+        renderUploadProgress(itemId, file.name, 100, 'Error');
+        resolve();
+      };
+      xhr.send(fd);
     });
-  };
+  }
+
+  function handleFiles(fileList) {
+    Array.from(fileList).forEach(function(file) {
+      uploadFile(file).then(function() {
+        loadFiles();
+        loadUploads();
+      });
+    });
+  }
+
+  document.querySelectorAll('.files-tab').forEach(function(button) {
+    button.addEventListener('click', function() { setPanel(button.dataset.panel); });
+  });
+
+  document.getElementById('file-tree').addEventListener('click', function(event) {
+    var target = event.target.closest('[data-action]');
+    if (target) handleTreeAction(target);
+  });
+  document.getElementById('results-grid').addEventListener('click', function(event) {
+    var target = event.target.closest('[data-action]');
+    if (target) handleTreeAction(target);
+  });
+  document.getElementById('uploads-grid').addEventListener('click', function(event) {
+    var target = event.target.closest('[data-action]');
+    if (target) handleTreeAction(target);
+  });
+
+  var uploadZone = document.getElementById('upload-zone');
+  var fileInput = document.getElementById('file-input');
+  uploadZone.addEventListener('click', function() { fileInput.click(); });
+  uploadZone.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      fileInput.click();
+    }
+  });
+  uploadZone.addEventListener('dragover', function(event) {
+    event.preventDefault();
+    uploadZone.classList.add('dragover');
+  });
+  uploadZone.addEventListener('dragleave', function() { uploadZone.classList.remove('dragover'); });
+  uploadZone.addEventListener('drop', function(event) {
+    event.preventDefault();
+    uploadZone.classList.remove('dragover');
+    if (event.dataTransfer && event.dataTransfer.files) handleFiles(event.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', function() { handleFiles(fileInput.files || []); });
 
   loadFiles();
+  loadUploads();
 })();
 </script>
 {% endblock %}

@@ -72,6 +72,7 @@
         <div class="model-hub-vram-bar-inner" id="vram-bar"></div>
       </div>
       <div class="model-hub-vram-models" id="vram-model-list"></div>
+      <div id="model-queue"></div>
     </div>
 
     {# Local models grid #}
@@ -95,6 +96,18 @@
       </form>
       <div class="model-hub-pull-status" id="pull-status"></div>
     </div>
+
+    {# M4: JSON Config Editor #}
+    <div class="model-hub-section">
+      <div class="glass-card u-p-4" id="json-editor-panel">
+        <h4>Model Configuration (JSON)</h4>
+        <label for="model-config-json" class="sr-only">JSON config</label>
+        <textarea class="glass-input config-json-textarea" id="model-config-json" rows="18" title="Model configuration JSON"></textarea>
+        <div class="u-flex u-gap-2 u-mt-2">
+          <button class="glass-btn glass-btn--primary" id="btn-save-config">Save Config</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ══════════════════════════════════════════════════════════ #}
@@ -111,6 +124,7 @@
             <label for="cloud-provider">{{ _("models.cloud_provider") }}</label>
             <select id="cloud-provider" class="glass-input glass-select" aria-label="{{ _('models.cloud_provider') }}">
               <option value="openai">OpenAI</option>
+              <option value="google">Google</option>
               <option value="anthropic">Anthropic</option>
               <option value="custom">{{ _("models.cloud_custom") }}</option>
             </select>
@@ -118,14 +132,14 @@
           <div class="cloud-form-field">
             <label for="cloud-model-name">{{ _("models.cloud_model_id") }}</label>
             <input type="text" id="cloud-model-name" class="glass-input"
-                   placeholder="gpt-5-mini" required />
+                   placeholder="gemini-2.5-pro / gpt-4o / claude-3-5-sonnet" required />
           </div>
         </div>
         <div class="cloud-form-row">
           <div class="cloud-form-field cloud-form-field--wide">
             <label for="cloud-base-url">{{ _("models.cloud_base_url") }}</label>
             <input type="url" id="cloud-base-url" class="glass-input"
-                   placeholder="https://api.openai.com/v1" />
+                   placeholder="https://api.openai.com/v1 / https://generativelanguage.googleapis.com/v1beta / https://api.anthropic.com" />
           </div>
         </div>
         <div class="cloud-form-row">
@@ -139,7 +153,7 @@
           <div class="cloud-form-field">
             <label for="cloud-display-name">{{ _("models.cloud_display_name") }}</label>
             <input type="text" id="cloud-display-name" class="glass-input"
-                   placeholder="GPT-5 Mini" />
+                   placeholder="User-defined model label" />
           </div>
         </div>
         <div class="cloud-form-actions">

@@ -5,6 +5,11 @@
     {% include "partials/admin_nav.html" %}
     <h1>{{ _("admin.roles") }}</h1>
 
+    <div class="u-flex u-gap-3 u-flex-center u-mb-4 u-flex-wrap">
+      <button class="glass-btn glass-btn--primary" id="btn-create-role">+ {{ _("admin.roles") }}</button>
+      <button class="glass-btn glass-btn--ghost" id="btn-export-rbac-matrix">Export RBAC Matrix</button>
+    </div>
+
     <table class="table glass-card">
       <thead>
         <tr>
@@ -23,7 +28,9 @@
           <td>{{ _("admin.yes") if role.is_system else _("admin.no") }}</td>
           <td>{{ role.permissions | map(attribute='codename') | join(', ') }}</td>
           <td>
+            <button class="btn btn-xs js-role-detail" data-id="{{ role.id }}">{{ _("admin.details") }}</button>
             {% if not role.is_system %}
+              <button class="btn btn-xs js-role-edit" data-id="{{ role.id }}">{{ _("common.edit") }}</button>
               <button class="btn btn-xs btn-danger" onclick="deleteRole('{{ role.id }}')">{{ _("common.delete") }}</button>
             {% endif %}
           </td>
@@ -35,10 +42,134 @@
 {% endblock %}
 {% block scripts %}
   <script>
+    function esc(value) {
+      var node = document.createElement('div');
+      node.textContent = value == null ? '' : String(value);
+      return node.innerHTML;
+    }
+
+    function buildRoleComposerHtml(payload) {
+      var role = payload && payload.role ? payload.role : {name:'', description:'', permissions:[], permission_ids:[], is_system:false};
+      var groups = payload && payload.permission_groups ? payload.permission_groups : {};
+      var rolePermissionIds = new Set((role.permission_ids || []).map(String));
+      var selectedCount = rolePermissionIds.size;
+      var groupHtml = Object.keys(groups).map(function(groupName) {
+        var items = groups[groupName] || [];
+        return '<section class="glass-card" style="padding:12px">'
+          + '<h4 style="margin:0 0 8px">' + esc(groupName) + '</h4>'
+          + items.map(function(permission) {
+              var checked = rolePermissionIds.has(String(permission.id)) ? ' checked' : '';
+              return '<label class="flex gap-2 mb-2 role-permission-item" data-codename="' + esc(permission.codename).toLowerCase() + '">'
+                + '<input type="checkbox" class="role-permission-check" value="' + esc(permission.id) + '"' + checked + (role.is_system ? ' disabled' : '') + '>'
+                + '<span><strong>' + esc(permission.codename) + '</strong><br><small class="text-secondary">' + esc(permission.description || '') + '</small></span>'
+                + '</label>';
+            }).join('')
+          + '</section>';
+      }).join('');
+
+      return '<div id="role-composer" data-role-id="' + esc(role.id || '') + '" data-role-system="' + (role.is_system ? '1' : '0') + '" data-original-ids="' + esc(JSON.stringify(role.permission_ids || [])) + '" style="display:grid;gap:var(--space-4)">'
+        + '<div class="field"><label for="role-composer-name">{{ _("admin.name") }}</label><input id="role-composer-name" class="glass-input" value="' + esc(role.name || '') + '"' + (role.is_system ? ' disabled' : '') + '></div>'
+        + '<div class="field"><label for="role-composer-description">{{ _("admin.description") }}</label><textarea id="role-composer-description" class="glass-input" rows="3"' + (role.is_system ? ' disabled' : '') + '>' + esc(role.description || '') + '</textarea></div>'
+        + '<div class="field"><label for="role-permission-filter">Filter permissions</label><input id="role-permission-filter" class="glass-input" placeholder="agents.view, admin.*"></div>'
+        + '<div class="glass-card" style="padding:12px"><strong>Permission diff</strong><div id="role-diff-summary" class="text-secondary" style="margin-top:8px">Selected: ' + selectedCount + '</div></div>'
+        + '<div id="role-permission-groups" style="display:grid;gap:12px">' + groupHtml + '</div>'
+        + '<div class="u-flex u-gap-2 u-flex-end">'
+        +   '<button class="glass-btn glass-btn--ghost" type="button" onclick="closeDetailDrawer()">{{ _("common.cancel") }}</button>'
+        +   (role.is_system ? '' : '<button class="glass-btn glass-btn--primary" type="button" onclick="saveRoleComposer()">{{ _("common.save") }}</button>')
+        + '</div>'
+      + '</div>';
+    }
+
+    function updateRoleDiffSummary() {
+      var host = document.getElementById('role-composer');
+      var summary = document.getElementById('role-diff-summary');
+      if (!host || !summary) return;
+      var original = JSON.parse(host.dataset.originalIds || '[]');
+      var current = Array.from(document.querySelectorAll('.role-permission-check:checked')).map(function(input) { return input.value; });
+      var added = current.filter(function(item) { return original.indexOf(item) === -1; });
+      var removed = original.filter(function(item) { return current.indexOf(item) === -1; });
+      summary.innerHTML = 'Selected: <strong>' + current.length + '</strong>'
+        + ' · Added: <strong>' + added.length + '</strong>'
+        + ' · Removed: <strong>' + removed.length + '</strong>';
+    }
+
+    function wireRoleComposer() {
+      var filterInput = document.getElementById('role-permission-filter');
+      filterInput?.addEventListener('input', function() {
+        var needle = (filterInput.value || '').trim().toLowerCase();
+        document.querySelectorAll('.role-permission-item').forEach(function(item) {
+          item.style.display = !needle || (item.dataset.codename || '').indexOf(needle) !== -1 ? '' : 'none';
+        });
+      });
+      document.querySelectorAll('.role-permission-check').forEach(function(input) {
+        input.addEventListener('change', updateRoleDiffSummary);
+      });
+      updateRoleDiffSummary();
+    }
+
+    async function openRoleComposer(roleId) {
+      var payload;
+      if (roleId) {
+        var response = await fetch('/admin/roles/' + roleId, {headers: {Accept: 'application/json'}});
+        if (!response.ok) return;
+        payload = await response.json();
+      } else {
+        var permissionsResponse = await fetch('/admin/permissions', {headers: {Accept: 'application/json'}});
+        if (!permissionsResponse.ok) return;
+        var permissionsPayload = await permissionsResponse.json();
+        var permissions = permissionsPayload.permissions || [];
+        var groups = {};
+        permissions.forEach(function(permission) {
+          var key = permission.category || 'general';
+          groups[key] = groups[key] || [];
+          groups[key].push(permission);
+        });
+        payload = {role: {name:'', description:'', permission_ids:[], is_system:false}, permission_groups: groups};
+      }
+      if (typeof openDetailDrawer === 'function') {
+        openDetailDrawer(roleId ? 'Role composer' : 'Create role', buildRoleComposerHtml(payload));
+        wireRoleComposer();
+      }
+    }
+
+    async function saveRoleComposer() {
+      var host = document.getElementById('role-composer');
+      if (!host) return;
+      var roleId = host.dataset.roleId || '';
+      var body = {
+        name: document.getElementById('role-composer-name').value.trim(),
+        description: document.getElementById('role-composer-description').value.trim(),
+        permission_ids: Array.from(document.querySelectorAll('.role-permission-check:checked')).map(function(input) { return input.value; }),
+      };
+      var url = roleId ? '/admin/roles/' + roleId : '/admin/roles';
+      var method = roleId ? 'PUT' : 'POST';
+      var response = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return;
+      if (typeof closeDetailDrawer === 'function') closeDetailDrawer();
+      location.reload();
+    }
+
+    async function exportRbacMatrix() {
+      window.open('/admin/permissions/export?format=csv', '_blank', 'noopener');
+    }
+
     async function deleteRole(id) {
       if (!confirm('Usunąć tę rolę?')) return;
       await fetch('/admin/roles/' + id, {method: 'DELETE'});
       location.reload();
     }
+
+    document.getElementById('btn-create-role')?.addEventListener('click', function() { openRoleComposer(''); });
+    document.getElementById('btn-export-rbac-matrix')?.addEventListener('click', exportRbacMatrix);
+    document.querySelectorAll('.js-role-edit').forEach(function(button) {
+      button.addEventListener('click', function() { openRoleComposer(button.dataset.id); });
+    });
+    document.querySelectorAll('.js-role-detail').forEach(function(button) {
+      button.addEventListener('click', function() { openRoleComposer(button.dataset.id); });
+    });
   </script>
 {% endblock %}

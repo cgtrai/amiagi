@@ -27,24 +27,46 @@
 
   {# ── Summary cards ─────────────────────────────────────── #}
   <div class="supervisor-cards" id="supervisor-summary">
-    <div class="glass-card summary-card" data-metric="agents">
-      <span class="summary-label">{{ _("supervisor.active_agents") }}</span>
-      <span class="summary-value" id="sv-agents-count">—</span>
+    <div class="glass-card summary-card" data-metric="cycle">
+      <span class="summary-label">{{ _("supervisor.cycle") }}</span>
+      <span class="summary-value" id="sv-cycle-count">—</span>
     </div>
-    <div class="glass-card summary-card" data-metric="tasks">
-      <span class="summary-label">{{ _("supervisor.active_tasks") }}</span>
-      <span class="summary-value" id="sv-tasks-count">—</span>
+    <div class="glass-card summary-card" data-metric="tokens">
+      <span class="summary-label">{{ _("supervisor.tokens_session") }}</span>
+      <span class="summary-value" id="sv-tokens-count">—</span>
     </div>
-    <div class="glass-card summary-card" data-metric="inbox">
-      <span class="summary-label">{{ _("supervisor.pending_approvals") }}</span>
-      <span class="summary-value" id="sv-inbox-count">—</span>
-      <inbox-badge poll-interval="30000"></inbox-badge>
+    <div class="glass-card summary-card" data-metric="cost">
+      <span class="summary-label">{{ _("supervisor.cost_session") }}</span>
+      <span class="summary-value" id="sv-session-cost">—</span>
     </div>
-    <div class="glass-card summary-card" data-metric="uptime">
-      <span class="summary-label">{{ _("supervisor.uptime") }}</span>
-      <span class="summary-value" id="sv-uptime">{{ uptime }}</span>
+    <div class="glass-card summary-card" data-metric="errors">
+      <span class="summary-label">{{ _("supervisor.errors") }}</span>
+      <span class="summary-value" id="sv-errors-count">—</span>
     </div>
   </div>
+
+  {# ── Current Task Panel (S3) ───────────────────────────── #}
+  <section class="supervisor-section glass-card u-hidden" id="current-task-panel">
+    <h3>{{ _("supervisor.current_task") }}</h3>
+    <div class="current-task-content">
+      <div class="current-task-info">
+        <span id="ct-task-title" class="current-task-title"></span>
+        <span id="ct-agent" class="meta-tag"></span>
+        <span id="ct-model" class="meta-tag"></span>
+      </div>
+      <div class="current-task-progress">
+        <div class="progress-bar glass-card ct-progress-bar">
+          <div id="ct-progress-fill" class="progress-fill ct-progress-fill"></div>
+        </div>
+        <span id="ct-progress-text" class="progress-text meta-tag"></span>
+      </div>
+      <div class="current-task-actions">
+        <button class="glass-btn glass-btn--sm" id="ct-btn-pause">{{ _("common.pause") }}</button>
+        <button class="glass-btn glass-btn--sm glass-btn--danger" id="ct-btn-stop">{{ _("common.stop") }}</button>
+        <button class="glass-btn glass-btn--sm glass-btn--primary" id="ct-btn-retry">{{ _("common.retry") }}</button>
+      </div>
+    </div>
+  </section>
 
   {# ── Two-column layout ─────────────────────────────────── #}
   <div class="supervisor-grid">
@@ -60,6 +82,34 @@
     {# ── Live stream ─────────────────────────────────────── #}
     <section class="glass-card supervisor-section" id="live-stream-section">
       <h3>{{ _("supervisor.live_stream") }}</h3>
+      <div class="supervisor-stream-summary" id="supervisor-stream-summary">
+        <span class="meta-tag" id="sv-stream-source">{{ _("supervisor.stream_source") }}: —</span>
+        <span class="meta-tag" id="sv-stream-target">{{ _("supervisor.stream_target") }}: —</span>
+        <span class="meta-tag" id="sv-stream-event">{{ _("supervisor.stream_event") }}: —</span>
+        <span class="meta-tag" id="sv-stream-issue">{{ _("supervisor.stream_issue") }}: —</span>
+      </div>
+      <div class="supervisor-stream-controls">
+        <label class="supervisor-stream-control">
+          <span>{{ _("supervisor.stream_filter_channel") }}</span>
+          <select id="sv-stream-channel-filter" class="operator-input-select">
+            <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
+            <option value="user">{{ _("supervisor.stream_filter_user") }}</option>
+            <option value="executor">{{ _("supervisor.stream_filter_executor") }}</option>
+            <option value="supervisor">{{ _("supervisor.stream_filter_supervisor") }}</option>
+            <option value="system">{{ _("supervisor.stream_filter_system") }}</option>
+          </select>
+        </label>
+        <label class="supervisor-stream-control">
+          <span>{{ _("supervisor.stream_filter_level") }}</span>
+          <select id="sv-stream-level-filter" class="operator-input-select">
+            <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+        </label>
+        <button class="glass-btn glass-btn--sm" id="btn-sv-stream-clear" type="button">{{ _("supervisor.stream_clear") }}</button>
+      </div>
       <live-stream id="supervisor-live-stream" max-entries="500" ws-path="/ws/events"></live-stream>
     </section>
 
@@ -75,6 +125,19 @@
         <path d="M16 16h5v5"/>
       </svg>
       {{ _("supervisor.refresh") }}
+    </button>
+    <button class="glass-btn glass-btn--primary" id="btn-sv-new-prompt" title="{{ _('supervisor.new_prompt') }}">
+      {{ _("supervisor.new_prompt") }}
+    </button>
+    <button class="glass-btn" id="btn-sv-commands" title="{{ _('supervisor.commands') }}">
+      {{ _("supervisor.commands") }}
+    </button>
+    <inbox-badge poll-interval="15000"></inbox-badge>
+    <button class="glass-btn" id="btn-sv-queue" title="{{ _('supervisor.queue') }}">
+      {{ _("supervisor.queue") }} (<span id="sv-queue-count">0</span>)
+    </button>
+    <button class="glass-btn glass-btn--danger" id="btn-sv-reset" title="{{ _('supervisor.reset_session') }}">
+      {{ _("supervisor.reset_session") }}
     </button>
   </div>
 

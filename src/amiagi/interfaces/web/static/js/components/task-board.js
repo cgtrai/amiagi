@@ -18,6 +18,8 @@ class TaskBoard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._tasks = [];
+    this._draggedTaskId = null;
+    this._draggedFromStatus = null;
   }
 
   connectedCallback() {
@@ -63,6 +65,24 @@ class TaskBoard extends HTMLElement {
     this.render();
   }
 
+  _findTask(taskId) {
+    return this._tasks.find((item) => String(item.task_id) === String(taskId)) || null;
+  }
+
+  _applyTaskMove(taskId, toStatus) {
+    const task = this._findTask(taskId);
+    if (!task) return null;
+    const fromStatus = String(task.status || "pending").toLowerCase();
+    if (fromStatus === toStatus) {
+      return { task, fromStatus, toStatus, changed: false };
+    }
+    task.status = toStatus;
+    if (toStatus === "assigned" && !task.assigned_agent_id) {
+      task.assigned_agent_id = task.assigned_agent_id || null;
+    }
+    return { task, fromStatus, toStatus, changed: true };
+  }
+
   _groupByStatus() {
     const groups = {};
     for (const col of TaskBoard.COLUMNS) {
@@ -86,19 +106,19 @@ class TaskBoard extends HTMLElement {
     const columnsHtml = TaskBoard.COLUMNS.map(col => {
       const items = groups[col.key] || [];
       const cardsHtml = items.map(t => `
-        <div class="task-card ${this._priorityClass(t.priority)}">
+        <button class="task-card ${this._priorityClass(t.priority)}" data-task-id="${this._esc(t.task_id || "")}" data-task-status="${this._esc(col.key)}" type="button" draggable="true">
           <div class="task-title">${this._esc(t.title || t.task_id)}</div>
           ${t.assigned_agent_id ? `<div class="task-agent">🤖 ${this._esc(t.assigned_agent_id)}</div>` : ""}
-        </div>
+        </button>
       `).join("");
       return `
-        <div class="column">
+        <div class="column" data-column-status="${this._esc(col.key)}">
           <div class="column-header">
             <span class="dot" style="background:${col.color}"></span>
             <span class="col-label">${col.label}</span>
             <span class="col-count">${items.length}</span>
           </div>
-          <div class="column-body">${cardsHtml || '<div class="empty-col">—</div>'}</div>
+          <div class="column-body" data-drop-status="${this._esc(col.key)}">${cardsHtml || '<div class="empty-col">—</div>'}</div>
         </div>
       `;
     }).join("");
@@ -144,6 +164,14 @@ class TaskBoard extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: var(--space-2, 0.5rem);
+          min-height: 120px;
+          padding: 2px;
+          border-radius: var(--radius-md, 12px);
+          transition: background 0.15s ease, box-shadow 0.15s ease;
+        }
+        .column-body.drop-target {
+          background: rgba(96, 165, 250, 0.08);
+          box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.22);
         }
         .task-card {
           background: var(--glass-bg, rgba(255,255,255,0.06));
@@ -153,7 +181,13 @@ class TaskBoard extends HTMLElement {
           font-size: 0.85rem;
           color: var(--text-primary, #f1f5f9);
           border-left: 3px solid transparent;
+          width: 100%;
+          text-align: left;
+          cursor: pointer;
+          transition: border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
         }
+        .task-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-1px); }
+        .task-card.dragging { opacity: 0.45; transform: scale(0.985); }
         .pri-crit { border-left-color: #ef4444; }
         .pri-high { border-left-color: #f97316; }
         .pri-norm { border-left-color: #60a5fa; }
@@ -178,6 +212,78 @@ class TaskBoard extends HTMLElement {
       </style>
       <div class="board">${columnsHtml}</div>
     `;
+
+    this.shadowRoot.querySelectorAll(".task-card[data-task-id]").forEach((button) => {
+      button.addEventListener("dragstart", (event) => {
+        const taskId = button.getAttribute("data-task-id") || "";
+        const status = button.getAttribute("data-task-status") || "pending";
+        this._draggedTaskId = taskId;
+        this._draggedFromStatus = status;
+        button.classList.add("dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", taskId);
+          event.dataTransfer.setData("application/x-amiagi-task-status", status);
+        }
+      });
+      button.addEventListener("dragend", () => {
+        this._draggedTaskId = null;
+        this._draggedFromStatus = null;
+        button.classList.remove("dragging");
+        this.shadowRoot.querySelectorAll(".column-body.drop-target").forEach((col) => col.classList.remove("drop-target"));
+      });
+      button.addEventListener("click", () => {
+        const taskId = button.getAttribute("data-task-id") || "";
+        const task = this._tasks.find((item) => String(item.task_id) === taskId) || null;
+        const event = new CustomEvent("task:selected", {
+          detail: { taskId, task },
+          bubbles: true,
+          composed: true,
+        });
+        this.dispatchEvent(event);
+        if (typeof window.openTaskDetailDrawer === "function") {
+          window.openTaskDetailDrawer(taskId, task);
+        }
+      });
+    });
+
+    this.shadowRoot.querySelectorAll(".column-body[data-drop-status]").forEach((columnBody) => {
+      columnBody.addEventListener("dragover", (event) => {
+        if (!this._draggedTaskId) return;
+        event.preventDefault();
+        columnBody.classList.add("drop-target");
+      });
+      columnBody.addEventListener("dragleave", (event) => {
+        if (event.relatedTarget && columnBody.contains(event.relatedTarget)) return;
+        columnBody.classList.remove("drop-target");
+      });
+      columnBody.addEventListener("drop", (event) => {
+        if (!this._draggedTaskId) return;
+        event.preventDefault();
+        const toStatus = columnBody.getAttribute("data-drop-status") || "pending";
+        const taskId = this._draggedTaskId || event.dataTransfer?.getData("text/plain") || "";
+        const move = this._applyTaskMove(taskId, toStatus);
+        this._draggedTaskId = null;
+        this._draggedFromStatus = null;
+        this.shadowRoot.querySelectorAll(".column-body.drop-target").forEach((col) => col.classList.remove("drop-target"));
+        if (!move || !move.changed) {
+          this.render();
+          return;
+        }
+        this.render();
+        const moveEvent = new CustomEvent("task:moved", {
+          detail: {
+            taskId,
+            task: move.task,
+            fromStatus: move.fromStatus,
+            toStatus,
+          },
+          bubbles: true,
+          composed: true,
+        });
+        this.dispatchEvent(moveEvent);
+      });
+    });
   }
 
   _esc(str) {

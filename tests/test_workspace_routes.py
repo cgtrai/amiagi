@@ -17,7 +17,9 @@ from starlette.testclient import TestClient
 
 from amiagi.interfaces.web.routes.workspace_routes import (
     browse_workspace,
+    delete_workspace_file,
     delete_file,
+    workspace_uploads,
     view_file,
     workspace_routes,
 )
@@ -53,7 +55,9 @@ class _InjectUser(BaseHTTPMiddleware):
 def _make_store(*, tree=None, file_exists=True, is_text=True):
     store = MagicMock()
     store.browse_workspace = MagicMock(return_value=tree or [])
+    store.list_files = AsyncMock(return_value=[])
     store.delete = AsyncMock(return_value=True)
+    store.delete_by_workspace_path = AsyncMock(return_value=True)
     return store
 
 
@@ -64,7 +68,9 @@ def _make_app(store=None, user=None, tmp_dir: Path | None = None) -> Starlette:
     app = Starlette(
         routes=[
             Route("/workspace/browse", browse_workspace, methods=["GET"]),
+            Route("/workspace/uploads", workspace_uploads, methods=["GET"]),
             Route("/workspace/file", view_file, methods=["GET"]),
+            Route("/workspace/file", delete_workspace_file, methods=["DELETE"]),
             Route("/files/{asset_id}", delete_file, methods=["DELETE"]),
         ],
         middleware=[Middleware(_InjectUser, user=user)],
@@ -154,6 +160,16 @@ class TestViewFile:
         assert resp.status_code == 200
         assert resp.json()["type"] == "binary"
 
+    def test_view_file_rejects_path_traversal(self, tmp_path: Path) -> None:
+        ws_dir = tmp_path / "test-user" / "default"
+        ws_dir.mkdir(parents=True)
+
+        store = _make_store()
+        store._user_dir = MagicMock(return_value=ws_dir)
+        client = TestClient(_make_app(store, tmp_dir=ws_dir))
+        resp = client.get("/workspace/file?path=../secret.txt")
+        assert resp.status_code == 400
+
 
 # ------------------------------------------------------------------
 # Delete file tests
@@ -177,6 +193,34 @@ class TestDeleteFile:
         resp = client.delete("/files/xxx")
         assert resp.status_code == 404
 
+    def test_delete_workspace_file_by_path(self, tmp_path: Path) -> None:
+        ws_dir = tmp_path / "test-user" / "default"
+        ws_dir.mkdir(parents=True)
+        target = ws_dir / "report.txt"
+        target.write_text("report")
+
+        store = _make_store()
+        store._user_dir = MagicMock(return_value=ws_dir)
+        user = _FakeUser(permissions=["files.manage"])
+        client = TestClient(_make_app(store, user=user, tmp_dir=ws_dir))
+        resp = client.delete("/workspace/file?path=report.txt")
+        assert resp.status_code == 200
+        assert resp.json()["deleted"] is True
+        store.delete_by_workspace_path.assert_awaited_once()
+
+
+class TestWorkspaceUploads:
+
+    def test_workspace_uploads_returns_recent_items(self) -> None:
+        store = _make_store()
+        store.list_files = AsyncMock(return_value=[{"id": "1", "filename": "report.txt", "size_bytes": 42}])
+        client = TestClient(_make_app(store))
+        resp = client.get("/workspace/uploads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 1
+        assert data["files"][0]["path"] == "report.txt"
+
 
 # ------------------------------------------------------------------
 # Route list tests
@@ -185,7 +229,8 @@ class TestDeleteFile:
 class TestRouteDefinitions:
 
     def test_workspace_routes_list_defined(self) -> None:
-        assert len(workspace_routes) >= 4
+        assert len(workspace_routes) >= 6
         paths = [r.path for r in workspace_routes]
         assert "/workspace/browse" in paths
         assert "/workspace/file" in paths
+        assert "/workspace/uploads" in paths

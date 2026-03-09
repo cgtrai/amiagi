@@ -316,11 +316,13 @@ class TestWebhookManager:
         now = datetime(2025, 6, 1, tzinfo=timezone.utc)
         w = WebhookRecord(
             id="w1", user_id="u1", url="https://example.com/hook",
-            events=["task.done"], secret="shhh", is_active=True, created_at=now,
+            events=["task.done"], secret="shhh", is_active=True,
+            last_delivery_status=200, last_delivery_at=now, last_error=None, created_at=now,
         )
         d = w.to_dict()
         assert d["url"] == "https://example.com/hook"
         assert d["events"] == ["task.done"]
+        assert d["status"] == "active"
         assert "secret" not in d  # secret should not be exposed
 
     def test_compute_signature(self):
@@ -337,6 +339,7 @@ class TestWebhookManager:
         pool.fetchrow = AsyncMock(return_value={
             "id": "w1", "user_id": "u1", "url": "https://hook.example.com",
             "events": ["task.done"], "secret": "s", "is_active": True,
+            "last_delivery_status": None, "last_delivery_at": None, "last_error": None,
             "created_at": now,
         })
         mgr = WebhookManager(pool)
@@ -374,6 +377,35 @@ class TestWebhookManager:
         sql_arg = pool.fetch.call_args[0][0]
         assert "is_active = true" in sql_arg
         assert "ANY(events)" in sql_arg
+
+    @pytest.mark.asyncio
+    async def test_update_webhook(self):
+        from amiagi.interfaces.web.monitoring.webhook_manager import WebhookManager
+        now = datetime.now(tz=timezone.utc)
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={
+            "id": "w1", "user_id": "u1", "url": "https://edited.example.com",
+            "events": ["workflow_done"], "secret": "s2", "is_active": False,
+            "last_delivery_status": 500, "last_delivery_at": now, "last_error": "HTTP 500",
+            "created_at": now,
+        })
+        mgr = WebhookManager(pool)
+        hook = await mgr.update_webhook("w1", url="https://edited.example.com", events=["workflow_done"], is_active=False)
+        assert hook is not None
+        assert hook.url == "https://edited.example.com"
+        assert hook.status == "disabled"
+        sql_arg = pool.fetchrow.call_args[0][0]
+        assert "UPDATE dbo.webhooks SET" in sql_arg
+
+    @pytest.mark.asyncio
+    async def test_record_delivery_result(self):
+        from amiagi.interfaces.web.monitoring.webhook_manager import WebhookManager
+        pool = AsyncMock()
+        pool.execute = AsyncMock(return_value="UPDATE 1")
+        mgr = WebhookManager(pool)
+        await mgr.record_delivery_result("w1", status=200, error=None)
+        sql_arg = pool.execute.call_args[0][0]
+        assert "last_delivery_status" in sql_arg
 
     @pytest.mark.asyncio
     async def test_dispatch_no_subscribers(self):
@@ -511,7 +543,7 @@ class TestApiKeyManager:
             id="k1", user_id="u1", name="My Key",
             scopes=["agents.view", "tasks.manage"],
             expires_at=now + timedelta(days=30),
-            is_active=True, last_used_at=None, created_at=now,
+            is_active=True, last_used_at=None, rate_limit_per_min=120, created_at=now,
         )
         d = r.to_dict()
         assert d["id"] == "k1"
@@ -519,6 +551,7 @@ class TestApiKeyManager:
         assert "agents.view" in d["scopes"]
         assert d["is_active"] is True
         assert d["last_used_at"] is None
+        assert d["rate_limit_per_min"] == 120
 
     def test_generate_api_key_format(self):
         from amiagi.interfaces.web.monitoring.api_key_manager import generate_api_key
@@ -546,13 +579,14 @@ class TestApiKeyManager:
         pool.fetchrow = AsyncMock(return_value={
             "id": "k1", "user_id": "u1", "name": "Test",
             "scopes": ["agents.view"], "expires_at": None,
-            "is_active": True, "last_used_at": None, "created_at": now,
+            "is_active": True, "last_used_at": None, "rate_limit_per_min": 60, "created_at": now,
         })
         mgr = ApiKeyManager(pool)
-        raw_key, record = await mgr.create_key("u1", "Test", scopes=["agents.view"])
+        raw_key, record = await mgr.create_key("u1", "Test", scopes=["agents.view"], rate_limit_per_min=60)
         assert raw_key.startswith("ak_")
         assert record.name == "Test"
         assert record.scopes == ["agents.view"]
+        assert record.rate_limit_per_min == 60
         sql_arg = pool.fetchrow.call_args[0][0]
         assert "INSERT INTO dbo.api_keys" in sql_arg
 
@@ -565,7 +599,7 @@ class TestApiKeyManager:
         pool.fetchrow = AsyncMock(return_value={
             "id": "k2", "user_id": "u1", "name": "Hashed",
             "scopes": [], "expires_at": None,
-            "is_active": True, "last_used_at": None, "created_at": now,
+            "is_active": True, "last_used_at": None, "rate_limit_per_min": None, "created_at": now,
         })
         mgr = ApiKeyManager(pool)
         raw_key, _ = await mgr.create_key("u1", "Hashed")
@@ -582,7 +616,7 @@ class TestApiKeyManager:
         pool.fetchrow = AsyncMock(return_value={
             "id": "k1", "user_id": "u1", "name": "Key",
             "scopes": [], "expires_at": None,
-            "is_active": True, "last_used_at": None, "created_at": now,
+            "is_active": True, "last_used_at": None, "rate_limit_per_min": None, "created_at": now,
         })
         pool.execute = AsyncMock(return_value="UPDATE 1")
         mgr = ApiKeyManager(pool)
@@ -678,6 +712,16 @@ class TestMigration004:
         assert "idx_apikey_hash" in migration_sql
         assert "WHERE is_active = true" in migration_sql
 
+    def test_monitoring_integrations_enhancement_migration_exists(self):
+        path = _WEB_ROOT / "db/migrations/016_monitoring_integrations_enhancements.sql"
+        assert path.exists()
+
+    def test_monitoring_integrations_enhancement_contains_new_columns(self):
+        sql = (_WEB_ROOT / "db/migrations/016_monitoring_integrations_enhancements.sql").read_text()
+        assert "rate_limit_per_min" in sql
+        assert "last_delivery_status" in sql
+        assert "last_error" in sql
+
     def test_session_events_index(self, migration_sql):
         assert "idx_sess_events_session" in migration_sql
 
@@ -740,3 +784,13 @@ class TestRouteCoverage:
             "/settings/webhooks/{id}/test",
         }
         assert expected.issubset(paths)
+
+
+class TestSettingsIntegrationsTemplate:
+    def test_settings_integrations_template_has_rich_controls(self):
+        html = (_WEB_ROOT / "templates/settings.html").read_text(encoding="utf-8")
+        assert 'id="api-key-created-panel"' in html
+        assert 'class="api-key-scope"' in html
+        assert 'id="new-key-rate-limit"' in html
+        assert 'openWebhookEdit' in html
+        assert 'id="webhook-submit-btn"' in html

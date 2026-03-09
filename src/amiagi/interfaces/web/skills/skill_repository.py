@@ -346,6 +346,49 @@ class SkillRepository:
             return {"total_uses": 0, "useful_count": 0, "total_tokens": 0}
         return dict(row)
 
+    async def skill_usage_map(self) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT s.id,
+                   s.name,
+                   s.display_name,
+                   coalesce(l.agent_role, 'unassigned') as agent_role,
+                   count(l.skill_id) as total_uses,
+                   count(*) FILTER (WHERE l.was_useful = true) as useful_count,
+                   coalesce(sum(l.tokens_used), 0) as total_tokens
+            FROM dbo.skills s
+            LEFT JOIN dbo.skill_usage_log l ON l.skill_id = s.id
+            GROUP BY s.id, s.name, s.display_name, l.agent_role
+            ORDER BY s.name, total_uses DESC, agent_role
+            """
+        )
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            skill_id = str(row["id"])
+            item = grouped.setdefault(skill_id, {
+                "skill_id": skill_id,
+                "name": row["name"],
+                "display_name": row.get("display_name") or row["name"],
+                "total_uses": 0,
+                "useful_count": 0,
+                "total_tokens": 0,
+                "agents": [],
+            })
+            uses = int(row.get("total_uses") or 0)
+            useful = int(row.get("useful_count") or 0)
+            tokens = int(row.get("total_tokens") or 0)
+            item["total_uses"] += uses
+            item["useful_count"] += useful
+            item["total_tokens"] += tokens
+            if uses > 0:
+                item["agents"].append({
+                    "agent_role": row.get("agent_role") or "unassigned",
+                    "total_uses": uses,
+                    "useful_count": useful,
+                    "total_tokens": tokens,
+                })
+        return sorted(grouped.values(), key=lambda item: (-item["total_uses"], item["name"]))
+
     # ── Row mappers ────────────────────────────────────────────
 
     @staticmethod

@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,10 @@ if TYPE_CHECKING:
     from amiagi.interfaces.web.db.vault_repository import VaultRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class SecretVault:
@@ -111,38 +116,90 @@ class SecretVault:
                 aid: dict(secs) for aid, secs in self._data.items()
             }
         for agent_id, secrets in snapshot.items():
-            for key, encrypted_value in secrets.items():
-                await self._repo.set_secret(agent_id, key, encrypted_value)
+            for key, stored in secrets.items():
+                entry = self._coerce_entry(stored)
+                if entry is None:
+                    continue
+                await self._repo.set_secret(
+                    agent_id,
+                    key,
+                    entry["encrypted_value"],
+                    secret_type=entry.get("type") or "api_key",
+                    expires_at=entry.get("expires_at"),
+                )
                 count += 1
         logger.info("SecretVault: migrated %d file-based secrets to database", count)
         return count
 
     # ---- async public API (DB-aware) ----
 
-    async def aset_secret(self, agent_id: str, key: str, value: str) -> None:
-        """Store a secret — async, DB-first when available."""
+    async def _aset_secret_with_metadata(
+        self,
+        agent_id: str,
+        key: str,
+        value: str,
+        *,
+        secret_type: str = "api_key",
+        expires_at: datetime | str | None = None,
+    ) -> None:
         encrypted = self._encrypt(value)
+        expires_iso = self._normalize_expires_at(expires_at)
+        previous = self._get_entry(agent_id, key)
+        entry = {
+            "encrypted_value": encrypted,
+            "type": secret_type or "api_key",
+            "expires_at": expires_iso,
+            "last_access": previous.get("last_access"),
+            "created_at": previous.get("created_at") or _utc_now().isoformat(),
+            "updated_at": _utc_now().isoformat(),
+            "rotated_at": previous.get("rotated_at"),
+        }
         if self._repo is not None:
-            await self._repo.set_secret(agent_id, key, encrypted)
+            await self._repo.set_secret(
+                agent_id,
+                key,
+                encrypted,
+                secret_type=entry["type"],
+                expires_at=expires_iso,
+            )
         with self._lock:
-            self._data.setdefault(agent_id, {})[key] = encrypted
+            self._data.setdefault(agent_id, {})[key] = entry
             self._save()
+
+    async def aset_secret(
+        self,
+        agent_id: str,
+        key: str,
+        value: str,
+        *,
+        secret_type: str = "api_key",
+        expires_at: datetime | str | None = None,
+    ) -> None:
+        """Store a secret — async, DB-first when available."""
+        await self._aset_secret_with_metadata(
+            agent_id,
+            key,
+            value,
+            secret_type=secret_type,
+            expires_at=expires_at,
+        )
 
     async def aget_secret(self, agent_id: str, key: str) -> str | None:
         """Retrieve and decrypt — async, reads from cache (populated from DB)."""
         with self._lock:
             bucket = self._data.get(agent_id, {})
-            token = bucket.get(key)
-        if token is None:
+            entry = self._coerce_entry(bucket.get(key)) if key in bucket else None
+        if entry is None:
             # Cache miss — try DB if available
             if self._repo is not None:
-                token = await self._repo.get_secret(agent_id, key)
-                if token is not None:
+                entry = await self._repo.get_secret_record(agent_id, key)
+                if entry is not None:
                     with self._lock:
-                        self._data.setdefault(agent_id, {})[key] = token
-            if token is None:
+                        self._data.setdefault(agent_id, {})[key] = entry
+            if entry is None:
                 return None
-        return self._decrypt(token)
+        self._touch_last_access(agent_id, key)
+        return self._decrypt(entry["encrypted_value"])
 
     async def adelete_secret(self, agent_id: str, key: str) -> bool:
         """Delete — async, DB-first when available."""
@@ -171,7 +228,16 @@ class SecretVault:
             bucket = self._data.get(agent_id, {})
             if key not in bucket and self._repo is None:
                 return False
-            self._data.setdefault(agent_id, {})[key] = encrypted
+            previous = self._get_entry(agent_id, key)
+            self._data.setdefault(agent_id, {})[key] = {
+                "encrypted_value": encrypted,
+                "type": previous.get("type") or "api_key",
+                "expires_at": previous.get("expires_at"),
+                "last_access": previous.get("last_access"),
+                "created_at": previous.get("created_at") or _utc_now().isoformat(),
+                "updated_at": _utc_now().isoformat(),
+                "rotated_at": _utc_now().isoformat(),
+            }
             self._save()
         return True
 
@@ -181,11 +247,11 @@ class SecretVault:
             return await self._repo.list_agents()
         return self.list_agents()
 
-    async def alist_keys(self, agent_id: str) -> list[str]:
+    async def alist_keys(self, agent_id: str, *, include_metadata: bool = False) -> list[str] | list[dict[str, Any]]:
         """List keys — async, DB-first when available."""
         if self._repo is not None:
-            return await self._repo.list_keys(agent_id)
-        return self.list_keys(agent_id)
+            return await self._repo.list_keys(agent_id, include_metadata=include_metadata)
+        return self.list_keys(agent_id, include_metadata=include_metadata)
 
     async def adelete_agent(self, agent_id: str) -> bool:
         """Delete all secrets for agent — async."""
@@ -210,6 +276,8 @@ class SecretVault:
         """Write a vault access log entry to the DB (if available)."""
         if self._repo is not None:
             await self._repo.log_access(agent_id, key, action, performed_by)
+        if key:
+            self._touch_last_access(agent_id, key)
 
     async def aget_access_log(self, *, limit: int = 50) -> list[dict]:
         """Return recent access log entries from DB."""
@@ -217,29 +285,60 @@ class SecretVault:
             return await self._repo.get_access_log(limit=limit)
         return []
 
+    async def aget_secret_access_log(self, agent_id: str, key: str, *, limit: int = 50) -> list[dict]:
+        """Return recent access log entries for one secret."""
+        if self._repo is not None:
+            return await self._repo.get_secret_access_log(agent_id, key, limit=limit)
+        return []
+
     # ---- sync public API (backward compat for CLI / non-web callers) ----
 
-    def set_secret(self, agent_id: str, key: str, value: str) -> None:
+    def set_secret(
+        self,
+        agent_id: str,
+        key: str,
+        value: str,
+        *,
+        secret_type: str = "api_key",
+        expires_at: datetime | str | None = None,
+    ) -> None:
         """Store a secret for *agent_id* (Fernet-encrypted).
 
         When DB is attached, schedules an async write on the running loop.
         """
         encrypted = self._encrypt(value)
+        expires_iso = self._normalize_expires_at(expires_at)
         if self._repo is not None:
-            self._schedule_db(self._repo.set_secret, agent_id, key, encrypted)
+            self._schedule_db(
+                self._repo.set_secret,
+                agent_id,
+                key,
+                encrypted,
+                kwargs={"secret_type": secret_type, "expires_at": expires_iso},
+            )
         with self._lock:
+            previous = self._get_entry(agent_id, key)
             bucket = self._data.setdefault(agent_id, {})
-            bucket[key] = encrypted
+            bucket[key] = {
+                "encrypted_value": encrypted,
+                "type": secret_type or previous.get("type") or "api_key",
+                "expires_at": expires_iso,
+                "last_access": previous.get("last_access"),
+                "created_at": previous.get("created_at") or _utc_now().isoformat(),
+                "updated_at": _utc_now().isoformat(),
+                "rotated_at": previous.get("rotated_at"),
+            }
             self._save()
 
     def get_secret(self, agent_id: str, key: str) -> str | None:
         """Retrieve and decrypt a secret. Returns ``None`` if not found."""
         with self._lock:
             bucket = self._data.get(agent_id, {})
-            token = bucket.get(key)
-            if token is None:
+            entry = self._coerce_entry(bucket.get(key)) if key in bucket else None
+            if entry is None:
                 return None
-            return self._decrypt(token)
+        self._touch_last_access(agent_id, key)
+        return self._decrypt(entry["encrypted_value"])
 
     def delete_secret(self, agent_id: str, key: str) -> bool:
         """Remove a secret. Returns ``True`` if removed."""
@@ -255,10 +354,13 @@ class SecretVault:
             self._schedule_db(self._repo.delete_secret, agent_id, key)
         return True
 
-    def list_keys(self, agent_id: str) -> list[str]:
+    def list_keys(self, agent_id: str, *, include_metadata: bool = False) -> list[str] | list[dict[str, Any]]:
         """List secret key names for *agent_id* (values NOT exposed)."""
         with self._lock:
-            return list(self._data.get(agent_id, {}).keys())
+            bucket = self._data.get(agent_id, {})
+            if not include_metadata:
+                return list(bucket.keys())
+            return [self._public_entry(agent_id, key, stored) for key, stored in bucket.items()]
 
     def list_agents(self) -> list[dict]:
         """Return a summary of all agents that have secrets stored.
@@ -270,7 +372,7 @@ class SecretVault:
             for agent_id, secrets in self._data.items():
                 result.append({
                     "agent_id": agent_id,
-                    "keys": list(secrets.keys()),
+                    "keys": [self._public_entry(agent_id, key, stored) for key, stored in secrets.items()],
                     "count": len(secrets),
                 })
             return result
@@ -329,7 +431,92 @@ class SecretVault:
 
     # ---- internal helpers ----
 
-    def _schedule_db(self, coro_func: Any, *args: Any) -> None:
+    def _normalize_expires_at(self, expires_at: datetime | str | None) -> str | None:
+        if expires_at is None:
+            return None
+        if isinstance(expires_at, str):
+            value = expires_at.strip()
+            return value or None
+        return expires_at.astimezone(timezone.utc).isoformat()
+
+    def _coerce_entry(self, stored: Any) -> dict[str, Any] | None:
+        if stored is None:
+            return None
+        if isinstance(stored, str):
+            return {
+                "encrypted_value": stored,
+                "type": "api_key",
+                "expires_at": None,
+                "last_access": None,
+                "created_at": None,
+                "updated_at": None,
+                "rotated_at": None,
+            }
+        if isinstance(stored, dict):
+            entry = dict(stored)
+            entry.setdefault("encrypted_value", "")
+            entry.setdefault("type", "api_key")
+            entry.setdefault("expires_at", None)
+            entry.setdefault("last_access", None)
+            entry.setdefault("created_at", None)
+            entry.setdefault("updated_at", None)
+            entry.setdefault("rotated_at", None)
+            return entry
+        return None
+
+    def _get_entry(self, agent_id: str, key: str) -> dict[str, Any]:
+        bucket = self._data.get(agent_id, {})
+        return self._coerce_entry(bucket.get(key)) or {
+            "encrypted_value": "",
+            "type": "api_key",
+            "expires_at": None,
+            "last_access": None,
+            "created_at": None,
+            "updated_at": None,
+            "rotated_at": None,
+        }
+
+    def _secret_status(self, entry: dict[str, Any]) -> str:
+        expires_at = entry.get("expires_at")
+        if not expires_at:
+            return "active"
+        try:
+            expires_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+        except ValueError:
+            return "active"
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+        now = _utc_now()
+        if expires_dt <= now:
+            return "expired"
+        if expires_dt <= now + timedelta(days=7):
+            return "expiring"
+        return "active"
+
+    def _public_entry(self, agent_id: str, key: str, stored: Any) -> dict[str, Any]:
+        entry = self._coerce_entry(stored) or {}
+        return {
+            "id": f"{agent_id}:{key}",
+            "key": key,
+            "type": entry.get("type") or "api_key",
+            "expires_at": entry.get("expires_at"),
+            "last_access": entry.get("last_access"),
+            "status": self._secret_status(entry),
+        }
+
+    def _touch_last_access(self, agent_id: str, key: str) -> None:
+        with self._lock:
+            bucket = self._data.get(agent_id)
+            if bucket is None or key not in bucket:
+                return
+            entry = self._coerce_entry(bucket.get(key))
+            if entry is None:
+                return
+            entry["last_access"] = _utc_now().isoformat()
+            bucket[key] = entry
+            self._save()
+
+    def _schedule_db(self, coro_func: Any, *args: Any, kwargs: dict[str, Any] | None = None) -> None:
         """Fire-and-forget an async DB write from sync context.
 
         Silently no-ops when no DB is attached or no running event loop.
@@ -338,7 +525,7 @@ class SecretVault:
             return
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(coro_func(*args))
+            loop.create_task(coro_func(*args, **(kwargs or {})))
         except RuntimeError:
             # No running event loop (e.g. CLI / test context) — skip DB write
             pass

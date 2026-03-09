@@ -28,7 +28,7 @@ Use this checklist before tagging a new release.
 
 ## 5) Final release steps
 
-- [x] Update version in `pyproject.toml` (v1.2.0)
+- [x] Update version in `pyproject.toml` (v1.3.0)
 - [x] Create release notes (highlights + breaking changes + migration notes)
 - [ ] Tag release in GitHub
 - [ ] Verify installation path (`pip install -e .` and CLI entry `amiagi`)

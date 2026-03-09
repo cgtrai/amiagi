@@ -1,8 +1,10 @@
-"""Health check routes — GET /health, GET /health/detailed, /vram, /connections."""
+"""Health check routes — GET /health, GET /health/detailed, /vram, /connections, /rate-limits."""
 
 from __future__ import annotations
 
 import os
+import sys
+import platform
 import time
 from typing import Any
 
@@ -97,6 +99,29 @@ async def health_detailed(request: Request) -> JSONResponse:
     # ── Overall status ──
     if checks.get("db_pool") is None:
         checks["status"] = "degraded"
+
+    # ── H3–H5: Extended system info ──
+    checks["python_version"] = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    checks["platform"] = platform.platform()
+
+    task_queue = getattr(request.app.state, "task_queue", None)
+    if task_queue is not None:
+        try:
+            all_tasks = task_queue.list_all() if hasattr(task_queue, "list_all") else []
+            checks["tasks_running"] = len([t for t in all_tasks if getattr(t, "status", "") in ("running", "in_progress")])
+        except Exception:
+            checks["tasks_running"] = 0
+    else:
+        checks["tasks_running"] = 0
+
+    perf = getattr(request.app.state, "performance_tracker", None)
+    if perf is not None and hasattr(perf, "queries_per_minute"):
+        try:
+            checks["queries_per_min"] = perf.queries_per_minute()
+        except Exception:
+            checks["queries_per_min"] = 0
+    else:
+        checks["queries_per_min"] = 0
 
     return JSONResponse(checks)
 
@@ -193,9 +218,35 @@ async def health_connections(request: Request) -> JSONResponse:
     return JSONResponse(data)
 
 
+async def health_rate_limits(request: Request) -> JSONResponse:
+    """GET /api/health/rate-limits — report rate limits from API providers."""
+    cloud_models = []
+    model_hub = getattr(request.app.state, "model_hub", None)
+    if model_hub is not None:
+        cloud_models = getattr(model_hub, "cloud_models", [])
+
+    limits = []
+    seen_providers: set[str] = set()
+    for m in cloud_models:
+        provider = m.get("provider", "") if isinstance(m, dict) else getattr(m, "provider", "")
+        if not provider or provider in seen_providers:
+            continue
+        seen_providers.add(provider)
+        limits.append({
+            "provider": provider,
+            "requests_remaining": None,
+            "requests_limit": None,
+            "tokens_remaining": None,
+            "reset_at": None,
+        })
+
+    return JSONResponse({"rate_limits": limits})
+
+
 health_routes = [
     Route("/health", health, methods=["GET"]),
     Route("/health/detailed", health_detailed, methods=["GET"]),
+    Route("/api/health/rate-limits", health_rate_limits, methods=["GET"]),
     Route("/api/health/vram", health_vram, methods=["GET"]),
     Route("/api/health/connections", health_connections, methods=["GET"]),
 ]

@@ -80,3 +80,14 @@ def make_translator(request: Request):
         return get_web_translation(key, lang=lang, **kwargs)
 
     return _, lang
+
+
+def get_translations_json(lang: str = "pl") -> str:
+    """Return the full web translations dict serialised as a JSON string.
+
+    This is injected into ``base.html`` as ``window._i18n`` so that
+    vanilla-JS components can call ``window.t("key", "fallback")``.
+    """
+    _ensure_loaded()
+    strings = _web_strings.get(lang, {})
+    return json.dumps(strings, ensure_ascii=False)

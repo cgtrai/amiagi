@@ -36,6 +36,8 @@
       </div>
       <div id="tpl-description" class="tpl-description"></div>
       <div id="tpl-tags" class="tpl-tags"></div>
+      <div id="tpl-actions" class="tpl-tags"></div>
+      <div id="tpl-stats" class="tpl-tags"></div>
     </div>
 
     <!-- Template Step 1: Fill parameters -->
@@ -140,6 +142,66 @@
   var selectedTpl = null;   // currently selected template object
   var tplStep = 0;
 
+  function sortTemplates() {
+    templates.sort(function(a, b) {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      var aUse = (a.stats && a.stats.use_count) || a.use_count || 0;
+      var bUse = (b.stats && b.stats.use_count) || b.use_count || 0;
+      if (aUse !== bUse) return bUse - aUse;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }
+
+  function renderTemplateOptions(selectedId) {
+    var sel = document.getElementById('tpl-select');
+    sel.innerHTML = '<option value="">— Select template —</option>';
+    templates.forEach(function(t) {
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      var usage = (t.stats && t.stats.use_count) || t.use_count || 0;
+      opt.textContent = (t.pinned ? '★ ' : '') + t.name + ' · used ' + usage + 'x';
+      if (selectedId && selectedId === t.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderTemplateSummary() {
+    var descEl = document.getElementById('tpl-description');
+    var tagsEl = document.getElementById('tpl-tags');
+    var actionsEl = document.getElementById('tpl-actions');
+    var statsEl = document.getElementById('tpl-stats');
+
+    if (!selectedTpl) {
+      descEl.textContent = '';
+      tagsEl.innerHTML = '';
+      actionsEl.innerHTML = '';
+      statsEl.innerHTML = '';
+      return;
+    }
+
+    descEl.textContent = selectedTpl.description || '';
+    tagsEl.innerHTML = (selectedTpl.tags || []).map(function(tag) {
+      return '<span class="glass-badge">' + _esc(tag) + '</span>';
+    }).join(' ');
+
+    var pinLabel = selectedTpl.pinned ? '★ Pinned' : '☆ Pin template';
+    actionsEl.innerHTML = '<button type="button" class="glass-btn glass-btn--ghost" id="tpl-pin-btn" onclick="toggleTemplatePin()">' + pinLabel + '</button>';
+
+    var stats = selectedTpl.stats || {};
+    var statBadges = [
+      '<span class="glass-badge">Used ' + _esc(String(stats.use_count || selectedTpl.use_count || 0)) + 'x</span>',
+      '<span class="glass-badge">Steps ' + _esc(String(stats.step_count || (selectedTpl.steps || []).length || 0)) + '</span>',
+      '<span class="glass-badge">Params ' + _esc(String(stats.parameter_count || (selectedTpl.parameters || []).length || 0)) + '</span>'
+    ];
+    if (stats.avg_completion_time_label) {
+      statBadges.push('<span class="glass-badge">Avg ' + _esc(String(stats.avg_completion_time_label)) + '</span>');
+    }
+    if (stats.execution_count) {
+      statBadges.push('<span class="glass-badge">Runs in queue ' + _esc(String(stats.execution_count)) + '</span>');
+    }
+    statsEl.innerHTML = statBadges.join(' ');
+  }
+
   // ── Mode switching ────────────────────────────────────────────
 
   window.setWizardMode = function(mode) {
@@ -169,15 +231,29 @@
 
   async function loadTemplates() {
     try {
-      var resp = await fetch('/templates');
+      var responses = await Promise.all([
+        fetch('/templates'),
+        fetch('/templates/stats').catch(function() { return null; })
+      ]);
+      var resp = responses[0];
       templates = await resp.json();
-      var sel = document.getElementById('tpl-select');
-      templates.forEach(function(t) {
-        var opt = document.createElement('option');
-        opt.value = t.id;
-        opt.textContent = t.name + (t.tags && t.tags.length ? ' [' + t.tags.join(', ') + ']' : '');
-        sel.appendChild(opt);
-      });
+      var statsResp = responses[1];
+      if (statsResp && statsResp.ok) {
+        var statsPayload = await statsResp.json();
+        var statsMap = {};
+        (statsPayload.templates || []).forEach(function(entry) {
+          statsMap[entry.template_id] = entry;
+        });
+        templates = templates.map(function(t) {
+          var stats = statsMap[t.id] || {};
+          return Object.assign({}, t, {
+            pinned: typeof stats.pinned === 'boolean' ? stats.pinned : !!t.pinned,
+            stats: Object.assign({}, t.stats || {}, stats),
+          });
+        });
+      }
+      sortTemplates();
+      renderTemplateOptions(selectedTpl && selectedTpl.id);
     } catch (e) {
       // Templates not available — hide template mode
       document.getElementById('mode-template').style.display = 'none';
@@ -189,17 +265,31 @@
     var sel = document.getElementById('tpl-select');
     var id = sel.value;
     selectedTpl = templates.find(function(t) { return t.id === id; });
-    var descEl = document.getElementById('tpl-description');
-    var tagsEl = document.getElementById('tpl-tags');
+    renderTemplateSummary();
+  };
 
-    if (selectedTpl) {
-      descEl.textContent = selectedTpl.description || '';
-      tagsEl.innerHTML = (selectedTpl.tags || []).map(function(tag) {
-        return '<span class="glass-badge">' + _esc(tag) + '</span>';
-      }).join(' ');
-    } else {
-      descEl.textContent = '';
-      tagsEl.innerHTML = '';
+  window.toggleTemplatePin = async function() {
+    if (!selectedTpl) return;
+    try {
+      var resp = await fetch('/templates/' + selectedTpl.id + '/pin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !selectedTpl.pinned }),
+      });
+      if (!resp.ok) throw new Error('pin_failed');
+      var data = await resp.json();
+      selectedTpl.pinned = !!data.pinned;
+      templates = templates.map(function(t) {
+        if (t.id === selectedTpl.id) {
+          t.pinned = selectedTpl.pinned;
+        }
+        return t;
+      });
+      sortTemplates();
+      renderTemplateOptions(selectedTpl.id);
+      renderTemplateSummary();
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Failed to update template pin', 'error');
     }
   };
 
@@ -273,30 +363,49 @@
 
     var values = gatherParamValues();
     try {
-      var resp = await fetch('/templates/' + selectedTpl.id + '/execute', {
+      var resp = await fetch('/templates/' + selectedTpl.id + '/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: values }),
       });
       var data = await resp.json();
-      var steps = data.rendered_steps || [];
+      var steps = data.rendered_steps || data.steps || [];
+      var stats = selectedTpl.stats || {};
       previewEl.innerHTML =
         '<p><strong>Template:</strong> ' + _esc(data.name || selectedTpl.name) + '</p>' +
-        '<ol class="tpl-steps-preview">' +
-        steps.map(function(s) {
-          return '<li><strong>' + _esc(s.agent || 'agent') + ':</strong> ' + _esc(s.prompt || JSON.stringify(s)) + '</li>';
+        '<p class="meta-tag">Used ' + _esc(String(stats.use_count || selectedTpl.use_count || 0)) + 'x' +
+        (stats.avg_completion_time_label ? ' · Avg ' + _esc(String(stats.avg_completion_time_label)) : '') + '</p>' +
+        '<p class="meta-tag">' + steps.length + ' steps in pipeline</p>' +
+        '<div class="tpl-steps-preview">' +
+        steps.map(function(s, i) {
+          return '<div class="glass-card" style="padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:10px">' +
+            '<span class="glass-badge" style="min-width:28px;text-align:center">' + (i + 1) + '</span>' +
+            '<span class="glass-badge badge-working">' + _esc(s.type || 'task') + '</span>' +
+            '<strong>' + _esc(s.agent || s.name || 'agent') + '</strong>' +
+            '<span style="color:var(--text-secondary);font-size:0.85em">' + _esc(s.prompt || s.title || JSON.stringify(s)) + '</span>' +
+            '</div>';
         }).join('') +
-        '</ol>';
+        '</div>';
     } catch (e) {
       previewEl.innerHTML = '<p class="error">Failed to preview workflow.</p>';
     }
   }
 
-  window.executeTpl = function() {
-    // The preview already called /templates/{id}/execute which logged task.create
-    // Just show success
-    document.getElementById('wizard-template-mode').style.display = 'none';
-    document.getElementById('wizard-result').style.display = 'block';
+  window.executeTpl = async function() {
+    if (!selectedTpl) return;
+    var values = gatherParamValues();
+    try {
+      var resp = await fetch('/templates/' + selectedTpl.id + '/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: values }),
+      });
+      if (!resp.ok) throw new Error('execute_failed');
+      document.getElementById('wizard-template-mode').style.display = 'none';
+      document.getElementById('wizard-result').style.display = 'block';
+    } catch (e) {
+      if (typeof showToast === 'function') showToast(window.t('templates.execute_failed', 'Failed to execute template'), 'error');
+    }
   };
 
   // ── Manual mode (unchanged) ───────────────────────────────────

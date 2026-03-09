@@ -24,7 +24,17 @@
   <div class="status-bar-section status-clickable" title="{{ _('status.active_tasks') }}">
     {# lucide: list-checks #}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
-    <span id="active-tasks-count">{{ active_tasks | default(0) }}</span>
+    <span class="status-task-breakdown" id="active-tasks-count" data-total="{{ active_tasks | default(0) }}">
+      <span class="status-task-chip">
+        <span class="status-task-label">{{ _('tasks.in_progress') }}</span>
+        <span id="active-tasks-running">{{ running_tasks | default(0) }}</span>
+      </span>
+      <span class="status-task-divider">/</span>
+      <span class="status-task-chip">
+        <span class="status-task-label">{{ _('tasks.pending') }}</span>
+        <span id="active-tasks-pending">{{ pending_tasks | default(active_tasks | default(0)) }}</span>
+      </span>
+    </span>
   </div>
 
   {# ── Inbox pending ─────────────────────────────────────────── #}
@@ -37,7 +47,7 @@
   <div class="status-bar-spacer"></div>
 
   {# ── Token counter ─────────────────────────────────────────── #}
-  <div class="status-bar-section status-hide-mobile" title="{{ _('status.tokens') }}">
+  <div class="status-bar-section status-hide-mobile status-clickable" title="{{ _('status.tokens') }}">
     {# lucide: hash #}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
     <span id="token-counter">{{ token_count | default(0) }}</span>

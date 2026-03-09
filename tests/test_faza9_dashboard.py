@@ -16,6 +16,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -167,20 +168,47 @@ class TestListModels:
         mock_client.list_models.return_value = ["llama3.1:8b", "mistral:7b"]
         request = MagicMock()
         request.app.state.ollama_client = mock_client
-        resp = await list_models(request)
-        body = json.loads(bytes(resp.body))
-        assert "llama3.1:8b" in body["ollama_models"]
-        assert "mistral:7b" in body["ollama_models"]
+        request.app.state.agent_registry = MagicMock(list_all=MagicMock(return_value=[]))
+        with patch("amiagi.interfaces.web.routes.model_routes.subprocess.run", side_effect=FileNotFoundError()):
+            resp = await list_models(request)
+            body = json.loads(bytes(resp.body))
+            assert "llama3.1:8b" in body["ollama_models"]
+            assert "mistral:7b" in body["ollama_models"]
+            assert any(item["backend"] == "ollama" for item in body["all_models"])
+            assert body["cloud_models"] == []
 
     @pytest.mark.asyncio
     async def test_list_models_no_ollama(self):
         from amiagi.interfaces.web.routes.model_routes import list_models
 
         request = MagicMock()
-        request.app.state = MagicMock(spec=[])  # no ollama_client
-        resp = await list_models(request)
-        body = json.loads(bytes(resp.body))
-        assert body["ollama_models"] == []
+        request.app.state = MagicMock(spec=["agent_registry"])  # no ollama_client
+        request.app.state.agent_registry = MagicMock(list_all=MagicMock(return_value=[]))
+        with patch("amiagi.interfaces.web.routes.model_routes.subprocess.run", side_effect=FileNotFoundError()):
+            resp = await list_models(request)
+            body = json.loads(bytes(resp.body))
+            assert body["ollama_models"] == []
+            assert body["cloud_models"] == []
+
+    @pytest.mark.asyncio
+    async def test_list_models_prefers_ollama_cli_output(self):
+        from amiagi.interfaces.web.routes.model_routes import list_models
+
+        request = MagicMock()
+        request.app.state.ollama_client = MagicMock(list_models=MagicMock(return_value=["fallback:1b"]))
+        request.app.state.agent_registry = MagicMock(list_all=MagicMock(return_value=[]))
+
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout="NAME ID SIZE MODIFIED\nqwen3:14b abc 9 GB now\nllama3.1:8b def 5 GB now\n",
+        )
+
+        with patch("amiagi.interfaces.web.routes.model_routes.subprocess.run", return_value=completed):
+            resp = await list_models(request)
+            body = json.loads(bytes(resp.body))
+
+        assert body["ollama_models"][0] == "qwen3:14b"
+        assert "llama3.1:8b" in body["ollama_models"]
 
     @pytest.mark.asyncio
     async def test_ollama_status_online(self):
@@ -218,6 +246,7 @@ class TestAssignAgentModel:
     @pytest.mark.asyncio
     async def test_assign_model_success(self):
         from amiagi.interfaces.web.routes.model_routes import assign_agent_model
+        from amiagi.interfaces.web.routes import model_routes
 
         mock_agent = MagicMock()
         mock_agent.model_name = "new-model"
@@ -227,17 +256,31 @@ class TestAssignAgentModel:
         registry.get.return_value = mock_agent
         registry.update_model = MagicMock()
 
-        request = MagicMock()
-        request.path_params = {"agent_id": "agent-1"}
-        request.app.state.agent_registry = registry
-        request.app.state.activity_logger = None
-        request.json = AsyncMock(return_value={"model_name": "new-model", "model_backend": "ollama"})
-        request.state.user = None
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({}, f)
+            tmp_path = Path(f.name)
 
-        resp = await assign_agent_model(request)
-        body = json.loads(bytes(resp.body))
-        assert body["status"] == "ok"
-        registry.update_model.assert_called_once_with("agent-1", "new-model", model_backend="ollama")
+        original = model_routes._MODEL_CONFIG_PATH
+        model_routes._MODEL_CONFIG_PATH = tmp_path
+
+        try:
+            request = MagicMock()
+            request.path_params = {"agent_id": "agent-1"}
+            request.app.state.agent_registry = registry
+            request.app.state.activity_logger = None
+            request.json = AsyncMock(return_value={"model_name": "new-model", "model_backend": "ollama"})
+            request.state.user = None
+
+            resp = await assign_agent_model(request)
+            body = json.loads(bytes(resp.body))
+            assert body["status"] == "ok"
+            registry.update_model.assert_called_once_with("agent-1", "new-model", model_backend="ollama")
+            saved = json.loads(tmp_path.read_text(encoding="utf-8"))
+            assert saved["agent-1_model"] == "new-model"
+            assert saved["agent-1_source"] == "ollama"
+        finally:
+            model_routes._MODEL_CONFIG_PATH = original
+            tmp_path.unlink(missing_ok=True)
 
     @pytest.mark.asyncio
     async def test_assign_model_not_found(self):
@@ -293,6 +336,7 @@ class TestModelConfig:
             resp = await get_model_config(request)
             body = json.loads(bytes(resp.body))
             assert "polluks_model" in body or "kastor_model" in body
+            assert "polluks" in body
 
     @pytest.mark.asyncio
     async def test_update_model_config(self):
@@ -334,6 +378,42 @@ class TestModelConfig:
 
         resp = await update_model_config(request)
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_update_model_config_accepts_nested_payload(self):
+        from amiagi.interfaces.web.routes import model_routes
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({"polluks_model": "old", "polluks_source": "ollama"}, f)
+            tmp_path = Path(f.name)
+
+        original = model_routes._MODEL_CONFIG_PATH
+        model_routes._MODEL_CONFIG_PATH = tmp_path
+
+        try:
+            request = MagicMock()
+            request.json = AsyncMock(return_value={
+                "polluks": {"model_name": "gpt-4o", "source": "openai"},
+                "kastor": {"model_name": "qwen3:14b", "source": "ollama"},
+            })
+            request.app.state.activity_logger = None
+            request.app.state.agent_registry = MagicMock()
+            request.state.user = None
+
+            resp = await model_routes.update_model_config(request)
+            body = json.loads(bytes(resp.body))
+
+            assert resp.status_code == 200
+            assert body["config"]["polluks_model"] == "gpt-4o"
+            assert body["config"]["polluks"]["source"] == "openai"
+            assert body["config"]["kastor"]["model_name"] == "qwen3:14b"
+
+            saved = json.loads(tmp_path.read_text(encoding="utf-8"))
+            assert saved["polluks_model"] == "gpt-4o"
+            assert saved["kastor_source"] == "ollama"
+        finally:
+            model_routes._MODEL_CONFIG_PATH = original
+            tmp_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

@@ -69,8 +69,8 @@
       const alive = d.ollama.available;
       setCard("ollama", {
         status: alive ? "ok" : "warn",
-        value: alive ? "OK" : "Offline",
-        detail: (d.ollama.models || 0) + " models",
+        value: alive ? window.t("health.status.ok", "OK") : window.t("health.status.offline", "Offline"),
+        detail: (d.ollama.models || 0) + window.t("health.ollama.models_count", " models"),
       });
     }
 
@@ -79,11 +79,11 @@
       const u = pct(d.db_pool.size - d.db_pool.free, d.db_pool.max);
       setCard("database", {
         status: d.status === "degraded" ? "error" : statusFromPct(u),
-        value: d.status === "degraded" ? "Degraded" : "OK",
-        detail: "Pool: " + d.db_pool.size + "/" + d.db_pool.max,
+        value: d.status === "degraded" ? window.t("health.status.degraded", "Degraded") : window.t("health.status.ok", "OK"),
+        detail: window.t("health.db.pool_detail", "Pool: ") + d.db_pool.size + "/" + d.db_pool.max,
       });
     } else if (d.db_pool === null) {
-      setCard("database", { status: "error", value: "N/A", detail: "No pool" });
+      setCard("database", { status: "error", value: window.t("health.status.na", "N/A"), detail: window.t("health.db.no_pool", "No pool") });
     }
 
     /* Disk card */
@@ -91,8 +91,8 @@
       const u = d.disk.used_pct || 0;
       setCard("disk", {
         status: statusFromPct(u),
-        value: u + "% used",
-        detail: d.disk.free_gb + " GB free",
+        value: u + window.t("health.disk.pct_used", "% used"),
+        detail: d.disk.free_gb + window.t("health.disk.gb_free", " GB free"),
       });
     }
 
@@ -108,11 +108,16 @@
     /* Agents */
     if (d.agents) {
       const parts = [];
-      parts.push(d.agents.total + " total");
-      if (d.agents.working) parts.push(d.agents.working + " active");
-      if (d.agents.idle) parts.push(d.agents.idle + " idle");
+      parts.push(d.agents.total + window.t("health.agents.total", " total"));
+      if (d.agents.working) parts.push(d.agents.working + window.t("health.agents.active", " active"));
+      if (d.agents.idle) parts.push(d.agents.idle + window.t("health.agents.idle", " idle"));
       setText("metric-agents", parts.join(", "));
     }
+
+    /* H3–H5: Extended system info */
+    if (d.python_version) setText("metric-python", d.python_version);
+    if (d.tasks_running != null) setText("metric-tasks-running", String(d.tasks_running));
+    if (d.queries_per_min != null) setText("metric-qpm", String(d.queries_per_min));
   }
 
   async function loadVRAM() {
@@ -124,7 +129,7 @@
       const usedPct = pct(d.used_mb, d.total_mb);
       setCard("gpu", {
         status: statusFromPct(usedPct),
-        value: usedPct + "% VRAM",
+        value: usedPct + window.t("health.gpu.pct_vram", "% VRAM"),
         detail:
           Math.round(d.used_mb / 1024 * 10) / 10 +
           "/" +
@@ -134,8 +139,8 @@
     } else {
       setCard("gpu", {
         status: d.available ? "ok" : "warn",
-        value: d.available ? "OK" : "N/A",
-        detail: d.ollama_alive ? "Ollama OK" : "No GPU info",
+        value: d.available ? window.t("health.status.ok", "OK") : window.t("health.status.na", "N/A"),
+        detail: d.ollama_alive ? window.t("health.gpu.ollama_ok", "Ollama OK") : window.t("health.gpu.no_info", "No GPU info"),
       });
     }
 
@@ -146,7 +151,7 @@
     const allocs = d.allocations || {};
     const entries = Object.entries(allocs);
     if (entries.length === 0 && !d.total_mb) {
-      list.innerHTML = '<p class="health-muted">No VRAM data available</p>';
+      list.innerHTML = '<p class="health-muted">' + window.t("health.vram.no_data", "No VRAM data available") + '</p>';
       return;
     }
 
@@ -168,7 +173,7 @@
       const high = usedPct >= 75 ? " vram-bar-fill--high" : "";
       html +=
         '<div class="vram-model-row">' +
-        '<span class="vram-model-name">Total VRAM</span>' +
+        '<span class="vram-model-name">' + window.t("health.vram.total_label", "Total VRAM") + '</span>' +
         '<div class="vram-bar-track"><div class="vram-bar-fill' + high + '" style="width:' + usedPct + '%"></div></div>' +
         '<span class="vram-bar-label">' +
         Math.round((d.used_mb || 0) / 1024 * 10) / 10 + " / " +
@@ -189,10 +194,10 @@
 
     /* DB pool */
     if (d.db_pool) {
-      const label = d.db_pool.type === "sqlite" ? "SQLite" : "PostgreSQL Pool";
+      const label = d.db_pool.type === "sqlite" ? window.t("health.conn.sqlite", "SQLite") : window.t("health.conn.postgresql_pool", "PostgreSQL Pool");
       const val =
         d.db_pool.type === "sqlite"
-          ? "1 (file)"
+          ? window.t("health.conn.sqlite_value", "1 (file)")
           : d.db_pool.size + "/" + d.db_pool.max +
             " (" + (d.db_pool.utilization_pct || 0) + "%)";
       html += connectionItem(label, val);
@@ -200,35 +205,35 @@
       setText(
         "metric-db-pool",
         d.db_pool.type === "sqlite"
-          ? "SQLite"
+          ? window.t("health.conn.sqlite", "SQLite")
           : d.db_pool.size + "/" + d.db_pool.max
       );
     }
 
     /* WebSocket */
     if (d.websocket_clients != null) {
-      html += connectionItem("WebSocket Clients", d.websocket_clients);
+      html += connectionItem(window.t("health.conn.websocket_clients", "WebSocket Clients"), d.websocket_clients);
       setText("metric-ws-clients", String(d.websocket_clients));
     }
 
     /* Rate limiter */
     if (d.rate_limiter) {
-      const val = d.rate_limiter.active ? "Active" : "Disabled";
-      html += connectionItem("Rate Limiter", val);
+      const val = d.rate_limiter.active ? window.t("health.conn.rate_limiter_active", "Active") : window.t("health.conn.rate_limiter_disabled", "Disabled");
+      html += connectionItem(window.t("health.conn.rate_limiter", "Rate Limiter"), val);
       setText("metric-rate-limiter", val);
     }
 
     /* Agent count */
     if (d.agent_count != null) {
-      html += connectionItem("Active Agents", d.agent_count);
+      html += connectionItem(window.t("health.conn.active_agents", "Active Agents"), d.agent_count);
     }
 
     /* Uptime */
     if (d.uptime_seconds != null) {
-      html += connectionItem("Uptime", formatUptime(d.uptime_seconds));
+      html += connectionItem(window.t("health.conn.uptime", "Uptime"), formatUptime(d.uptime_seconds));
     }
 
-    grid.innerHTML = html || '<p class="health-muted">No connection data</p>';
+    grid.innerHTML = html || '<p class="health-muted">' + window.t("health.conn.no_data", "No connection data") + '</p>';
   }
 
   function connectionItem(label, value) {
@@ -240,10 +245,27 @@
     );
   }
 
+  /* H1 — Rate limits from API providers */
+  async function loadRateLimits() {
+    const d = await fetchJSON("/api/health/rate-limits");
+    const panel = document.getElementById("rate-limits-panel");
+    if (!panel) return;
+    if (!d || !d.rate_limits || d.rate_limits.length === 0) {
+      panel.innerHTML = '<p class="health-muted">' + window.t("health.rate_limits.no_data", "No rate limit data available") + '</p>';
+      return;
+    }
+    panel.innerHTML = d.rate_limits.map(function (rl) {
+      return '<div class="connection-item">' +
+        '<span class="connection-item-label">' + (rl.provider || window.t("health.rate_limits.unknown_provider", "Unknown")) + '</span>' +
+        '<span class="connection-item-value">' + window.t("health.rate_limits.requests", "Requests: ") + (rl.requests_remaining || "?") + '/' + (rl.requests_limit || "?") + '</span>' +
+        '</div>';
+    }).join("");
+  }
+
   /* ── Refresh cycle ─────────────────────────────────────── */
 
   async function refreshAll() {
-    await Promise.all([loadDetailed(), loadVRAM(), loadConnections()]);
+    await Promise.all([loadDetailed(), loadVRAM(), loadConnections(), loadRateLimits()]);
   }
 
   /* ── Export report (copy JSON to clipboard) ────────────── */
@@ -264,12 +286,12 @@
       const text = JSON.stringify(report, null, 2);
       await navigator.clipboard.writeText(text);
       if (typeof showToast === "function") {
-        showToast("Health report copied to clipboard", "success");
+        showToast(window.t("health.export.copied", "Health report copied to clipboard"), "success");
       }
     } catch (e) {
       console.error("Export failed:", e);
       if (typeof showToast === "function") {
-        showToast("Export failed", "error");
+        showToast(window.t("health.export.failed", "Export failed"), "error");
       }
     }
   }

@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -22,6 +20,15 @@ logger = logging.getLogger(__name__)
 # ── Cron expression helpers ──────────────────────────────────────
 
 _FIELD_NAMES = ("minute", "hour", "day", "month", "weekday")
+_WEEKDAY_NAMES = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 
 
 def _parse_field(expr: str, lo: int, hi: int) -> set[int]:
@@ -69,6 +76,112 @@ def cron_matches(expr: str, dt: datetime) -> bool:
     )
 
 
+def next_cron_trigger(expr: str, *, after: datetime | None = None) -> datetime:
+    """Return the next datetime matching *expr* after *after*.
+
+    Searches minute-by-minute up to 366 days ahead.
+    """
+    parse_cron(expr)
+    probe = (after or datetime.utcnow()).replace(second=0, microsecond=0) + timedelta(minutes=1)
+    deadline = probe + timedelta(days=366)
+    while probe <= deadline:
+        if cron_matches(expr, probe):
+            return probe
+        probe += timedelta(minutes=1)
+    raise ValueError(f"No matching trigger found for expression: {expr!r}")
+
+
+def _clamp(value: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, value))
+
+
+def _parse_time_value(value: str | None, *, default_hour: int = 9, default_minute: int = 0) -> tuple[int, int]:
+    raw = str(value or "").strip()
+    if not raw:
+        return default_hour, default_minute
+    if ":" not in raw:
+        raise ValueError(f"Invalid time value: {value!r}")
+    hour_str, minute_str = raw.split(":", 1)
+    return _clamp(int(hour_str), 0, 23), _clamp(int(minute_str), 0, 59)
+
+
+def build_cron_expression(schedule: dict[str, Any]) -> str:
+    """Build a 5-field cron expression from a reminder-like schedule payload."""
+    if not isinstance(schedule, dict):
+        raise ValueError("schedule must be an object")
+
+    mode = str(schedule.get("mode") or "custom").strip().lower()
+    if mode == "custom":
+        expr = str(schedule.get("cron_expr") or schedule.get("cron_expression") or "").strip()
+        if not expr:
+            raise ValueError("cron expression is required for custom mode")
+        parse_cron(expr)
+        return expr
+
+    if mode == "hourly":
+        minute = _clamp(int(schedule.get("minute", 0)), 0, 59)
+        interval_hours = _clamp(int(schedule.get("interval_hours", 1)), 1, 23)
+        hour_field = "*" if interval_hours == 1 else f"*/{interval_hours}"
+        expr = f"{minute} {hour_field} * * *"
+        parse_cron(expr)
+        return expr
+
+    hour, minute = _parse_time_value(schedule.get("time"))
+
+    if mode == "daily":
+        expr = f"{minute} {hour} * * *"
+    elif mode == "weekdays":
+        expr = f"{minute} {hour} * * 0,1,2,3,4"
+    elif mode == "weekly":
+        weekdays_raw = schedule.get("weekdays") or []
+        weekdays = sorted({
+            _clamp(int(day), 0, 6)
+            for day in weekdays_raw
+        })
+        if not weekdays:
+            weekdays = [0]
+        expr = f"{minute} {hour} * * {','.join(str(day) for day in weekdays)}"
+    elif mode == "monthly":
+        day_of_month = _clamp(int(schedule.get("day_of_month", 1)), 1, 31)
+        expr = f"{minute} {hour} {day_of_month} * *"
+    else:
+        raise ValueError(f"Unsupported schedule mode: {mode!r}")
+
+    parse_cron(expr)
+    return expr
+
+
+def cron_to_human(expr: str) -> str:
+    """Convert common cron expressions into reminder-like human descriptions."""
+    parts = expr.strip().split()
+    if len(parts) != 5:
+        return expr
+    minute, hour, day, month, weekday = parts
+
+    if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and weekday == "*":
+        return f"Every {minute[2:]} minutes"
+    if hour.startswith("*/") and day == "*" and month == "*" and weekday == "*":
+        return f"Every {hour[2:]} hours at :{int(minute):02d}"
+    if hour == "*" and day == "*" and month == "*" and weekday == "*":
+        return f"Every hour at :{int(minute):02d}"
+    if day == "*" and month == "*" and weekday == "*":
+        return f"Every day at {int(hour):02d}:{int(minute):02d}"
+    if day == "*" and month == "*" and weekday == "0,1,2,3,4":
+        return f"Every weekday at {int(hour):02d}:{int(minute):02d}"
+    if day == "*" and month == "*" and weekday != "*":
+        try:
+            weekdays = [
+                _WEEKDAY_NAMES[_clamp(int(token), 0, 6)]
+                for token in weekday.split(",")
+            ]
+            return f"Every {', '.join(weekdays)} at {int(hour):02d}:{int(minute):02d}"
+        except ValueError:
+            return expr
+    if month == "*" and weekday == "*" and day != "*":
+        return f"Day {int(day)} of every month at {int(hour):02d}:{int(minute):02d}"
+    return expr
+
+
 # ── Data model ───────────────────────────────────────────────────
 
 @dataclass
@@ -83,6 +196,7 @@ class CronJob:
     enabled: bool = True
     last_run: str | None = None  # ISO-8601
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    next_run: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -94,6 +208,27 @@ class CronJob:
             "enabled": self.enabled,
             "last_run": self.last_run,
             "created_at": self.created_at,
+            "next_run": self.next_run,
+        }
+
+
+@dataclass(frozen=True)
+class CronExecutionRecord:
+    """Single cron execution attempt for history UI."""
+
+    job_id: str
+    job_name: str
+    triggered_at: str
+    status: str
+    message: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "job_id": self.job_id,
+            "job_name": self.job_name,
+            "triggered_at": self.triggered_at,
+            "status": self.status,
+            "message": self.message,
         }
 
 
@@ -114,6 +249,7 @@ class CronScheduler:
         self._on_fire = on_fire
         self._task: asyncio.Task | None = None
         self._jobs: list[CronJob] = []
+        self._history: list[CronExecutionRecord] = []
 
     # ── lifecycle ──
 
@@ -140,7 +276,10 @@ class CronScheduler:
                             await self._update_last_run(job)
                             if self._on_fire:
                                 await self._on_fire(job)
+                            self._record_history(job, status="success")
+                            self._refresh_job_schedule(job)
                     except Exception:
+                        self._record_history(job, status="error", message="Cron tick error")
                         logger.exception("Cron tick error for job %s", job.id)
         except asyncio.CancelledError:
             pass
@@ -166,6 +305,8 @@ class CronScheduler:
             )
             for r in rows
         ]
+        for job in self._jobs:
+            self._refresh_job_schedule(job)
         return self._jobs
 
     async def create_job(self, job: CronJob) -> CronJob:
@@ -177,6 +318,7 @@ class CronScheduler:
             f"VALUES ($1, $2, $3, $4, $5, $6)",
             job.id, job.name, job.cron_expr, job.task_title, job.task_description, job.enabled,
         )
+        self._refresh_job_schedule(job)
         self._jobs.append(job)
         return job
 
@@ -195,6 +337,7 @@ class CronScheduler:
         for j in self._jobs:
             if j.id == job_id:
                 j.enabled = enabled
+                self._refresh_job_schedule(j)
         return "UPDATE 1" in tag
 
     async def _update_last_run(self, job: CronJob) -> None:
@@ -204,4 +347,38 @@ class CronScheduler:
         )
 
     def list_jobs(self) -> list[CronJob]:
+        for job in self._jobs:
+            self._refresh_job_schedule(job)
         return list(self._jobs)
+
+    def list_history(self, *, job_id: str | None = None, limit: int = 100) -> list[CronExecutionRecord]:
+        records = self._history
+        if job_id:
+            records = [record for record in records if record.job_id == job_id]
+        return records[-limit:][::-1]
+
+    def _refresh_job_schedule(self, job: CronJob) -> None:
+        if not job.enabled:
+            job.next_run = None
+            return
+        base = None
+        if job.last_run:
+            try:
+                base = datetime.fromisoformat(job.last_run)
+            except ValueError:
+                base = None
+        try:
+            job.next_run = next_cron_trigger(job.cron_expr, after=base).isoformat()
+        except ValueError:
+            job.next_run = None
+
+    def _record_history(self, job: CronJob, *, status: str, message: str = "") -> None:
+        self._history.append(CronExecutionRecord(
+            job_id=job.id,
+            job_name=job.name,
+            triggered_at=datetime.utcnow().isoformat(),
+            status=status,
+            message=message,
+        ))
+        if len(self._history) > 200:
+            self._history = self._history[-200:]

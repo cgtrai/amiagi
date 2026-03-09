@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+from amiagi.application.eval_runner import EvalScenario
+from amiagi.application.eval_runner import EvalRunResult
 from amiagi.interfaces.web.routes.eval_routes import eval_routes
 
 
@@ -89,6 +93,16 @@ class _FakeRegressionDetector:
         return self._baselines.pop(name, None) is not None
 
 
+class _FakeEvalRunner:
+    def __init__(self):
+        self._pass_threshold = 50.0
+
+
+class _Baseline:
+    def __init__(self, score: float):
+        self.aggregate_score = score
+
+
 class _FakeBenchmarkSuite:
     def load_all(self):
         pass
@@ -97,7 +111,58 @@ class _FakeBenchmarkSuite:
         return ["code_gen", "reasoning"]
 
     def get_scenarios(self, name):
-        return [{"id": "s1", "input": "test"}]
+        return [EvalScenario(scenario_id="s1", prompt="test", expected_keywords=["ok"])]
+
+
+class _FakeRuntime:
+    def ask(self, prompt):
+        return f"ok: {prompt}"
+
+
+class _FakeRouterEngine:
+    def __init__(self, agent_ids: list[str]):
+        self._runtimes = {agent_id: _FakeRuntime() for agent_id in agent_ids}
+
+
+class _FakeWebAdapter:
+    def __init__(self, agent_ids: list[str]):
+        self.router_engine = _FakeRouterEngine(agent_ids)
+
+
+class _FakeABRunner:
+    async def compare_async(self, agent_a_id, agent_a_fn, agent_b_id, agent_b_fn, scenarios):
+        import time
+
+        return type(
+            "_Result",
+            (),
+            {
+                "agent_a_id": agent_a_id,
+                "agent_b_id": agent_b_id,
+                "rubric_name": "default",
+                "scenarios_count": len(scenarios),
+                "a_wins": len(scenarios),
+                "b_wins": 0,
+                "ties": 0,
+                "a_aggregate": 100.0,
+                "b_aggregate": 0.0,
+                "score_delta": 100.0,
+                "started_at": time.time(),
+                "finished_at": time.time(),
+                "per_scenario": [],
+            },
+        )()
+
+
+def _make_runtime_app(**kwargs) -> Starlette:
+    defaults = {
+        "eval_runner": _FakeEvalRunner(),
+        "benchmark_suite": _FakeBenchmarkSuite(),
+        "web_adapter": _FakeWebAdapter(["agent-1", "A", "B", "model_a", "model_b"]),
+        "ab_test_runner": _FakeABRunner(),
+    }
+    defaults.update(kwargs)
+    return _make_app(**defaults)
 
 
 # ── Tests ───────────────────────────────────────────────────
@@ -160,6 +225,81 @@ class TestSuites:
         assert "code_gen" in names
 
 
+class TestRunEvaluation:
+    def test_persists_selected_rubric_and_config(self) -> None:
+        client = TestClient(_make_runtime_app())
+
+        response = client.post(
+            "/api/evaluations/run",
+            json={
+                "agent_id": "agent-1",
+                "suite": "code_gen",
+                "scorer": "llm_judge",
+                "rubric": "code_quality",
+                "label": "smoke",
+            },
+        )
+
+        assert response.status_code == 201
+        run_id = response.json()["id"]
+        run = client.get(f"/api/evaluations/{run_id}").json()["run"]
+        assert run["rubric_name"] == "code_quality"
+        assert run["scorer"] == "llm_judge"
+        assert run["config"]["rubric"]["name"] == "code_quality"
+        assert run["config"]["scorer"] == "llm_judge"
+        assert run["config"]["suite"] == "code_gen"
+        assert run["config"]["label"] == "smoke"
+
+    def test_rejects_invalid_custom_rubric_json(self) -> None:
+        client = TestClient(_make_runtime_app())
+
+        response = client.post(
+            "/api/evaluations/run",
+            json={
+                "agent_id": "agent-1",
+                "suite": "code_gen",
+                "rubric": "custom",
+                "custom_rubric": "{not-json}",
+            },
+        )
+
+        assert response.status_code == 400
+
+    def test_accepts_custom_rubric_and_persists_config_payload(self) -> None:
+        client = TestClient(_make_runtime_app())
+
+        response = client.post(
+            "/api/evaluations/run",
+            json={
+                "agent_id": "agent-1",
+                "suite": "code_gen",
+                "rubric": "custom",
+                "custom_rubric": '{"name":"custom","criteria":[{"name":"accuracy","weight":1.0,"max_score":5.0}]}',
+            },
+        )
+
+        assert response.status_code == 201
+        run_id = response.json()["id"]
+        run = client.get(f"/api/evaluations/{run_id}").json()["run"]
+        assert run["rubric_name"] == "custom"
+        assert run["config"]["rubric"]["name"] == "custom"
+        assert run["config"]["rubric"]["criteria"][0]["name"] == "accuracy"
+
+    def test_rejects_when_runtime_is_unavailable_instead_of_creating_dead_pending_run(self) -> None:
+        repo = _FakeEvalRepo()
+        client = TestClient(_make_app(eval_repo=repo, eval_runner=_FakeEvalRunner(), benchmark_suite=_FakeBenchmarkSuite()))
+
+        response = client.post(
+            "/api/evaluations/run",
+            json={"agent_id": "agent-1", "suite": "code_gen"},
+        )
+
+        assert response.status_code == 409
+        data = response.json()
+        assert data["error"] == "eval_run_not_supported"
+        assert repo._runs == {}
+
+
 class TestAbCampaigns:
     def test_list_empty(self) -> None:
         client = TestClient(_make_app())
@@ -168,10 +308,10 @@ class TestAbCampaigns:
         assert r.json()["campaigns"] == []
 
     def test_create_ab(self) -> None:
-        client = TestClient(_make_app())
+        client = TestClient(_make_runtime_app())
         r = client.post(
             "/api/evaluations/ab-tests",
-            json={"agent_a_id": "model_a", "agent_b_id": "model_b", "suite": "test"},
+            json={"agent_a_id": "model_a", "agent_b_id": "model_b", "suite": "code_gen"},
         )
         assert r.status_code == 201
         data = r.json()
@@ -186,20 +326,41 @@ class TestAbCampaigns:
         )
         assert r.status_code == 400
 
-    def test_list_after_create(self) -> None:
-        client = TestClient(_make_app())
-        client.post(
+    def test_create_ab_requires_suite(self) -> None:
+        client = TestClient(_make_runtime_app())
+        r = client.post(
             "/api/evaluations/ab-tests",
             json={"agent_a_id": "A", "agent_b_id": "B"},
+        )
+        assert r.status_code == 400
+        assert r.json()["error"] == "suite is required"
+
+    def test_create_ab_rejects_when_runtime_is_unavailable(self) -> None:
+        repo = _FakeEvalRepo()
+        client = TestClient(_make_app(eval_repo=repo, benchmark_suite=_FakeBenchmarkSuite(), ab_test_runner=_FakeABRunner()))
+        r = client.post(
+            "/api/evaluations/ab-tests",
+            json={"agent_a_id": "A", "agent_b_id": "B", "suite": "code_gen"},
+        )
+        assert r.status_code == 409
+        data = r.json()
+        assert data["error"] == "ab_test_not_supported"
+        assert repo._campaigns == {}
+
+    def test_list_after_create(self) -> None:
+        client = TestClient(_make_runtime_app())
+        client.post(
+            "/api/evaluations/ab-tests",
+            json={"agent_a_id": "A", "agent_b_id": "B", "suite": "code_gen"},
         )
         r = client.get("/api/evaluations/ab-tests")
         assert r.json()["total"] == 1
 
     def test_pause_ab(self) -> None:
-        client = TestClient(_make_app())
+        client = TestClient(_make_runtime_app())
         create = client.post(
             "/api/evaluations/ab-tests",
-            json={"agent_a_id": "A", "agent_b_id": "B"},
+            json={"agent_a_id": "A", "agent_b_id": "B", "suite": "code_gen"},
         )
         cid = create.json()["id"]
         r = client.put(f"/api/evaluations/ab-tests/{cid}/pause")
@@ -207,10 +368,10 @@ class TestAbCampaigns:
         assert r.json()["status"] == "paused"
 
     def test_stop_ab(self) -> None:
-        client = TestClient(_make_app())
+        client = TestClient(_make_runtime_app())
         create = client.post(
             "/api/evaluations/ab-tests",
-            json={"agent_a_id": "A", "agent_b_id": "B"},
+            json={"agent_a_id": "A", "agent_b_id": "B", "suite": "code_gen"},
         )
         cid = create.json()["id"]
         r = client.put(f"/api/evaluations/ab-tests/{cid}/stop")
@@ -221,3 +382,36 @@ class TestAbCampaigns:
         client = TestClient(_make_app())
         r = client.put("/api/evaluations/ab-tests/nonexistent/pause")
         assert r.status_code == 404
+
+
+class TestEvalListMetadata:
+    def test_list_includes_baseline_score_when_available(self) -> None:
+        repo = _FakeEvalRepo()
+        detector = _FakeRegressionDetector()
+        detector._baselines["agent-1"] = _Baseline(82.5)
+        repo._runs["run-1"] = {
+            "id": "run-1",
+            "agent_id": "agent-1",
+            "status": "completed",
+            "aggregate_score": 79.0,
+            "started_at": 10,
+        }
+        client = TestClient(_make_app(eval_repo=repo, regression_detector=detector))
+
+        response = client.get("/api/evaluations")
+
+        assert response.status_code == 200
+        run = response.json()["runs"][0]
+        assert run["baseline_score"] == 82.5
+
+
+class TestEvaluationsPageAssets:
+    def test_evaluations_js_uses_explicit_notifications_for_run_and_ab_actions(self) -> None:
+        script = Path("src/amiagi/interfaces/web/static/js/evaluations.js").read_text(encoding="utf-8")
+
+        assert "function notify(message, level)" in script
+        assert 'notify("Evaluation started", "success")' in script
+        assert 'notify("A/B test started", "success")' in script
+        assert 'notify(await responseErrorMessage(res, "Failed to start evaluation"), "error")' in script
+        assert 'notify(await responseErrorMessage(res, "Failed to start A/B test"), "error")' in script
+        assert "alert(" not in script

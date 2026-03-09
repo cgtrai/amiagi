@@ -4,6 +4,11 @@
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/evaluations.css"/>
+<style>
+.eval-detail-meta {
+  margin-bottom: 1rem;
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -41,6 +46,21 @@
       <h4>{{ _("eval.regressions") }}</h4>
       <div class="eval-metric" id="regressions-count">0</div>
       <div class="eval-label">{{ _("eval.detected") }}</div>
+    </div>
+    <div class="glass-card eval-summary-card" id="card-total-runs">
+      <h4>{{ _("eval.total_runs") }}</h4>
+      <div class="eval-metric" id="total-runs-count">0</div>
+      <div class="eval-label">{{ _("eval.all_time") }}</div>
+    </div>
+    <div class="glass-card eval-summary-card" id="card-pass-rate">
+      <h4>{{ _("eval.pass_rate") }}</h4>
+      <div class="eval-metric" id="eval-pass-rate">—</div>
+      <div class="eval-label">{{ _("eval.scenarios") }}</div>
+    </div>
+    <div class="glass-card eval-summary-card" id="card-avg-score">
+      <h4>{{ _("eval.avg_score") }}</h4>
+      <div class="eval-metric" id="eval-avg-score">—</div>
+      <div class="eval-label" id="eval-last-run-date">—</div>
     </div>
   </div>
 
@@ -145,6 +165,18 @@
     <label>{{ _("eval.scorer") }}
       <select name="scorer"><option value="keyword">keyword</option><option value="llm_judge">LLM Judge</option></select>
     </label>
+    <label>{{ _("eval.rubric") }}
+      <select name="rubric" id="eval-rubric">
+        <option value="default">Default (accuracy / relevance / format)</option>
+        <option value="code_quality">Code Quality</option>
+        <option value="safety">Safety &amp; Compliance</option>
+        <option value="rag_quality">RAG Quality (faithfulness / relevance)</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </label>
+    <label id="custom-rubric-wrap" class="u-hidden">{{ _("eval.custom_rubric") }}
+      <textarea name="custom_rubric" id="eval-custom-rubric" rows="4" placeholder='{"criteria": [{"name":"...", "weight":1}]}'></textarea>
+    </label>
     <label>{{ _("eval.label") }}
       <input type="text" name="label" placeholder="experiment-2026"/>
     </label>
@@ -166,7 +198,7 @@
       <select name="agent_b_id" required id="ab-agent-b-select"></select>
     </label>
     <label>{{ _("eval.suite") }}
-      <select name="suite" id="ab-suite-select"></select>
+      <select name="suite" id="ab-suite-select" required></select>
     </label>
     <label>{{ _("eval.label") }}
       <input type="text" name="label" placeholder="persona-v2-vs-v1"/>
@@ -177,10 +209,22 @@
     </div>
   </form>
 </dialog>
+
+<dialog id="eval-detail-dialog" class="glass-dialog">
+  <div>
+    <h3 id="eval-detail-title">{{ _("eval.run_details") }}</h3>
+    <div id="eval-detail-meta" class="text-muted eval-detail-meta"></div>
+    <div id="eval-detail-body">{{ _("common.loading") }}</div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">{{ _("common.close") }}</button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/components/eval-chart.js" defer></script>
 <script src="/static/js/components/ab-comparison.js" defer></script>
+<script src="/static/js/components/regression-badge.js" defer></script>
 <script src="/static/js/evaluations.js" defer></script>
 {% endblock %}

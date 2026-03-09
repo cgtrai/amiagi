@@ -5,14 +5,25 @@
     {% include "partials/admin_nav.html" %}
     <h1>{{ _("admin.users") }}</h1>
 
-    <form method="get" action="/admin/users" class="search-bar">
-      <input type="text" name="q" value="{{ search }}" placeholder="{{ _("admin.search") }}" class="input"/>
-      <button type="submit" class="btn btn-sm">{{ _("common.search") }}</button>
-    </form>
+    <div class="u-flex u-gap-3 u-flex-center u-mb-4 u-flex-wrap">
+      <form method="get" action="/admin/users" class="search-bar u-m-0 u-flex-1">
+        <input type="text" name="q" value="{{ search }}" placeholder="{{ _('admin.search') }}" class="input"/>
+        <button type="submit" class="btn btn-sm">{{ _("common.search") }}</button>
+      </form>
+      <button class="glass-btn glass-btn--primary" id="btn-invite">{{ _("admin.invite") }}</button>
+    </div>
+
+    {# R1: Bulk action bar #}
+    <div id="bulk-bar" class="glass-card u-hidden u-flex-center u-p-3 u-mb-3 u-gap-3">
+      <span id="bulk-count">0</span> {{ _("admin.selected") }}
+      <button class="glass-btn glass-btn--sm" onclick="bulkAction('activate')">{{ _("admin.activate") }}</button>
+      <button class="glass-btn glass-btn--sm glass-btn--danger" onclick="bulkAction('block')">{{ _("admin.block") }}</button>
+    </div>
 
     <table class="table glass-card">
       <thead>
         <tr>
+          <th><input type="checkbox" id="select-all-users" title="{{ _('admin.select_all') }}"></th>
           <th>{{ _("admin.email") }}</th>
           <th>{{ _("admin.name") }}</th>
           <th>{{ _("admin.roles") }}</th>
@@ -23,16 +34,23 @@
       <tbody>
         {% for u in users %}
         <tr>
+          <td><input type="checkbox" class="user-check" value="{{ u.id }}" title="{{ _('admin.select_user') }}"></td>
           <td>{{ u.email }}</td>
           <td>{{ u.display_name }}</td>
-          <td>{{ u.roles | map(attribute='name') | join(', ') }}</td>
+          <td>
+            {# R3: Roles as removable tags #}
+            {% for r in u.roles %}
+              <span class="glass-badge badge-idle">{{ r.name }}</span>
+            {% endfor %}
+          </td>
           <td>
             {% if u.is_blocked %}<span class="badge badge-danger">{{ _("admin.blocked") }}</span>
             {% elif u.is_active %}<span class="badge badge-success">{{ _("admin.active") }}</span>
             {% else %}<span class="badge badge-muted">{{ _("admin.inactive") }}</span>{% endif %}
           </td>
           <td>
-            <a href="/admin/users/{{ u.id }}" class="btn btn-xs">{{ _("admin.details") }}</a>
+            {# R4: Open in drawer instead of full page #}
+            <button class="btn btn-xs js-user-detail" data-id="{{ u.id }}">{{ _("admin.details") }}</button>
           </td>
         </tr>
         {% endfor %}
@@ -46,4 +64,170 @@
       <a href="?page={{ page.page + 1 }}&q={{ search }}" class="btn btn-sm">{{ _("admin.next") }} →</a>
     {% endif %}
   </div>
+
+  {# R2: Invite dialog #}
+  <dialog id="invite-dialog" class="glass-card u-p-5 u-min-w-340">
+    <h3>{{ _("admin.invite") }}</h3>
+    <form id="invite-form" class="u-grid">
+      <input class="glass-input" type="email" id="invite-email" placeholder="user@example.com" required>
+      <select class="glass-input" id="invite-role">
+        <option value="">{{ _("admin.select_role") }}</option>
+      </select>
+      <div class="u-flex u-gap-2 u-flex-end">
+        <button type="button" class="glass-btn glass-btn--ghost" onclick="document.getElementById('invite-dialog').close()">{{ _("common.cancel") }}</button>
+        <button type="submit" class="glass-btn glass-btn--primary">{{ _("admin.send_invite") }}</button>
+      </div>
+    </form>
+  </dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  // R1: Bulk select
+  const selectAll = document.getElementById('select-all-users');
+  const bulkBar = document.getElementById('bulk-bar');
+  const bulkCount = document.getElementById('bulk-count');
+
+  function updateBulkBar() {
+    const checked = document.querySelectorAll('.user-check:checked');
+    bulkCount.textContent = checked.length;
+    bulkBar.style.display = checked.length > 0 ? 'flex' : 'none';
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.user-check').forEach(cb => cb.checked = selectAll.checked);
+      updateBulkBar();
+    });
+  }
+  document.querySelectorAll('.user-check').forEach(cb => cb.addEventListener('change', updateBulkBar));
+
+  window.bulkAction = async function(action) {
+    const ids = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
+    if (!ids.length) return;
+    if (!confirm(action + ' ' + ids.length + ' users?')) return;
+    await fetch('/admin/users/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action, user_ids: ids})
+    });
+    location.reload();
+  };
+
+  // R2: Invite
+  document.getElementById('btn-invite')?.addEventListener('click', async function() {
+    const dialog = document.getElementById('invite-dialog');
+    const roleSelect = document.getElementById('invite-role');
+    try {
+      const r = await fetch('/admin/roles', {headers:{Accept:'application/json'}});
+      const data = await r.json();
+      const roles = data.roles || [];
+      roleSelect.innerHTML = '<option value="">Select role...</option>' + 
+        roles.map(r => '<option value="'+r.id+'">'+r.name+'</option>').join('');
+    } catch(e) {}
+    dialog.showModal();
+  });
+
+  document.getElementById('invite-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const email = document.getElementById('invite-email').value;
+    const role = document.getElementById('invite-role').value;
+    await fetch('/admin/users/invite', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, role_id: role || null})
+    });
+    document.getElementById('invite-dialog').close();
+    if (typeof showToast === 'function') showToast('Invite sent', 'success');
+  });
+
+  // R4: User detail drawer
+  document.querySelectorAll('.js-user-detail').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const userId = this.dataset.id;
+      try {
+        const r = await fetch('/admin/users/' + userId, {headers: {Accept: 'application/json'}});
+        const user = await r.json();
+        const rolesHtml = (user.roles || []).map(r =>
+          '<span class="glass-badge badge-idle">' + r.name +
+          ' <button class="tag-remove" onclick="removeUserRole(\'' + userId + '\',\'' + r.id + '\')">×</button></span>'
+        ).join(' ');
+        const roleOptions = (user.all_roles || [])
+          .filter(role => !(user.roles || []).some(current => current.id === role.id))
+          .map(role => '<option value="' + role.id + '">' + role.name + '</option>')
+          .join('');
+        const recentActivity = (user.recent_activity || []).map(item =>
+          '<li><strong>' + (item.action || '—') + '</strong><br><small>' + (item.created_at || '—') + '</small></li>'
+        ).join('');
+        const html = '<div style="display:grid;gap:var(--space-4)">' +
+          '<div><strong>Email:</strong> ' + (user.email || '—') + '</div>' +
+          '<div><strong>Name:</strong> ' + (user.display_name || '—') + '</div>' +
+          '<div><strong>Status:</strong> ' + (user.is_blocked ? 'Blocked' : user.is_active ? 'Active' : 'Inactive') + '</div>' +
+          '<div><strong>Permissions:</strong> ' + ((user.permissions || []).length) + '</div>' +
+          '<div><h4>Roles</h4><div class="perm-chips">' + (rolesHtml || '<span class="text-secondary">No roles assigned</span>') + '</div></div>' +
+          '<div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">' +
+            '<select class="glass-input" id="drawer-role-select">' +
+              '<option value="">Add role…</option>' + roleOptions +
+            '</select>' +
+            '<button class="glass-btn glass-btn--sm" onclick="addUserRole(\'' + userId + '\')">Add role</button>' +
+          '</div>' +
+          '<div><h4>Recent activity</h4>' +
+            (recentActivity ? '<ul style="margin:0;padding-left:1rem;display:grid;gap:var(--space-2)">' + recentActivity + '</ul>' : '<div class="text-secondary">No recent activity</div>') +
+          '</div>' +
+          '<div style="display:flex;gap:var(--space-2)">' +
+            '<a href="' + (user.audit_url || ('/admin/audit?user=' + userId)) + '" class="glass-btn glass-btn--sm glass-btn--ghost">View Activity Log</a>' +
+            (user.is_blocked
+              ? '<button class="glass-btn glass-btn--sm glass-btn--primary" onclick="activateUser(\'' + userId + '\')">Activate</button>'
+              : '<button class="glass-btn glass-btn--sm glass-btn--danger" onclick="blockUser(\'' + userId + '\')">Block</button>') +
+          '</div>' +
+        '</div>';
+        if (typeof openDetailDrawer === 'function') openDetailDrawer('User: ' + (user.display_name || user.email), html);
+      } catch(e) { console.error(e); }
+    });
+  });
+
+  // R3: Remove role from user
+  window.removeUserRole = async function(userId, roleId) {
+    try {
+      const r = await fetch('/admin/users/' + userId, {headers: {Accept: 'application/json'}});
+      const user = await r.json();
+      const remaining = (user.roles || []).filter(r => r.id !== roleId).map(r => r.id);
+      await fetch('/admin/users/' + userId + '/roles', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role_ids: remaining})
+      });
+      location.reload();
+    } catch(e) { console.error(e); }
+  };
+
+  window.addUserRole = async function(userId) {
+    const select = document.getElementById('drawer-role-select');
+    const roleId = select ? select.value : '';
+    if (!roleId) return;
+    try {
+      const r = await fetch('/admin/users/' + userId, {headers: {Accept: 'application/json'}});
+      const user = await r.json();
+      const next = [...new Set([...(user.roles || []).map(role => role.id), roleId])];
+      await fetch('/admin/users/' + userId + '/roles', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role_ids: next})
+      });
+      location.reload();
+    } catch(e) { console.error(e); }
+  };
+
+  window.blockUser = async function(userId) {
+    if (!confirm('Block this user?')) return;
+    await fetch('/admin/users/' + userId + '/block', {method: 'POST'});
+    location.reload();
+  };
+
+  window.activateUser = async function(userId) {
+    await fetch('/admin/users/' + userId + '/activate', {method: 'POST'});
+    location.reload();
+  };
+})();
+</script>
 {% endblock %}

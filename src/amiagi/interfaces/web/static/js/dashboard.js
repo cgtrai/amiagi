@@ -9,12 +9,12 @@
   // Panel configuration
   // -------------------------------------------------------------------
   const PANELS = [
-    { id: "agents-overview", label: "Agents Overview", default: true },
-    { id: "task-board",      label: "Task Board",      default: true },
-    { id: "metrics",         label: "Metrics",          default: true },
-    { id: "event-log",       label: "Event Log",        default: true },
-    { id: "costs",           label: "Costs",            default: false },
-    { id: "system-health",   label: "System Health",    default: true },
+    { id: "agents-overview", label: window.t ? window.t("dashboard.panel.agents_overview", "Agents Overview") : "Agents Overview", default: true },
+    { id: "task-board",      label: window.t ? window.t("dashboard.panel.task_board", "Task Board") : "Task Board",      default: true },
+    { id: "metrics",         label: window.t ? window.t("dashboard.panel.metrics", "Metrics") : "Metrics",          default: true },
+    { id: "event-log",       label: window.t ? window.t("dashboard.panel.event_log", "Event Log") : "Event Log",        default: true },
+    { id: "costs",           label: window.t ? window.t("dashboard.panel.costs", "Costs") : "Costs",            default: false },
+    { id: "system-health",   label: window.t ? window.t("dashboard.panel.system_health", "System Health") : "System Health",    default: true },
   ];
 
   const STORAGE_KEY = "amiagi_dashboard_panels";
@@ -162,7 +162,7 @@
       indicator.textContent = "";
       indicator.style.display = "none";
     } else {
-      indicator.textContent = "Reconnecting…";
+      indicator.textContent = window.t("dashboard.ws.reconnecting", "Reconnecting…");
       indicator.style.display = "flex";
     }
   }
@@ -196,7 +196,7 @@
     try {
       const data = await fetchAgents();
       if (!data.agents || data.agents.length === 0) {
-        list.innerHTML = '<div class="sidebar-empty">No agents registered</div>';
+        list.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.empty", "No agents registered") + '</div>';
         return;
       }
 
@@ -248,7 +248,7 @@
         }
       }
     } catch (err) {
-      list.innerHTML = '<div class="sidebar-empty">Failed to load agents</div>';
+      list.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.load_failed", "Failed to load agents") + '</div>';
       console.error("[dashboard] agent list error", err);
     }
   }
@@ -265,7 +265,7 @@
       const data = await fetchAgents();
       const agents = data.agents || [];
       if (!agents.length) {
-        container.innerHTML = '<div class="sidebar-empty">No agents registered.</div>';
+        container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.empty", "No agents registered.") + '</div>';
         return;
       }
       container.innerHTML = agents.map(function (a) {
@@ -277,7 +277,7 @@
           '</div>';
       }).join("");
     } catch (err) {
-      container.innerHTML = '<div class="sidebar-empty">Failed to load agent data.</div>';
+      container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.load_failed", "Failed to load agent data.") + '</div>';
     }
   }
 
@@ -306,7 +306,7 @@
       container.innerHTML = "";
       const entries = Object.entries(m);
       if (entries.length === 0) {
-        container.innerHTML = '<metric-card label="Status" value="OK" color="#4ade80"></metric-card>';
+        container.innerHTML = '<metric-card label="' + window.t("dashboard.metrics.status_label", "Status") + '" value="' + window.t("dashboard.metrics.status_ok", "OK") + '" color="#4ade80"></metric-card>';
         return;
       }
       for (const [key, val] of entries.slice(0, 8)) {
@@ -328,11 +328,11 @@
       const data = await resp.json();
       const session = data.session || {};
       container.innerHTML = `
-        <metric-card label="Session Spent" value="${(session.spent_usd || 0).toFixed(4)}" unit="USD"
+        <metric-card label="${window.t("dashboard.budget.session_spent", "Session Spent")}" value="${(session.spent_usd || 0).toFixed(4)}" unit="USD"
                      color="var(--color-warning, #facc15)"></metric-card>
-        <metric-card label="Session Tokens" value="${session.tokens_used || 0}"
+        <metric-card label="${window.t("dashboard.budget.session_tokens", "Session Tokens")}" value="${session.tokens_used || 0}"
                      color="var(--accent-primary, #6366f1)"></metric-card>
-        <metric-card label="Session Requests" value="${session.requests_count || 0}"
+        <metric-card label="${window.t("dashboard.budget.session_requests", "Session Requests")}" value="${session.requests_count || 0}"
                      color="var(--color-info, #60a5fa)"></metric-card>
       `;
     } catch (err) {
@@ -352,7 +352,7 @@
       const tasks = data.tasks || {};
       const entries = Object.entries(tasks);
       if (!entries.length) {
-        container.innerHTML = '<div class="sidebar-empty">No per-task cost data yet.</div>';
+        container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.costs.no_data", "No per-task cost data yet.") + '</div>';
         return;
       }
       let rows = entries.map(function ([tid, t]) {
@@ -361,7 +361,7 @@
           '</td><td>$' + (t.spent_usd || 0).toFixed(4) + '</td></tr>';
       }).join("");
       container.innerHTML = '<table class="glass-table glass-table--compact">' +
-        '<thead><tr><th>Task</th><th>Tokens</th><th>Requests</th><th>Cost</th></tr></thead>' +
+        '<thead><tr><th>' + window.t("dashboard.costs.th_task", "Task") + '</th><th>' + window.t("dashboard.costs.th_tokens", "Tokens") + '</th><th>' + window.t("dashboard.costs.th_requests", "Requests") + '</th><th>' + window.t("dashboard.costs.th_cost", "Cost") + '</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table>';
     } catch (_) {}
   }
@@ -381,36 +381,36 @@
         const mins = Math.floor(d.uptime_seconds / 60);
         const hrs = Math.floor(mins / 60);
         const display = hrs > 0 ? hrs + 'h ' + (mins % 60) + 'm' : mins + 'm';
-        cards += '<metric-card label="Uptime" value="' + display + '" color="var(--color-success, #4ade80)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.uptime", "Uptime") + '" value="' + display + '" color="var(--color-success, #4ade80)"></metric-card>';
       }
       // RAM
       if (d.ram_rss_mb != null) {
-        cards += '<metric-card label="RAM RSS" value="' + d.ram_rss_mb + '" unit="MB" color="var(--accent-primary, #6366f1)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.ram_rss", "RAM RSS") + '" value="' + d.ram_rss_mb + '" unit="MB" color="var(--accent-primary, #6366f1)"></metric-card>';
       }
       // CPU
       if (d.cpu_percent != null) {
-        cards += '<metric-card label="CPU" value="' + d.cpu_percent + '" unit="%" color="var(--color-info, #60a5fa)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.cpu", "CPU") + '" value="' + d.cpu_percent + '" unit="%" color="var(--color-info, #60a5fa)"></metric-card>';
       }
       // DB Pool
       if (d.db_pool) {
-        cards += '<metric-card label="DB Pool" value="' + d.db_pool.free + '/' + d.db_pool.size + '" unit="free" color="var(--color-success, #4ade80)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.db_pool", "DB Pool") + '" value="' + d.db_pool.free + '/' + d.db_pool.size + '" unit="' + window.t("dashboard.health.unit_free", "free") + '" color="var(--color-success, #4ade80)"></metric-card>';
       }
       // Ollama
       if (d.ollama) {
         const olColor = d.ollama.available ? 'var(--color-success, #4ade80)' : 'var(--color-danger, #f87171)';
-        cards += '<metric-card label="Ollama" value="' + (d.ollama.available ? 'online' : 'offline') + '" color="' + olColor + '"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.ollama", "Ollama") + '" value="' + (d.ollama.available ? window.t("dashboard.health.online", "online") : window.t("dashboard.health.offline", "offline")) + '" color="' + olColor + '"></metric-card>';
       }
       // Disk
       if (d.disk) {
-        cards += '<metric-card label="Disk Used" value="' + d.disk.used_pct + '" unit="%" color="var(--color-warning, #facc15)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.disk_used", "Disk Used") + '" value="' + d.disk.used_pct + '" unit="%" color="var(--color-warning, #facc15)"></metric-card>';
       }
       // Agents
       if (d.agents) {
-        cards += '<metric-card label="Agents" value="' + d.agents.total + '" color="var(--accent-primary, #6366f1)"></metric-card>';
+        cards += '<metric-card label="' + window.t("dashboard.health.agents", "Agents") + '" value="' + d.agents.total + '" color="var(--accent-primary, #6366f1)"></metric-card>';
       }
-      container.innerHTML = cards || '<div class="sidebar-empty">No health data.</div>';
+      container.innerHTML = cards || '<div class="sidebar-empty">' + window.t("dashboard.health.no_data", "No health data.") + '</div>';
     } catch (err) {
-      container.innerHTML = '<div class="sidebar-empty">Health check unavailable.</div>';
+      container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.health.unavailable", "Health check unavailable.") + '</div>';
     }
   }
 

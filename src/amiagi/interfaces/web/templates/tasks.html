@@ -6,13 +6,25 @@
 <link rel="stylesheet" href="/static/css/dashboard.css"/>
 <style>
 .tasks-page { padding: var(--space-6); }
+.tasks-quick-create {
+  display: grid; gap: var(--space-3); margin-bottom: var(--space-5);
+  padding: var(--space-4); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--glass-radius);
+}
+.tasks-quick-create-form {
+  display: grid; gap: var(--space-3); grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
+  align-items: center;
+}
+.tasks-live-indicator {
+  display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--font-size-xs);
+}
+.tasks-live-indicator .status-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
 .tasks-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6);
   flex-wrap: wrap; gap: var(--space-3);
 }
 .tasks-header h2 { margin: 0; color: var(--text-primary); }
 .tasks-toolbar { display: flex; gap: var(--space-3); align-items: center; }
-.tasks-toolbar select { min-width: 140px; }
+.tasks-toolbar select, .tasks-toolbar input { min-width: 140px; }
 .tasks-stats {
   display: flex; gap: var(--space-4); margin-bottom: var(--space-5); flex-wrap: wrap;
 }
@@ -28,6 +40,87 @@
   border-radius: var(--glass-radius); padding: var(--space-5);
   min-height: 400px;
 }
+.task-board-hint {
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);
+  color: var(--text-muted); font-size: var(--font-size-sm);
+}
+.task-detail-grid { display: grid; gap: var(--space-3); }
+.task-detail-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.task-detail-badge {
+  padding: 2px var(--space-2); border-radius: var(--glass-radius-pill);
+  background: var(--glass-bg-hover); color: var(--text-secondary); font-size: var(--font-size-xs);
+}
+.task-detail-block {
+  padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04);
+  color: var(--text-secondary); white-space: pre-wrap;
+}
+.task-detail-list { margin: 0; padding-left: 1.2rem; color: var(--text-secondary); }
+.task-detail-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.task-visual-block {
+  display: grid; gap: var(--space-3);
+}
+.subtask-tree {
+  display: grid; gap: var(--space-3);
+}
+.subtask-tree-empty {
+  padding: var(--space-3); border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04); color: var(--text-muted);
+}
+.subtask-tree-node {
+  display: grid; gap: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--glass-border); border-radius: var(--glass-radius-sm); background: rgba(255,255,255,0.04);
+}
+.subtask-tree-children {
+  display: grid; gap: var(--space-3); margin-left: var(--space-4); padding-left: var(--space-4);
+  border-left: 1px dashed rgba(255,255,255,0.12);
+}
+.subtask-tree-title {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--text-primary);
+}
+.subtask-tree-meta,
+.subtask-tree-deps {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--text-muted); font-size: var(--font-size-xs);
+}
+.workflow-dag-shell {
+  min-height: 220px; padding: var(--space-3); border-radius: var(--glass-radius-sm);
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+}
+.workflow-dag-summary {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+}
+.tasks-bulk-bar {
+  display: none; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);
+  padding: var(--space-3); background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius-sm);
+}
+.tasks-timeline {
+  display: grid; gap: var(--space-3);
+}
+.task-timeline-item {
+  display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--space-3);
+  padding: var(--space-4); border: 1px solid var(--glass-border); border-radius: var(--glass-radius); background: var(--glass-bg);
+}
+.task-timeline-time {
+  color: var(--text-muted); font-size: var(--font-size-sm);
+}
+.task-timeline-card {
+  display: grid; gap: var(--space-2);
+}
+.task-timeline-title-row {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+}
+.task-timeline-progress {
+  width: 100%; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden;
+}
+.task-timeline-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent-blue), var(--accent-teal));
+}
+.task-timeline-empty {
+  padding: var(--space-5); text-align: center; color: var(--text-muted); background: var(--glass-bg); border: 1px dashed var(--glass-border); border-radius: var(--glass-radius);
+}
+@media (max-width: 900px) {
+  .tasks-quick-create-form { grid-template-columns: 1fr; }
+  .task-timeline-item { grid-template-columns: 1fr; }
+}
 </style>
 {% endblock %}
 
@@ -36,6 +129,27 @@
   <div class="tasks-header">
     <h2>📋 {{ _("tasks.title") }}</h2>
     <div class="tasks-toolbar">
+      <input class="glass-input" id="filter-search" placeholder="Search tasks..." aria-label="Search tasks" onkeydown="if(event.key==='Enter') loadTasks()">
+      <select class="glass-input" id="filter-status" aria-label="Filter by status" onchange="loadTasks()">
+        <option value="">{{ _("tasks.all_statuses") or 'All Statuses' }}</option>
+        <option value="pending">Pending</option>
+        <option value="assigned">Assigned</option>
+        <option value="in_progress">In Progress</option>
+        <option value="review">Review</option>
+        <option value="done">Done</option>
+        <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select class="glass-input" id="filter-agent" aria-label="Filter by agent" onchange="loadTasks()">
+        <option value="">All Agents</option>
+      </select>
+      <select class="glass-input" id="filter-priority" aria-label="Filter by priority" onchange="loadTasks()">
+        <option value="">All Priorities</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="normal">Normal</option>
+        <option value="low">Low</option>
+      </select>
       <select class="glass-input" id="filter-origin" aria-label="Filter tasks by origin" onchange="loadTasks()">
         <option value="">{{ _("tasks.all_sources") }}</option>
         <option value="web">{{ _("tasks.from_panel") }}</option>
@@ -43,47 +157,584 @@
         <option value="template">{{ _("tasks.from_templates") }}</option>
         <option value="cron">{{ _("tasks.scheduled") }}</option>
       </select>
+      <input class="glass-input" type="date" id="filter-since" aria-label="Filter tasks since" onchange="loadTasks()">
+      <div class="tasks-view-toggle">
+        <button class="glass-btn glass-btn--sm active" data-view="board" onclick="switchView('board')">Kanban</button>
+        <button class="glass-btn glass-btn--sm" data-view="list" onclick="switchView('list')">List</button>
+        <button class="glass-btn glass-btn--sm" data-view="timeline" onclick="switchView('timeline')">{{ _("tasks.timeline") }}</button>
+      </div>
       <a href="/tasks/new" class="glass-btn glass-btn--primary">+ {{ _("tasks.new") }}</a>
     </div>
   </div>
 
+  <section class="tasks-quick-create">
+    <div class="tasks-live-indicator">
+      <span class="status-dot status-dot--green" id="tasks-live-dot"></span>
+      <span id="tasks-live-label">{{ _("tasks.live_updates") }}</span>
+    </div>
+    <form class="tasks-quick-create-form" id="quick-create-form">
+      <input class="glass-input" id="quick-create-title" placeholder="{{ _('tasks.quick_create_placeholder') }}" aria-label="{{ _('tasks.quick_create') }}" required />
+      <select class="glass-input" id="quick-create-priority" aria-label="{{ _('tasks.priority') if _('tasks.priority') != 'tasks.priority' else 'Priority' }}">
+        <option value="normal">Normal</option>
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+        <option value="low">Low</option>
+      </select>
+      <select class="glass-input" id="quick-create-agent" aria-label="{{ _('tasks.all_agents') }}">
+        <option value="">{{ _('tasks.all_agents') }}</option>
+      </select>
+      <button type="submit" class="glass-btn glass-btn--primary">{{ _('tasks.quick_create') }}</button>
+    </form>
+  </section>
+
   <div class="tasks-stats" id="tasks-stats"></div>
 
-  <div class="task-board-container">
+  <div class="tasks-bulk-bar" id="tasks-bulk-bar">
+    <strong><span id="tasks-bulk-count">0</span> selected</strong>
+    <select class="glass-input" id="tasks-bulk-agent">
+      <option value="">Unassigned</option>
+    </select>
+    <button class="glass-btn glass-btn--sm" onclick="bulkUpdateTasks('reassign')">Bulk reassign</button>
+    <button class="glass-btn glass-btn--sm" onclick="bulkUpdateTasks('escalate')">Escalate</button>
+    <button class="glass-btn glass-btn--sm glass-btn--danger" onclick="bulkUpdateTasks('cancel')">Bulk cancel</button>
+  </div>
+
+  <div class="task-board-container" id="board-view">
+    <div class="task-board-hint">↕ {{ _('tasks.drag_drop') }}</div>
     <task-board id="task-board"></task-board>
+  </div>
+
+  <div id="list-view" class="u-hidden">
+    <table class="glass-table" id="tasks-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="tasks-select-all" title="Select all tasks" aria-label="Select all tasks" onclick="toggleAllTasks(this.checked)"></th>
+          <th class="th-sortable" data-sort="title" onclick="sortTable('title')">Title ↕</th>
+          <th class="th-sortable" data-sort="status" onclick="sortTable('status')">Status ↕</th>
+          <th class="th-sortable" data-sort="priority" onclick="sortTable('priority')">Priority ↕</th>
+          <th class="th-sortable" data-sort="assigned_agent_id" onclick="sortTable('assigned_agent_id')">Agent ↕</th>
+          <th class="th-sortable" data-sort="created_at" onclick="sortTable('created_at')">Created ↕</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tasks-tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="timeline-view" class="u-hidden">
+    <div class="tasks-timeline" id="tasks-timeline"></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/components/task-board.js"></script>
+<script src="/static/js/components/workflow-dag.js"></script>
 <script>
 (function() {
-  async function loadTasks() {
-    const origin = document.getElementById('filter-origin').value;
-    const url = '/api/tasks' + (origin ? '?origin=' + origin : '');
+  let _currentView = 'board';
+  let _allTasks = [];
+  let _sortField = 'created_at';
+  let _sortAsc = false;
+  let _agents = [];
+  let _selectedTasks = new Set();
+  let _taskWs = null;
+  let _taskWsTimer = null;
+
+  function t(key, fallback) {
+    return window.t ? window.t(key, fallback) : (fallback || key);
+  }
+
+  function esc(value) {
+    const node = document.createElement('div');
+    node.textContent = value == null ? '' : String(value);
+    return node.innerHTML;
+  }
+
+  function agentOptions(selected) {
+    return ['<option value="">Unassigned</option>'].concat(_agents.map((agent) => {
+      const value = agent.agent_id || '';
+      return `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(agent.name || value)}</option>`;
+    })).join('');
+  }
+
+  // Populate agent filter dropdown
+  fetch('/api/agents').then(r => r.json()).then(data => {
+    const agents = data.agents || data || [];
+    _agents = agents;
+    const sel = document.getElementById('filter-agent');
+    const bulkSel = document.getElementById('tasks-bulk-agent');
+    const quickSel = document.getElementById('quick-create-agent');
+    agents.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.agent_id; opt.textContent = a.name || a.agent_id;
+      sel.appendChild(opt);
+      bulkSel.appendChild(opt.cloneNode(true));
+      quickSel.appendChild(opt.cloneNode(true));
+    });
+  }).catch(() => {});
+
+  function refreshBulkBar() {
+    const bar = document.getElementById('tasks-bulk-bar');
+    const count = document.getElementById('tasks-bulk-count');
+    count.textContent = _selectedTasks.size;
+    bar.style.display = _selectedTasks.size ? 'flex' : 'none';
+  }
+
+  window.switchView = function(view) {
+    _currentView = view;
+    document.querySelectorAll('.tasks-view-toggle button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    document.getElementById('board-view').style.display = view === 'board' ? '' : 'none';
+    document.getElementById('list-view').style.display = view === 'list' ? '' : 'none';
+    document.getElementById('timeline-view').style.display = view === 'timeline' ? '' : 'none';
+    if (view === 'list') renderListView();
+    if (view === 'timeline') renderTimelineView();
+  };
+
+  window.sortTable = function(field) {
+    if (_sortField === field) _sortAsc = !_sortAsc;
+    else { _sortField = field; _sortAsc = true; }
+    renderListView();
+  };
+
+  function renderListView() {
+    const tbody = document.getElementById('tasks-tbody');
+    const sorted = [..._allTasks].sort((a, b) => {
+      const va = (a[_sortField] || '').toString().toLowerCase();
+      const vb = (b[_sortField] || '').toString().toLowerCase();
+      return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    const statusColors = {pending:'badge-muted',assigned:'badge-idle',in_progress:'badge-working',review:'badge-idle',done:'badge-success',failed:'badge-error',cancelled:'badge-muted'};
+    tbody.innerHTML = sorted.map(t => `<tr style="cursor:pointer" onclick="openTaskDetailDrawer('${esc(t.task_id)}')">
+      <td><input type="checkbox" class="task-check" ${_selectedTasks.has(t.task_id) ? 'checked' : ''} onclick="event.stopPropagation();toggleTaskSelection('${esc(t.task_id)}', this.checked)"></td>
+      <td>${esc(t.title || t.task_id)}</td>
+      <td><span class="glass-badge ${statusColors[t.status] || 'badge-muted'}">${esc(t.status)}</span></td>
+      <td>${esc(t.priority || 'normal')}</td>
+      <td>${esc(t.assigned_agent_id || '—')}</td>
+      <td>${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</td>
+      <td>${t.status !== 'cancelled' && t.status !== 'done' ? '<button class="glass-btn glass-btn--xs glass-btn--danger" onclick="event.stopPropagation();cancelTaskFromDrawer(\'' + esc(t.task_id) + '\')">Cancel</button>' : ''}</td>
+    </tr>`).join('');
+    refreshBulkBar();
+  }
+
+  function taskTimelineMoment(task) {
+    return task.completed_at || task.started_at || task.created_at || null;
+  }
+
+  function renderTimelineView() {
+    const timeline = document.getElementById('tasks-timeline');
+    const items = [..._allTasks].sort((a, b) => {
+      const ta = taskTimelineMoment(a) || '';
+      const tb = taskTimelineMoment(b) || '';
+      return tb.localeCompare(ta);
+    });
+    if (!items.length) {
+      timeline.innerHTML = `<div class="task-timeline-empty">${esc(t('dashboard.no_tasks', 'No tasks in queue'))}</div>`;
+      return;
+    }
+    timeline.innerHTML = items.map((task) => {
+      const when = taskTimelineMoment(task);
+      const pct = Number(task.metadata && task.metadata.progress_pct != null ? task.metadata.progress_pct : 0);
+      return `<button class="task-timeline-item" type="button" onclick="openTaskDetailDrawer('${esc(task.task_id)}')">
+        <div class="task-timeline-time">${when ? esc(new Date(when).toLocaleString()) : '—'}</div>
+        <div class="task-timeline-card">
+          <div class="task-timeline-title-row">
+            <strong>${esc(task.title || task.task_id)}</strong>
+            <span class="task-detail-badge">${esc(task.status || 'pending')}</span>
+            <span class="task-detail-badge">${esc(task.priority || 'normal')}</span>
+            ${task.assigned_agent_id ? `<span class="task-detail-badge">🤖 ${esc(task.assigned_agent_id)}</span>` : ''}
+          </div>
+          <div class="task-detail-block">${esc(task.description || '—')}</div>
+          <div class="task-timeline-progress"><div class="task-timeline-progress-fill" style="width:${Math.max(0, Math.min(pct, 100))}%"></div></div>
+        </div>
+      </button>`;
+    }).join('');
+  }
+
+  function renderMetadata(metadata) {
+    const entries = Object.entries(metadata || {});
+    if (!entries.length) {
+      return '<div class="task-detail-block">—</div>';
+    }
+    return `<div class="task-detail-block">${entries.map(([key, value]) => `<div><strong>${esc(key)}:</strong> ${esc(typeof value === 'object' ? JSON.stringify(value) : value)}</div>`).join('')}</div>`;
+  }
+
+  function renderSubtasks(subtasks) {
+    if (!subtasks || !subtasks.length) return '<div class="subtask-tree-empty">—</div>';
+    return `<div class="subtask-tree" id="task-subtask-tree"></div>`;
+  }
+
+  function renderWorkflow(workflow) {
+    if (!workflow) return '<div class="task-detail-block">—</div>';
+    const nodes = workflow.nodes || [];
+    return `<div class="task-visual-block">
+      <div class="workflow-dag-summary">
+        <strong>${esc(workflow.workflow_name || workflow.run_id || 'workflow')}</strong>
+        <span class="task-detail-badge">${esc(workflow.status || 'unknown')}</span>
+        <span class="task-detail-badge">${esc(String(nodes.length))} nodes</span>
+      </div>
+      <div class="workflow-dag-shell">
+        <workflow-dag id="task-workflow-dag"></workflow-dag>
+      </div>
+      ${nodes.length ? `<ul class="task-detail-list">${nodes.map((node) => `<li>${esc(node.node_id)} · ${esc(node.status)} · ${esc(node.node_type)}</li>`).join('')}</ul>` : ''}
+      ${workflow.run_id ? `<div style="margin-top:8px"><a class="glass-btn glass-btn--xs glass-btn--ghost" href="/workflows?run_id=${encodeURIComponent(workflow.run_id)}">Open workflow run</a></div>` : ''}
+    </div>`;
+  }
+
+  function buildSubtaskGraph(subtasks) {
+    const taskMap = new Map();
+    const childMap = new Map();
+    const indegree = new Map();
+    (subtasks || []).forEach((subtask) => {
+      taskMap.set(subtask.task_id, subtask);
+      childMap.set(subtask.task_id, []);
+      indegree.set(subtask.task_id, 0);
+    });
+    (subtasks || []).forEach((subtask) => {
+      (subtask.dependencies || []).forEach((depId) => {
+        if (!childMap.has(depId)) return;
+        childMap.get(depId).push(subtask.task_id);
+        indegree.set(subtask.task_id, (indegree.get(subtask.task_id) || 0) + 1);
+      });
+    });
+    const roots = (subtasks || []).filter((subtask) => (indegree.get(subtask.task_id) || 0) === 0).map((subtask) => subtask.task_id);
+    return {
+      taskMap,
+      childMap,
+      roots: roots.length ? roots : (subtasks || []).map((subtask) => subtask.task_id),
+    };
+  }
+
+  function renderSubtaskNode(nodeId, graph, seen) {
+    if (seen.has(nodeId)) return '';
+    seen.add(nodeId);
+    const subtask = graph.taskMap.get(nodeId);
+    if (!subtask) return '';
+    const children = (graph.childMap.get(nodeId) || []).map((childId) => renderSubtaskNode(childId, graph, new Set(seen))).join('');
+    return `<div class="subtask-tree-node">
+      <div class="subtask-tree-title">
+        <strong>${esc(subtask.title || subtask.task_id)}</strong>
+        <span class="task-detail-badge">${esc(subtask.status || 'pending')}</span>
+        <span class="task-detail-badge">${esc(subtask.priority || 'normal')}</span>
+      </div>
+      <div class="subtask-tree-meta">
+        <span>${esc(subtask.task_id)}</span>
+        ${subtask.assigned_agent_id ? `<span>🤖 ${esc(subtask.assigned_agent_id)}</span>` : ''}
+      </div>
+      ${subtask.dependencies && subtask.dependencies.length ? `<div class="subtask-tree-deps"><strong>Depends on:</strong> ${subtask.dependencies.map((depId) => `<span class="task-detail-badge">${esc(depId)}</span>`).join('')}</div>` : ''}
+      <div class="task-detail-block">${esc(subtask.description || '—')}</div>
+      ${children ? `<div class="subtask-tree-children">${children}</div>` : ''}
+    </div>`;
+  }
+
+  function hydrateSubtaskTree(subtasks) {
+    const host = document.getElementById('task-subtask-tree');
+    if (!host) return;
+    const graph = buildSubtaskGraph(subtasks || []);
+    const seen = new Set();
+    host.innerHTML = graph.roots.map((nodeId) => renderSubtaskNode(nodeId, graph, seen)).join('') || '<div class="subtask-tree-empty">—</div>';
+  }
+
+  function hydrateWorkflowDag(workflow) {
+    const dag = document.getElementById('task-workflow-dag');
+    if (!dag || !workflow || !Array.isArray(workflow.nodes)) return;
+    const nodes = workflow.nodes.map((node) => ({
+      id: node.node_id,
+      label: node.label || node.node_id,
+      status: node.status || 'pending',
+      depends_on: Array.isArray(node.depends_on) ? node.depends_on : [],
+    }));
+    if (typeof dag.setNodes === 'function') {
+      dag.setNodes(nodes);
+    }
+  }
+
+  function hydrateTaskDrawerVisuals(extras) {
+    hydrateSubtaskTree((extras && extras.subtasks) || []);
+    hydrateWorkflowDag(extras && extras.workflow);
+  }
+
+  function renderTaskDrawer(task, extras) {
+    extras = extras || {};
+    const dependencies = (task.dependencies || []).length
+      ? `<ul class="task-detail-list">${task.dependencies.map(dep => `<li>${esc(dep)}</li>`).join('')}</ul>`
+      : '<div class="task-detail-block">—</div>';
+    return `
+      <div class="task-detail-grid">
+        <div class="task-detail-meta">
+          <span class="task-detail-badge">${esc(task.status || '')}</span>
+          <span class="task-detail-badge">${esc(task.priority || '')}</span>
+          <span class="task-detail-badge">${esc(task.origin || '')}</span>
+          ${task.assigned_agent_id ? `<span class="task-detail-badge">🤖 ${esc(task.assigned_agent_id)}</span>` : ''}
+        </div>
+        <div>
+          <label>{{ _('admin.description') }}</label>
+          <div class="task-detail-block">${esc(task.description || '—')}</div>
+        </div>
+        <div>
+          <label>{{ _('tasks.result') }}</label>
+          <div class="task-detail-block">${esc(task.result || '{{ _('tasks.no_result') }}')}</div>
+        </div>
+        <div>
+          <label>{{ _('tasks.dependencies') }}</label>
+          ${dependencies}
+        </div>
+        <div>
+          <label>{{ _('tasks.metadata') }}</label>
+          ${renderMetadata(task.metadata)}
+        </div>
+        <div>
+          <label>Subtasks</label>
+          ${renderSubtasks(extras.subtasks || [])}
+        </div>
+        <div>
+          <label>Workflow</label>
+          ${renderWorkflow(extras.workflow || null)}
+        </div>
+        <div class="task-detail-meta">
+          ${task.created_at ? `<span class="task-detail-badge">created ${esc(new Date(task.created_at).toLocaleString())}</span>` : ''}
+          ${task.started_at ? `<span class="task-detail-badge">started ${esc(new Date(task.started_at).toLocaleString())}</span>` : ''}
+          ${task.completed_at ? `<span class="task-detail-badge">done ${esc(new Date(task.completed_at).toLocaleString())}</span>` : ''}
+        </div>
+        <div class="task-detail-actions">
+          <select id="drawer-task-agent" class="glass-input">${agentOptions(task.assigned_agent_id || '')}</select>
+          <button class="glass-btn glass-btn--ghost" onclick="reassignTaskFromDrawer('${esc(task.task_id)}')">Reassign</button>
+          <button class="glass-btn glass-btn--ghost" onclick="decomposeTaskFromDrawer('${esc(task.task_id)}')">Decompose</button>
+        </div>
+        <div class="btn-row">
+          <button class="glass-btn glass-btn--ghost" onclick="closeDetailDrawer()">{{ _('common.close') }}</button>
+          ${task.status === 'cancelled' || task.status === 'done' ? '' : `<button class="glass-btn glass-btn--primary" onclick="cancelTaskFromDrawer('${esc(task.task_id)}')">{{ _('common.delete') }}</button>`}
+        </div>
+      </div>
+    `;
+  }
+
+  window.openTaskDetailDrawer = async function(taskId, fallbackTask) {
+    const title = fallbackTask && fallbackTask.title ? fallbackTask.title : '{{ _('tasks.detail') }}';
+    openDetailDrawer(title, `<div class="task-detail-block">{{ _('common.loading') }}</div>`);
     try {
-      const res = await fetch(url);
+      const [taskRes, subtasksRes, workflowRes] = await Promise.all([
+        fetch('/api/tasks/' + encodeURIComponent(taskId)),
+        fetch('/api/tasks/' + encodeURIComponent(taskId) + '/subtasks'),
+        fetch('/api/tasks/' + encodeURIComponent(taskId) + '/workflow')
+      ]);
+      const taskData = await taskRes.json();
+      const subtasksData = await subtasksRes.json();
+      const workflowData = await workflowRes.json();
+      const task = taskData.task || fallbackTask;
+      document.getElementById('drawer-body').innerHTML = renderTaskDrawer(task, {
+        subtasks: subtasksData.subtasks || [],
+        workflow: workflowData.workflow || null,
+      });
+      hydrateTaskDrawerVisuals({
+        subtasks: subtasksData.subtasks || [],
+        workflow: workflowData.workflow || null,
+      });
+    } catch (e) {
+      document.getElementById('drawer-body').innerHTML = `<div class="task-detail-block">{{ _('common.error') }}</div>`;
+    }
+  };
+
+  window.cancelTaskFromDrawer = async function(taskId) {
+    const res = await fetch('/api/tasks/' + encodeURIComponent(taskId) + '/cancel', { method: 'POST' });
+    if (res.ok) {
+      closeDetailDrawer();
+      loadTasks();
+    }
+  };
+
+  window.reassignTaskFromDrawer = async function(taskId) {
+    const agentId = document.getElementById('drawer-task-agent')?.value || null;
+    const res = await fetch('/api/tasks/' + encodeURIComponent(taskId) + '/reassign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({agent_id: agentId})
+    });
+    if (res.ok) {
+      openTaskDetailDrawer(taskId);
+      loadTasks();
+    }
+  };
+
+  window.decomposeTaskFromDrawer = async function(taskId) {
+    const res = await fetch('/api/tasks/' + encodeURIComponent(taskId) + '/decompose', { method: 'POST' });
+    if (res.ok) {
+      openTaskDetailDrawer(taskId);
+      loadTasks();
+    }
+  };
+
+  window.toggleTaskSelection = function(taskId, checked) {
+    if (checked) _selectedTasks.add(taskId);
+    else _selectedTasks.delete(taskId);
+    refreshBulkBar();
+  };
+
+  window.toggleAllTasks = function(checked) {
+    _selectedTasks = new Set(checked ? _allTasks.map((task) => task.task_id) : []);
+    if (_currentView === 'list') renderListView();
+    else refreshBulkBar();
+  };
+
+  window.bulkUpdateTasks = async function(action) {
+    if (!_selectedTasks.size) return;
+    const body = {
+      action,
+      task_ids: Array.from(_selectedTasks),
+      agent_id: document.getElementById('tasks-bulk-agent').value || null,
+    };
+    const res = await fetch('/api/tasks/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      _selectedTasks.clear();
+      document.getElementById('tasks-select-all').checked = false;
+      loadTasks();
+    }
+  };
+
+  async function submitQuickCreate(event) {
+    event.preventDefault();
+    const title = document.getElementById('quick-create-title').value.trim();
+    if (!title) return;
+    const priority = document.getElementById('quick-create-priority').value;
+    const assignedAgentId = document.getElementById('quick-create-agent').value || null;
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        title,
+        priority,
+        assigned_agent_id: assignedAgentId,
+        origin: 'web',
+      }),
+    });
+    if (res.ok) {
+      document.getElementById('quick-create-form').reset();
+      loadTasks();
+    }
+  }
+
+  function setLiveState(active) {
+    const dot = document.getElementById('tasks-live-dot');
+    const label = document.getElementById('tasks-live-label');
+    if (dot) dot.className = 'status-dot ' + (active ? 'status-dot--green' : 'status-dot--yellow');
+    if (label) label.textContent = active ? t('tasks.live_updates', 'Live updates enabled') : t('tasks.live_reconnecting', 'Reconnecting live updates…');
+  }
+
+  async function persistTaskMove(detail) {
+    if (!detail || !detail.taskId || !detail.toStatus) return;
+    const res = await fetch('/api/tasks/' + encodeURIComponent(detail.taskId) + '/move', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: detail.toStatus}),
+    });
+    if (!res.ok) {
+      if (typeof showToast === 'function') {
+        showToast(t('tasks.move_failed', 'Could not move task on the Kanban board'), 'error');
+      }
+      loadTasks();
+      return;
+    }
+    const payload = await res.json();
+    const updatedTask = payload.task || null;
+    if (updatedTask) {
+      _allTasks = _allTasks.map((task) => task.task_id === updatedTask.task_id ? updatedTask : task);
+      if (_currentView === 'list') renderListView();
+      if (_currentView === 'timeline') renderTimelineView();
+    }
+    if (typeof showToast === 'function') {
+      showToast(t('tasks.move_saved', 'Task moved'), 'success');
+    }
+    loadTasks();
+  }
+
+  function connectTaskEvents() {
+    if (_taskWsTimer) {
+      clearTimeout(_taskWsTimer);
+      _taskWsTimer = null;
+    }
+    try {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      _taskWs = new WebSocket(proto + '//' + location.host + '/ws/events');
+      _taskWs.onopen = function() { setLiveState(true); };
+      _taskWs.onmessage = function(event) {
+        try {
+          const msg = JSON.parse(event.data);
+          const type = String(msg.type || '');
+          if (/^task[._]/.test(type) || msg.task_id || msg.task_ids) {
+            loadTasks();
+          }
+        } catch (e) {}
+      };
+      _taskWs.onclose = function() {
+        setLiveState(false);
+        _taskWsTimer = setTimeout(connectTaskEvents, 3000);
+      };
+      _taskWs.onerror = function() {
+        try { _taskWs.close(); } catch (e) {}
+      };
+    } catch (e) {
+      setLiveState(false);
+    }
+  }
+
+  async function loadTasks() {
+    const params = new URLSearchParams();
+    const origin = document.getElementById('filter-origin').value;
+    const status = document.getElementById('filter-status').value;
+    const agent = document.getElementById('filter-agent').value;
+    const priority = document.getElementById('filter-priority').value;
+    const search = document.getElementById('filter-search').value;
+    const since = document.getElementById('filter-since').value;
+    if (origin) params.set('origin', origin);
+    if (status) params.set('status', status);
+    if (agent) params.set('agent', agent);
+    if (priority) params.set('priority', priority);
+    if (search) params.set('q', search);
+    if (since) params.set('since', since);
+    const url = '/api/tasks' + (params.toString() ? '?' + params : '');
+    try {
+      const [res, statsRes] = await Promise.all([fetch(url), fetch('/api/tasks/stats')]);
       const data = await res.json();
+      const stats = await statsRes.json();
       const tasks = data.tasks || data || [];
+      _allTasks = tasks;
       const board = document.getElementById('task-board');
       board.setTasks(tasks);
+      if (_currentView === 'list') renderListView();
 
       // Stats
-      const counts = {};
-      tasks.forEach(t => { counts[t.status] = (counts[t.status]||0)+1; });
+      const counts = stats.by_status || {};
       const statsEl = document.getElementById('tasks-stats');
       const labels = {pending:'{{ _("tasks.pending") }}',assigned:'{{ _("tasks.assigned") }}',in_progress:'{{ _("tasks.in_progress") }}',review:'{{ _("tasks.review") }}',done:'{{ _("tasks.done") }}',failed:'{{ _("tasks.failed") }}',cancelled:'{{ _("tasks.cancelled") }}'};
       const colors = {pending:'var(--text-muted)',assigned:'var(--accent-blue)',in_progress:'var(--accent-teal)',review:'var(--accent-purple)',done:'var(--state-success)',failed:'var(--state-error)',cancelled:'var(--text-muted)'};
-      statsEl.innerHTML = Object.entries(labels).map(([k,v]) => {
+      const cards = Object.entries(labels).map(([k,v]) => {
         const c = counts[k]||0;
         return `<div class="stat-card"><div class="stat-value" style="color:${colors[k]||'inherit'}">${c}</div><div class="stat-label">${v}</div></div>`;
-      }).join('');
+      });
+      if (stats.avg_completion_time_label) {
+        cards.push(`<div class="stat-card"><div class="stat-value">${esc(stats.avg_completion_time_label)}</div><div class="stat-label">Avg completion</div></div>`);
+      }
+      statsEl.innerHTML = cards.join('');
     } catch(e) { console.error('Failed to load tasks', e); }
   }
 
   window.loadTasks = loadTasks;
+  document.getElementById('quick-create-form').addEventListener('submit', submitQuickCreate);
+  document.getElementById('task-board').addEventListener('task:selected', function(event) {
+    const detail = event.detail || {};
+    if (detail.taskId) {
+      openTaskDetailDrawer(detail.taskId, detail.task);
+    }
+  });
+  document.getElementById('task-board').addEventListener('task:moved', function(event) {
+    persistTaskMove(event.detail || {});
+  });
   loadTasks();
+  connectTaskEvents();
 })();
 </script>
 {% endblock %}

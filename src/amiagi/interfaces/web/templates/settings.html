@@ -11,18 +11,19 @@
   <h2>⚙️ {{ _("settings.title") }}</h2>
 
   <div class="settings-tabs">
-    <button class="settings-tab active" onclick="switchSettings('general', this)">{{ _("settings.general") }}</button>
-    <button class="settings-tab" onclick="switchSettings('models', this)">{{ _("settings.models") }}</button>
-    <button class="settings-tab" onclick="switchSettings('costs', this)">{{ _("settings.cost_config") }}</button>
-    <button class="settings-tab" onclick="switchSettings('cron', this)">{{ _("settings.scheduled") }}</button>
-    <button class="settings-tab" onclick="switchSettings('integrations', this)">{{ _("settings.integrations") }}</button>
-    <button class="settings-tab" onclick="switchSettings('memory', this)">{{ _("settings.memory") }}</button>
-    <button class="settings-tab" onclick="switchSettings('prompts', this)">{{ _("settings.prompts") }}</button>
-    <button class="settings-tab" onclick="switchSettings('templates', this)">{{ _("settings.templates_section") }}</button>
-    <button class="settings-tab" onclick="switchSettings('execution', this)">{{ _("settings.execution") }}</button>
-    <button class="settings-tab" onclick="switchSettings('security', this)">{{ _("settings.security") }}</button>
-    <button class="settings-tab" onclick="switchSettings('system', this)">{{ _("settings.system") }}</button>
-    <button class="settings-tab" onclick="switchSettings('advanced', this)">{{ _("settings.advanced") }}</button>
+    <button class="settings-tab active" data-settings-tab="general" onclick="switchSettings('general', this)">{{ _("settings.general") }}</button>
+    <button class="settings-tab" data-settings-tab="models" onclick="switchSettings('models', this)">{{ _("settings.models") }}</button>
+    <button class="settings-tab" data-settings-tab="costs" onclick="switchSettings('costs', this)">{{ _("settings.cost_config") }}</button>
+    <button class="settings-tab" data-settings-tab="cron" onclick="switchSettings('cron', this)">{{ _("settings.scheduled") }}</button>
+    <button class="settings-tab" data-settings-tab="integrations" onclick="switchSettings('integrations', this)">{{ _("settings.integrations") }}</button>
+    <button class="settings-tab" data-settings-tab="memory" onclick="switchSettings('memory', this)">{{ _("settings.memory") }}</button>
+    <button class="settings-tab" data-settings-tab="prompts" onclick="switchSettings('prompts', this)">{{ _("settings.prompts") }}</button>
+    <button class="settings-tab" data-settings-tab="templates" onclick="switchSettings('templates', this)">{{ _("settings.templates_section") }}</button>
+    <button class="settings-tab" data-settings-tab="execution" onclick="switchSettings('execution', this)">{{ _("settings.execution") }}</button>
+    <button class="settings-tab" data-settings-tab="security" onclick="switchSettings('security', this)">{{ _("settings.security") }}</button>
+    <button class="settings-tab" data-settings-tab="permissions" onclick="switchSettings('permissions', this)">{{ _("settings.permissions") }}</button>
+    <button class="settings-tab" data-settings-tab="system" onclick="switchSettings('system', this)">{{ _("settings.system") }}</button>
+    <button class="settings-tab" data-settings-tab="advanced" onclick="switchSettings('advanced', this)">{{ _("settings.advanced") }}</button>
   </div>
 
   <!-- ═══ General ═══ -->
@@ -90,6 +91,17 @@
       </div>
       <button class="glass-btn glass-btn--primary" onclick="saveModelConfig()">{{ _("settings.save_config") }}</button>
       <span id="model-save-status" class="settings-save-status"></span>
+      <div class="form-group u-mt-3">
+        <label for="model-temperature">{{ _("settings.temperature") }}</label>
+        <div class="u-flex-center u-gap-2">
+          <input class="glass-input u-flex-1" type="range" id="model-temperature" min="0" max="2" step="0.1" value="0.7" title="{{ _('settings.temperature') }}" oninput="document.getElementById('temp-value').textContent=this.value">
+          <span id="temp-value">0.7</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="model-max-tokens">{{ _("settings.max_tokens") }}</label>
+        <input class="glass-input settings-input--narrow" type="number" id="model-max-tokens" min="256" max="128000" value="4096" title="{{ _('settings.max_tokens') }}">
+      </div>
     </div>
     <div class="settings-panel">
       <h3>{{ _("settings.ollama_status") }}</h3>
@@ -101,19 +113,115 @@
   <!-- ═══ Integrations (API Keys + Webhooks merged) ═══ -->
   <div class="settings-section" id="sect-integrations">
     <div class="settings-panel">
-      <h3>{{ _("settings.api_keys") }}</h3>
-      <ul class="key-list" id="api-keys-list"><li class="empty-msg">{{ _("common.loading") }}</li></ul>
-      <div class="settings-add-row">
-        <input class="glass-input settings-input--inline" id="new-key-name" placeholder="Nazwa klucza"/>
-        <button class="glass-btn glass-btn--primary" onclick="createApiKey()">{{ _("settings.create_key") }}</button>
+      <div class="settings-sub-tabs u-mb-3">
+        <button class="glass-btn glass-btn--sm active" data-integrations-tab="keys" onclick="switchIntegrationsTab('keys', this)">{{ _("settings.api_keys") }}</button>
+        <button class="glass-btn glass-btn--sm" data-integrations-tab="webhooks" onclick="switchIntegrationsTab('webhooks', this)">{{ _("settings.webhooks") }}</button>
+        <button class="glass-btn glass-btn--sm" data-integrations-tab="sdk" onclick="switchIntegrationsTab('sdk', this)">SDK</button>
       </div>
-    </div>
-    <div class="settings-panel">
-      <h3>{{ _("settings.webhooks") }}</h3>
-      <ul class="hook-list" id="webhooks-list"><li class="empty-msg">{{ _("common.loading") }}</li></ul>
-      <div class="settings-add-row--flex">
-        <input class="glass-input settings-input--md" id="new-hook-url" placeholder="URL webhooka"/>
-        <button class="glass-btn glass-btn--primary" onclick="createWebhook()">{{ _("settings.add_webhook") }}</button>
+
+      <div id="integrations-tab-keys">
+        <h3>{{ _("settings.api_keys") }}</h3>
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Key (prefix)</th><th>Scopes</th><th>Rate/min</th><th>Expires</th><th>Last Used</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="api-keys-tbody"><tr><td colspan="8" class="empty-msg">{{ _("common.loading") }}</td></tr></tbody>
+        </table>
+        <div class="settings-prefs-grid u-mt-3">
+          <div class="settings-pref-item">
+            <label for="new-key-name">{{ _("settings.name") }}</label>
+            <input class="glass-input" id="new-key-name" placeholder="Operator SDK"/>
+          </div>
+          <div class="settings-pref-item settings-pref-item--full">
+            <label>Scopes</label>
+            <div class="settings-choice-grid" id="api-key-scope-picker">
+              <label><input type="checkbox" class="api-key-scope" value="agents.read" checked> agents.read</label>
+              <label><input type="checkbox" class="api-key-scope" value="agents.write"> agents.write</label>
+              <label><input type="checkbox" class="api-key-scope" value="tasks.read" checked> tasks.read</label>
+              <label><input type="checkbox" class="api-key-scope" value="tasks.write"> tasks.write</label>
+              <label><input type="checkbox" class="api-key-scope" value="workflows.run"> workflows.run</label>
+              <label><input type="checkbox" class="api-key-scope" value="metrics.read"> metrics.read</label>
+            </div>
+            <input class="glass-input settings-input--md" id="new-key-custom-scopes" placeholder="custom.scope, webhooks.manage"/>
+          </div>
+          <div class="settings-pref-item">
+            <label for="new-key-rate-limit">Rate / min</label>
+            <input class="glass-input settings-input--narrow" id="new-key-rate-limit" type="number" min="1" step="1" placeholder="60"/>
+          </div>
+          <div class="settings-pref-item">
+            <label for="new-key-expires">Expires</label>
+            <input class="glass-input settings-input--narrow" id="new-key-expires" type="datetime-local"/>
+          </div>
+        </div>
+        <div class="settings-add-row u-mt-2">
+          <button class="glass-btn glass-btn--primary" onclick="createApiKey()">{{ _("settings.create_key") }}</button>
+        </div>
+        <div id="api-key-created-panel" class="settings-inline-result" hidden>
+          <div>
+            <strong>New key</strong>
+            <div class="key-prefix" id="api-key-created-value">—</div>
+          </div>
+          <div class="settings-inline-actions">
+            <button class="glass-btn glass-btn--sm" onclick="copyGeneratedApiKey()">Copy Key</button>
+            <button class="glass-btn glass-btn--ghost glass-btn--sm" onclick="dismissGeneratedApiKey()">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="integrations-tab-webhooks" hidden>
+        <h3>{{ _("settings.webhooks") }}</h3>
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>URL</th><th>Events</th><th>Status</th><th>Last delivery</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="webhooks-tbody"><tr><td colspan="5" class="empty-msg">{{ _("common.loading") }}</td></tr></tbody>
+        </table>
+        <div class="settings-prefs-grid u-mt-3">
+          <div class="settings-pref-item settings-pref-item--full">
+            <label for="new-hook-url">URL</label>
+            <input class="glass-input" id="new-hook-url" placeholder="https://example.com/webhook"/>
+          </div>
+          <div class="settings-pref-item settings-pref-item--full">
+            <label for="new-hook-secret">Secret</label>
+            <input class="glass-input" id="new-hook-secret" placeholder="optional shared secret"/>
+          </div>
+          <div class="settings-pref-item settings-pref-item--full">
+            <label>Events</label>
+            <div class="settings-choice-grid" id="webhook-event-picker">
+              <label><input type="checkbox" class="webhook-event" value="task_complete" checked> task_complete</label>
+              <label><input type="checkbox" class="webhook-event" value="budget_alert"> budget_alert</label>
+              <label><input type="checkbox" class="webhook-event" value="agent_error"> agent_error</label>
+              <label><input type="checkbox" class="webhook-event" value="workflow_done"> workflow_done</label>
+              <label><input type="checkbox" class="webhook-event" value="webhook.test"> webhook.test</label>
+            </div>
+          </div>
+          <div class="settings-pref-item">
+            <label for="new-hook-active">Status</label>
+            <select class="glass-input settings-input--narrow" id="new-hook-active">
+              <option value="true">{{ _("settings.active") }}</option>
+              <option value="false">{{ _("settings.disabled") }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-add-row u-mt-2">
+          <button class="glass-btn glass-btn--primary" id="webhook-submit-btn" onclick="saveWebhook()">{{ _("settings.add_webhook") }}</button>
+          <button class="glass-btn glass-btn--ghost" id="webhook-cancel-edit-btn" onclick="resetWebhookForm()" hidden>{{ _("common.cancel") }}</button>
+        </div>
+      </div>
+
+      <div id="integrations-tab-sdk" hidden>
+        <h3>SDK</h3>
+        <pre class="settings-policy-pre">pip install amiagi-sdk
+from amiagi_sdk import AmiagiClient
+
+client = AmiagiClient(
+    api_key="your-key",
+    base_url=window.location.origin,
+)</pre>
       </div>
     </div>
   </div>
@@ -136,11 +244,16 @@
       <h3>{{ _("settings.scheduled_tasks") }}</h3>
       <div id="cron-list"></div>
       <div class="settings-add-row--flex-end">
-        <div class="form-group form-group--compact"><label>Nazwa</label><input class="glass-input" id="cron-name" placeholder="np. Codzienny raport"/></div>
-        <div class="form-group form-group--compact"><label>Cron</label><input class="glass-input settings-input--narrow" id="cron-expr" placeholder="0 2 * * *"/></div>
-        <div class="form-group form-group--compact"><label>Tytuł zadania</label><input class="glass-input" id="cron-task" placeholder="Opis zadania"/></div>
+        <div class="form-group form-group--compact"><label>{{ _("settings.name") }}</label><input class="glass-input" id="cron-name" placeholder="np. Codzienny raport"/></div>
+        <div class="form-group form-group--compact"><label>Cron</label><input class="glass-input settings-input--narrow" id="cron-expr" placeholder="0 2 * * *" oninput="previewCronExpr()"/></div>
+        <div class="form-group form-group--compact"><label>{{ _("settings.task_title") }}</label><input class="glass-input" id="cron-task" placeholder="Opis zadania"/></div>
         <button class="glass-btn glass-btn--primary" onclick="createCronJob()">{{ _("settings.add") }}</button>
       </div>
+      <div class="settings-sub-panel" id="cron-preview-status">{{ _("settings.cron_preview_hint") }}</div>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.cron_history") }}</h3>
+      <div id="cron-history-list"><div class="empty-msg">{{ _("common.loading") }}</div></div>
     </div>
   </div>
 
@@ -179,6 +292,25 @@
       <button class="glass-btn glass-btn--primary" onclick="saveCostConfig()">{{ _("settings.save_costs") }}</button>
       <span id="cost-save-status" class="settings-save-status"></span>
     </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.budget_limits") }}</h3>
+      <div class="form-group">
+        <label>{{ _("settings.session_limit") }}</label>
+        <div class="u-flex-center u-gap-2">
+          <input class="glass-input settings-input--narrow" type="number" id="budget-session-limit" placeholder="10000">
+          <span class="meta-tag">tokens</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>{{ _("settings.daily_limit") }}</label>
+        <div class="u-flex-center u-gap-2">
+          <input class="glass-input settings-input--narrow" type="number" id="budget-daily-limit" placeholder="100000">
+          <span class="meta-tag">tokens</span>
+        </div>
+      </div>
+      <button class="glass-btn glass-btn--primary glass-btn--sm" onclick="saveBudgetLimits()">{{ _("settings.save_budget") }}</button>
+      <a href="/budget" class="glass-btn glass-btn--ghost glass-btn--sm">{{ _("settings.full_budget_dashboard") }}</a>
+    </div>
   </div>
 
   <!-- ═══ Execution ═══ -->
@@ -203,6 +335,60 @@
         <p class="empty-msg">{{ _("settings.no_sessions") }}</p>
       </div>
     </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.notification_channels") }}</h3>
+      <table class="glass-table notif-channel-table">
+        <thead><tr><th>Event</th><th>UI</th><th>Email</th><th>Webhook</th></tr></thead>
+        <tbody id="notif-channel-matrix">
+          <tr><td>Task Complete</td><td><input type="checkbox" checked data-event="task_complete" data-ch="ui" title="UI"></td><td><input type="checkbox" data-event="task_complete" data-ch="email" title="Email"></td><td><input type="checkbox" data-event="task_complete" data-ch="webhook" title="Webhook"></td></tr>
+          <tr><td>Budget Alert</td><td><input type="checkbox" checked data-event="budget_alert" data-ch="ui" title="UI"></td><td><input type="checkbox" checked data-event="budget_alert" data-ch="email" title="Email"></td><td><input type="checkbox" data-event="budget_alert" data-ch="webhook" title="Webhook"></td></tr>
+          <tr><td>Agent Error</td><td><input type="checkbox" checked data-event="agent_error" data-ch="ui" title="UI"></td><td><input type="checkbox" data-event="agent_error" data-ch="email" title="Email"></td><td><input type="checkbox" checked data-event="agent_error" data-ch="webhook" title="Webhook"></td></tr>
+          <tr><td>Workflow Done</td><td><input type="checkbox" checked data-event="workflow_done" data-ch="ui" title="UI"></td><td><input type="checkbox" data-event="workflow_done" data-ch="email" title="Email"></td><td><input type="checkbox" data-event="workflow_done" data-ch="webhook" title="Webhook"></td></tr>
+        </tbody>
+      </table>
+      <button class="glass-btn glass-btn--primary glass-btn--sm" onclick="saveNotifChannels()">{{ _("settings.save_config") }}</button>
+    </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.recent_logins") }}</h3>
+      <div id="login-attempts-list"><p class="empty-msg">{{ _("common.loading") }}</p></div>
+    </div>
+  </div>
+
+  <!-- ═══ Permissions ═══ -->
+  <div class="settings-section" id="sect-permissions">
+    <div class="settings-panel">
+      <h3>{{ _("permissions.title") }}</h3>
+      <p class="settings-muted">{{ _("permissions.description") }}</p>
+
+      <div class="settings-prefs-grid u-mt-1">
+        <div class="settings-pref-item">
+          <label for="perm-allow-all">{{ _("permissions.allow_all") }}</label>
+          <div class="perm-toggle-row">
+            <label class="glass-switch" title="{{ _('permissions.allow_all_hint') }}">
+              <input type="checkbox" id="perm-allow-all" onchange="onPermAllowAllChange(this)">
+              <span class="glass-switch__slider"></span>
+            </label>
+            <span class="perm-status" id="perm-allow-all-label">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-panel">
+      <h3>{{ _("permissions.per_resource") }}</h3>
+      <p class="settings-muted">{{ _("permissions.per_resource_desc") }}</p>
+      <div id="perm-resource-list" class="perm-resource-grid">
+        <p class="empty-msg">{{ _("common.loading") }}</p>
+      </div>
+    </div>
+
+    <div class="settings-panel">
+      <div class="settings-add-row">
+        <button class="glass-btn glass-btn--primary" onclick="savePermissions()">{{ _("permissions.save") }}</button>
+        <button class="glass-btn glass-btn--danger glass-btn--sm" onclick="resetPermissions()">{{ _("permissions.reset_all") }}</button>
+        <span id="perm-save-status" class="settings-save-status"></span>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ System ═══ -->
@@ -225,6 +411,10 @@
       <h3>{{ _("settings.quota_policies") }}</h3>
       <pre class="settings-policy-pre" id="advanced-quota-data">{{ _("common.loading") }}</pre>
     </div>
+    <div class="settings-panel">
+      <h3>{{ _("settings.permission_policies") }}</h3>
+      <div id="permission-policies-list"><p class="empty-msg">{{ _("common.loading") }}</p></div>
+    </div>
   </div>
 
 </div>
@@ -233,8 +423,13 @@
 {% block scripts %}
 <script>
 (function() {
+  let _currentSettingsLang = 'pl';
+  let _activeSettingsTab = 'general';
+  let _activeIntegrationsTab = 'keys';
+
   /* ── Tab switching ── */
   window.switchSettings = function(name, btn) {
+    _activeSettingsTab = name;
     document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
     document.getElementById('sect-'+name).classList.add('active');
@@ -242,7 +437,7 @@
     // Lazy load data
     if (name === 'integrations') { loadApiKeys(); loadWebhooks(); }
     else if (name === 'memory') loadMemory();
-    else if (name === 'cron') loadCronJobs();
+    else if (name === 'cron') { loadCronJobs(); loadCronHistory(); previewCronExpr(); }
     else if (name === 'prompts') loadPrompts();
     else if (name === 'templates') loadTemplates();
     else if (name === 'costs') loadCostConfig();
@@ -251,16 +446,67 @@
     else if (name === 'advanced') loadAdvanced();
   };
 
-  /* ── Models ── */
-  let _ollamaModels = [];
-
-  async function fetchOllamaModels() {
+  async function loadGeneralPrefs() {
     try {
-      const res = await fetch('/models/ollama/status');
+      const res = await fetch('/api/settings/preferences');
+      if (!res.ok) return;
       const data = await res.json();
-      _ollamaModels = (data.models || []).map(m => typeof m === 'string' ? m : m.name || String(m));
-    } catch(e) { _ollamaModels = []; }
-    return _ollamaModels;
+      const prefs = data.preferences || {};
+      _currentSettingsLang = prefs.language || 'pl';
+      document.getElementById('pref-language').value = prefs.language || 'pl';
+      document.getElementById('pref-theme').value = prefs.theme || 'dark';
+      document.getElementById('pref-workspace').value = prefs.default_workspace || 'default';
+      document.getElementById('pref-auto-refresh').value = String(
+        prefs.auto_refresh_seconds != null ? prefs.auto_refresh_seconds : 30
+      );
+      const preferredTab = prefs.panel_preferences && prefs.panel_preferences.settings_active_tab;
+      if (preferredTab && preferredTab !== 'general') {
+        const btn = document.querySelector('[data-settings-tab="' + preferredTab + '"]');
+        if (btn) switchSettings(preferredTab, btn);
+      }
+    } catch(e) {}
+  }
+
+  /* ── Models ── */
+  let _modelCatalog = { all_models: [], backends: ['ollama'], ollama_models: [] };
+
+  function formatBackendLabel(name) {
+    if (!name) return 'ollama';
+    if (name === 'ollama') return 'Ollama';
+    if (name === 'openai') return 'OpenAI';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  async function loadModelCatalog(force) {
+    if (!force && _modelCatalog.all_models && _modelCatalog.all_models.length) return _modelCatalog;
+    try {
+      const res = await fetch('/models');
+      const data = await res.json();
+      _modelCatalog = data || { all_models: [], backends: ['ollama'], ollama_models: [] };
+    } catch(e) {
+      _modelCatalog = { all_models: [], backends: ['ollama'], ollama_models: [] };
+    }
+    return _modelCatalog;
+  }
+
+  function catalogBackends() {
+    const backends = Array.isArray(_modelCatalog.backends) ? _modelCatalog.backends.slice() : [];
+    return backends.length ? backends : ['ollama'];
+  }
+
+  function catalogModelsForBackend(backend) {
+    return (_modelCatalog.all_models || []).filter(model => (model.backend || 'ollama') === backend);
+  }
+
+  function populateBackendSelect(selectId, currentValue) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const options = catalogBackends();
+    if (currentValue && !options.includes(currentValue)) options.push(currentValue);
+    sel.innerHTML = options.map(name => {
+      const selected = name === (currentValue || 'ollama') ? ' selected' : '';
+      return `<option value="${name}"${selected}>${formatBackendLabel(name)}</option>`;
+    }).join('');
   }
 
   function populateModelSelect(selectId, currentValue) {
@@ -268,43 +514,29 @@
     const agentKey = selectId.replace('cfg-', '').replace('-model', '');
     const src = document.getElementById('cfg-' + agentKey + '-source').value;
     sel.innerHTML = '';
-    if (src === 'ollama' && _ollamaModels.length) {
+    const models = catalogModelsForBackend(src);
+    if (models.length) {
       const placeholder = document.createElement('option');
       placeholder.value = ''; placeholder.textContent = '— {{ _("settings.select_model") }} —';
       sel.appendChild(placeholder);
-      _ollamaModels.forEach(m => {
+      models.forEach(item => {
         const opt = document.createElement('option');
-        opt.value = m; opt.textContent = m;
-        if (m === currentValue) opt.selected = true;
+        opt.value = item.name;
+        opt.textContent = item.label || item.name;
+        if (item.name === currentValue) opt.selected = true;
         sel.appendChild(opt);
       });
-      // If current value is set but not in the list, add it
-      if (currentValue && !_ollamaModels.includes(currentValue)) {
+      if (currentValue && !models.some(item => item.name === currentValue)) {
         const opt = document.createElement('option');
-        opt.value = currentValue; opt.textContent = currentValue + ' (not pulled)';
+        opt.value = currentValue;
+        opt.textContent = currentValue + ' (custom)';
         opt.selected = true;
         sel.appendChild(opt);
       }
-    } else if (src === 'ollama') {
+    } else {
       const opt = document.createElement('option');
       opt.value = ''; opt.textContent = '{{ _("settings.no_models") }}';
       sel.appendChild(opt);
-    } else {
-      // OpenAI — allow typing a custom model name
-      const opt = document.createElement('option');
-      opt.value = ''; opt.textContent = '— {{ _("settings.enter_model") }} —';
-      sel.appendChild(opt);
-      ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1', 'o1-mini', 'o3-mini'].forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m;
-        if (m === currentValue) o.selected = true;
-        sel.appendChild(o);
-      });
-      if (currentValue && !sel.querySelector('option[value="'+currentValue+'"]')) {
-        const o = document.createElement('option');
-        o.value = currentValue; o.textContent = currentValue; o.selected = true;
-        sel.appendChild(o);
-      }
     }
   }
 
@@ -314,23 +546,19 @@
   };
 
   async function loadModelConfig() {
-    await fetchOllamaModels();
+    await loadModelCatalog(true);
     try {
       const res = await fetch('/models/config');
       const cfg = await res.json();
-      if (cfg.polluks) {
-        document.getElementById('cfg-polluks-source').value = cfg.polluks.source || 'ollama';
-        populateModelSelect('cfg-polluks-model', cfg.polluks.model_name || '');
-      } else {
-        populateModelSelect('cfg-polluks-model', '');
-      }
-      if (cfg.kastor) {
-        document.getElementById('cfg-kastor-source').value = cfg.kastor.source || 'ollama';
-        populateModelSelect('cfg-kastor-model', cfg.kastor.model_name || '');
-      } else {
-        populateModelSelect('cfg-kastor-model', '');
-      }
+      const polluks = cfg.polluks || { model_name: cfg.polluks_model || '', source: cfg.polluks_source || 'ollama' };
+      const kastor = cfg.kastor || { model_name: cfg.kastor_model || '', source: cfg.kastor_source || 'ollama' };
+      populateBackendSelect('cfg-polluks-source', polluks.source || 'ollama');
+      populateBackendSelect('cfg-kastor-source', kastor.source || 'ollama');
+      populateModelSelect('cfg-polluks-model', polluks.model_name || '');
+      populateModelSelect('cfg-kastor-model', kastor.model_name || '');
     } catch(e) {
+      populateBackendSelect('cfg-polluks-source', 'ollama');
+      populateBackendSelect('cfg-kastor-source', 'ollama');
       populateModelSelect('cfg-polluks-model', '');
       populateModelSelect('cfg-kastor-model', '');
     }
@@ -341,7 +569,7 @@
       kastor: { model_name: document.getElementById('cfg-kastor-model').value, source: document.getElementById('cfg-kastor-source').value },
     };
     const res = await fetch('/models/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    document.getElementById('model-save-status').textContent = res.ok ? '✓ {{ _("common.save") }}' : '✗ {{ _("common.error") }}';
+    document.getElementById('model-save-status').textContent = res.ok ? '{{ _("common.save") }}' : '{{ _("common.error") }}';
     setTimeout(() => document.getElementById('model-save-status').textContent = '', 3000);
   };
   async function loadOllamaStatus() {
@@ -349,7 +577,7 @@
       const res = await fetch('/models/ollama/status');
       const data = await res.json();
       document.getElementById('ollama-status-info').innerHTML =
-        `<span class="glass-badge glass-badge--${data.status==='ok'?'success':'error'}">${data.status||'—'}</span>`;
+        `<span class="glass-badge glass-badge--${data.available ? 'success' : 'error'}">${data.available ? 'online' : 'offline'}</span>`;
       const models = data.models || [];
       document.getElementById('ollama-models-list').innerHTML = models.length
         ? models.map(m => `<span class="glass-badge glass-badge--muted settings-badge-inline">${m.name || m}</span>`).join('')
@@ -358,31 +586,173 @@
       document.getElementById('ollama-status-info').innerHTML = '<span class="glass-badge glass-badge--error">{{ _("settings.unavailable") }}</span>';
     }
   }
+  loadGeneralPrefs();
   loadModelConfig();
   loadOllamaStatus();
+
+  window.switchIntegrationsTab = function(name, btn) {
+    _activeIntegrationsTab = name;
+    document.querySelectorAll('[data-integrations-tab]').forEach(function(tabBtn) {
+      tabBtn.classList.remove('active');
+    });
+    document.querySelectorAll('[id^="integrations-tab-"]').forEach(function(panel) {
+      panel.hidden = true;
+    });
+    const panel = document.getElementById('integrations-tab-' + name);
+    if (panel) panel.hidden = false;
+    if (btn) btn.classList.add('active');
+  };
+
+  function parseCsvList(value) {
+    return (value || '').split(',').map(function(item) {
+      return item.trim();
+    }).filter(Boolean);
+  }
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  let _generatedApiKey = null;
+  let _webhookItems = [];
+  let _editingWebhookId = null;
+
+  function getSelectedApiKeyScopes() {
+    const picked = Array.from(document.querySelectorAll('.api-key-scope:checked')).map(function(cb) { return cb.value; });
+    return Array.from(new Set(picked.concat(parseCsvList(document.getElementById('new-key-custom-scopes').value))));
+  }
+
+  function showGeneratedApiKey(rawKey) {
+    _generatedApiKey = rawKey || null;
+    const panel = document.getElementById('api-key-created-panel');
+    panel.hidden = !_generatedApiKey;
+    document.getElementById('api-key-created-value').textContent = _generatedApiKey || '—';
+  }
+
+  window.copyGeneratedApiKey = async function() {
+    if (!_generatedApiKey) return;
+    try {
+      await navigator.clipboard.writeText(_generatedApiKey);
+      if (typeof showToast === 'function') showToast('Key copied', 'success');
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Copy failed', 'error');
+    }
+  };
+
+  window.dismissGeneratedApiKey = function() {
+    showGeneratedApiKey(null);
+  };
+
+  function webhookStatusBadge(status) {
+    const normalized = status || 'active';
+    const variant = normalized === 'failing' ? 'error' : (normalized === 'disabled' ? 'muted' : 'success');
+    return `<span class="glass-badge glass-badge--${variant}">${esc(normalized)}</span>`;
+  }
+
+  function notifySettings(message, level) {
+    if (typeof showToast === 'function') showToast(message, level || 'info');
+  }
+
+  async function settingsErrorMessage(res, fallback) {
+    const payload = await res.json().catch(function() { return {}; });
+    return payload.error || fallback;
+  }
+
+  function fillWebhookEventPicker(events) {
+    const selected = new Set(events || []);
+    document.querySelectorAll('.webhook-event').forEach(function(cb) {
+      cb.checked = selected.has(cb.value);
+    });
+  }
+
+  function resetWebhookFormFields() {
+    document.getElementById('new-hook-url').value = '';
+    document.getElementById('new-hook-secret').value = '';
+    document.getElementById('new-hook-active').value = 'true';
+    fillWebhookEventPicker(['task_complete']);
+  }
 
   /* ── API Keys ── */
   async function loadApiKeys() {
     try {
       const res = await fetch('/settings/api-keys');
       const keys = await res.json();
-      const list = document.getElementById('api-keys-list');
-      if (!keys.length) { list.innerHTML = '<li class="empty-msg">{{ _("settings.no_keys") }}</li>'; return; }
-      list.innerHTML = keys.map(k => `<li>
-        <div><span class="key-prefix">${k.prefix||k.id}</span> — ${k.name||'—'}</div>
-        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="revokeKey('${k.id}')">{{ _("settings.revoke") }}</button>
-      </li>`).join('');
+      const tbody = document.getElementById('api-keys-tbody');
+      if (!keys.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">{{ _("settings.no_keys") }}</td></tr>';
+        return;
+      }
+      tbody.innerHTML = keys.map(k => `<tr>
+        <td>${k.name||'—'}</td>
+        <td><span class="key-prefix">${k.prefix || (k.id || '').slice(0, 8)}</span></td>
+        <td>${(k.scopes||[]).join(', ') || '—'}</td>
+        <td>${k.rate_limit_per_min || '—'}</td>
+        <td>${formatDateTime(k.expires_at)}</td>
+        <td>${formatDateTime(k.last_used_at)}</td>
+        <td><span class="glass-badge glass-badge--${k.is_active ? 'success' : 'muted'}">${k.is_active ? '{{ _("settings.active") }}' : '{{ _("settings.disabled") }}'}</span></td>
+        <td>
+          <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="revokeKey('${k.id}')">{{ _("settings.revoke") }}</button>
+          <button class="glass-btn glass-btn--ghost glass-btn--xs" onclick="deleteKey('${k.id}')">{{ _("common.delete") }}</button>
+        </td>
+      </tr>`).join('');
     } catch(e) {}
   }
   window.createApiKey = async function() {
     const name = document.getElementById('new-key-name').value.trim() || 'Unnamed';
-    const res = await fetch('/settings/api-keys', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
-    if (res.ok) { const data = await res.json(); alert('Klucz: ' + (data.raw_key||'—') + '\n\nZapisz go — nie będzie widoczny ponownie.'); loadApiKeys(); }
+    const scopes = getSelectedApiKeyScopes();
+    const expiresAt = document.getElementById('new-key-expires').value || null;
+    const rateLimit = document.getElementById('new-key-rate-limit').value || null;
+    try {
+      const res = await fetch('/settings/api-keys', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, scopes, expires_at: expiresAt, rate_limit_per_min: rateLimit}) });
+      if (res.ok) {
+        const data = await res.json();
+        showGeneratedApiKey(data.raw_key || null);
+        document.getElementById('new-key-name').value = '';
+        document.getElementById('new-key-custom-scopes').value = '';
+        document.querySelectorAll('.api-key-scope').forEach(function(cb) { cb.checked = ['agents.read', 'tasks.read'].includes(cb.value); });
+        document.getElementById('new-key-rate-limit').value = '';
+        document.getElementById('new-key-expires').value = '';
+        notifySettings('API key created', 'success');
+        loadApiKeys();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'API key creation failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('API key creation failed', 'error');
+    }
   };
   window.revokeKey = async function(id) {
     if (!confirm('Odwołać klucz?')) return;
-    await fetch('/settings/api-keys/'+id+'/revoke', {method:'PUT'});
-    loadApiKeys();
+    try {
+      const res = await fetch('/settings/api-keys/'+id+'/revoke', {method:'PUT'});
+      if (res.ok) {
+        notifySettings('API key revoked', 'success');
+        loadApiKeys();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'API key revoke failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('API key revoke failed', 'error');
+    }
+  };
+  window.deleteKey = async function(id) {
+    if (!confirm('Usunąć klucz?')) return;
+    try {
+      const res = await fetch('/settings/api-keys/' + id, { method: 'DELETE' });
+      if (res.ok) {
+        notifySettings('API key deleted', 'success');
+        loadApiKeys();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'API key delete failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('API key delete failed', 'error');
+    }
   };
 
   /* ── Webhooks ── */
@@ -390,24 +760,77 @@
     try {
       const res = await fetch('/settings/webhooks');
       const hooks = await res.json();
-      const list = document.getElementById('webhooks-list');
-      if (!hooks.length) { list.innerHTML = '<li class="empty-msg">{{ _("settings.no_hooks") }}</li>'; return; }
-      list.innerHTML = hooks.map(h => `<li>
-        <div><strong>${h.url||'—'}</strong> <span class="text-muted">(${(h.events||[]).join(', ')||'all'})</span></div>
-        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteWebhook('${h.id}')">{{ _("common.delete") }}</button>
-      </li>`).join('');
+      _webhookItems = Array.isArray(hooks) ? hooks : [];
+      const tbody = document.getElementById('webhooks-tbody');
+      if (!_webhookItems.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">{{ _("settings.no_hooks") }}</td></tr>';
+        return;
+      }
+      tbody.innerHTML = _webhookItems.map(h => `<tr>
+        <td><strong>${h.url||'—'}</strong></td>
+        <td>${(h.events||[]).join(', ')||'all'}</td>
+        <td>${webhookStatusBadge(h.status)}</td>
+        <td>${h.last_delivery_at ? `${formatDateTime(h.last_delivery_at)}${h.last_delivery_status != null ? ' · HTTP ' + h.last_delivery_status : ''}` : '—'}</td>
+        <td>
+          <button class="glass-btn glass-btn--ghost glass-btn--xs" onclick="openWebhookEdit('${h.id}')">Edit</button>
+          <button class="glass-btn glass-btn--xs" onclick="testWebhook('${h.id}')">Test</button>
+          <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteWebhook('${h.id}')">{{ _("common.delete") }}</button>
+        </td>
+      </tr>`).join('');
     } catch(e) {}
   }
-  window.createWebhook = async function() {
+  window.resetWebhookForm = function() {
+    _editingWebhookId = null;
+    document.getElementById('webhook-submit-btn').textContent = '{{ _("settings.add_webhook") }}';
+    document.getElementById('webhook-cancel-edit-btn').hidden = true;
+    resetWebhookFormFields();
+  };
+  window.openWebhookEdit = function(id) {
+    const hook = _webhookItems.find(function(item) { return item.id === id; });
+    if (!hook) return;
+    _editingWebhookId = id;
+    document.getElementById('new-hook-url').value = hook.url || '';
+    document.getElementById('new-hook-secret').value = '';
+    document.getElementById('new-hook-active').value = hook.is_active === false ? 'false' : 'true';
+    fillWebhookEventPicker(hook.events || []);
+    document.getElementById('webhook-submit-btn').textContent = 'Save Webhook';
+    document.getElementById('webhook-cancel-edit-btn').hidden = false;
+  };
+  window.saveWebhook = async function() {
     const url = document.getElementById('new-hook-url').value.trim();
+    const secret = document.getElementById('new-hook-secret').value.trim() || null;
+    const events = Array.from(document.querySelectorAll('.webhook-event:checked')).map(function(cb) { return cb.value; });
+    const isActive = document.getElementById('new-hook-active').value !== 'false';
     if (!url) return;
-    await fetch('/settings/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url, events:[]}) });
-    loadWebhooks();
+    const targetUrl = _editingWebhookId ? '/settings/webhooks/' + encodeURIComponent(_editingWebhookId) : '/settings/webhooks';
+    const method = _editingWebhookId ? 'PUT' : 'POST';
+    try {
+      const res = await fetch(targetUrl, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({url, events, secret, is_active: isActive}) });
+      if (res.ok) {
+        resetWebhookForm();
+        notifySettings(_editingWebhookId ? 'Webhook updated' : 'Webhook added', 'success');
+        loadWebhooks();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Webhook save failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Webhook save failed', 'error');
+    }
   };
   window.deleteWebhook = async function(id) {
     if (!confirm('Usunąć webhook?')) return;
-    await fetch('/settings/webhooks/'+id, {method:'DELETE'});
-    loadWebhooks();
+    try {
+      const res = await fetch('/settings/webhooks/'+id, {method:'DELETE'});
+      if (res.ok) {
+        if (_editingWebhookId === id) resetWebhookForm();
+        notifySettings('Webhook deleted', 'success');
+        loadWebhooks();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Webhook delete failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Webhook delete failed', 'error');
+    }
   };
 
   /* ── Memory ── */
@@ -425,7 +848,7 @@
     el.innerHTML = items.map((m,i) => `<div class="memory-item">
       <div class="mem-content">${m.content||m.text||JSON.stringify(m)}</div>
       <div><span class="mem-meta">${m.agent||''} ${m.tag||''}</span>
-        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteMemory(${i})">×</button>
+        <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteMemory(${i})">Delete</button>
       </div>
     </div>`).join('');
   }
@@ -435,15 +858,39 @@
   };
   window.clearAllMemory = async function() {
     if (!confirm('Usunąć całą pamięć?')) return;
-    await fetch('/api/memory', {method:'DELETE'});
-    loadMemory();
+    try {
+      const res = await fetch('/api/memory', {method:'DELETE'});
+      if (res.ok) {
+        notifySettings('Memory cleared', 'success');
+        loadMemory();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Memory clear failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Memory clear failed', 'error');
+    }
   };
   window.deleteMemory = async function(idx) {
-    await fetch('/api/memory/'+idx, {method:'DELETE'});
-    loadMemory();
+    try {
+      const res = await fetch('/api/memory/'+idx, {method:'DELETE'});
+      if (res.ok) {
+        notifySettings('Memory item deleted', 'success');
+        loadMemory();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Memory delete failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Memory delete failed', 'error');
+    }
   };
 
   /* ── Cron ── */
+  function formatDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  }
+
   async function loadCronJobs() {
     try {
       const res = await fetch('/api/cron');
@@ -451,8 +898,11 @@
       const el = document.getElementById('cron-list');
       if (!jobs.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_cron") }}</div>'; return; }
       el.innerHTML = jobs.map(j => `<div class="cron-item">
-        <div><span class="cron-name">${j.name||'—'}</span> <span class="cron-expr">${j.cron_expression||''}</span>
-          <span class="glass-badge glass-badge--${j.enabled?'success':'muted'}">${j.enabled?'{{ _("settings.active") }}':'{{ _("settings.disabled") }}'}</span></div>
+        <div>
+          <span class="cron-name">${j.name||'—'}</span> <span class="cron-expr">${j.cron_expr||''}</span>
+          <span class="glass-badge glass-badge--${j.enabled?'success':'muted'}">${j.enabled?'{{ _("settings.active") }}':'{{ _("settings.disabled") }}'}</span>
+          <div class="text-muted">{{ _("settings.next_run") }}: ${formatDateTime(j.next_run)} · {{ _("settings.last_run") }}: ${formatDateTime(j.last_run)}</div>
+        </div>
         <div>
           <button class="glass-btn glass-btn--ghost glass-btn--xs" onclick="toggleCron('${j.id}')">${j.enabled?'{{ _("settings.disable") }}':'{{ _("settings.enable") }}'}</button>
           <button class="glass-btn glass-btn--danger glass-btn--xs" onclick="deleteCron('${j.id}')">{{ _("common.delete") }}</button>
@@ -460,17 +910,85 @@
       </div>`).join('');
     } catch(e) {}
   }
+  async function loadCronHistory() {
+    try {
+      const res = await fetch('/api/cron/history?limit=20');
+      const entries = await res.json();
+      const el = document.getElementById('cron-history-list');
+      if (!entries.length) { el.innerHTML = '<div class="empty-msg">{{ _("settings.no_cron_history") }}</div>'; return; }
+      el.innerHTML = entries.map(entry => `<div class="settings-list-item">
+        <div>
+          <strong>${entry.job_name || entry.job_id || '—'}</strong>
+          <div class="text-muted">${formatDateTime(entry.triggered_at)}</div>
+          ${entry.message ? `<div class="text-muted">${entry.message}</div>` : ''}
+        </div>
+        <span class="glass-badge glass-badge--${entry.status === 'success' ? 'success' : 'error'}">${entry.status}</span>
+      </div>`).join('');
+    } catch(e) {}
+  }
+  window.previewCronExpr = async function() {
+    const expr = document.getElementById('cron-expr').value.trim();
+    const status = document.getElementById('cron-preview-status');
+    if (!expr) {
+      status.textContent = '{{ _("settings.cron_preview_hint") }}';
+      return;
+    }
+    const res = await fetch('/api/cron/preview?cron_expr=' + encodeURIComponent(expr));
+    const data = await res.json();
+    if (!res.ok || data.valid === false) {
+      status.textContent = '{{ _("settings.invalid_cron") }}: ' + (data.error || '—');
+      return;
+    }
+    status.textContent = '{{ _("settings.next_run") }}: ' + formatDateTime(data.next_run);
+  };
   window.createCronJob = async function() {
     const body = {
       name: document.getElementById('cron-name').value,
-      cron_expression: document.getElementById('cron-expr').value,
+      cron_expr: document.getElementById('cron-expr').value,
       task_title: document.getElementById('cron-task').value,
     };
-    await fetch('/api/cron', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    loadCronJobs();
+    const res = await fetch('/api/cron', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    if (res.ok) {
+      document.getElementById('cron-name').value = '';
+      document.getElementById('cron-task').value = '';
+      notifySettings('Cron job created', 'success');
+      loadCronJobs();
+      loadCronHistory();
+      previewCronExpr();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      document.getElementById('cron-preview-status').textContent = '{{ _("settings.invalid_cron") }}: ' + (data.error || '—');
+    }
   };
-  window.toggleCron = async function(id) { await fetch('/api/cron/'+id+'/toggle', {method:'PUT'}); loadCronJobs(); };
-  window.deleteCron = async function(id) { if(!confirm('Usunąć?'))return; await fetch('/api/cron/'+id, {method:'DELETE'}); loadCronJobs(); };
+  window.toggleCron = async function(id) {
+    try {
+      const res = await fetch('/api/cron/'+id+'/toggle', {method:'PUT'});
+      if (res.ok) {
+        notifySettings('Cron job updated', 'success');
+        loadCronJobs();
+        loadCronHistory();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Cron job update failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Cron job update failed', 'error');
+    }
+  };
+  window.deleteCron = async function(id) {
+    if(!confirm('Usunąć?'))return;
+    try {
+      const res = await fetch('/api/cron/'+id, {method:'DELETE'});
+      if (res.ok) {
+        notifySettings('Cron job deleted', 'success');
+        loadCronJobs();
+        loadCronHistory();
+      } else {
+        notifySettings(await settingsErrorMessage(res, 'Cron job delete failed'), 'error');
+      }
+    } catch(e) {
+      notifySettings('Cron job delete failed', 'error');
+    }
+  };
 
   /* ── Prompts ── */
   async function loadPrompts() {
@@ -518,19 +1036,37 @@
     };
     const res = await fetch('/api/budget/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
     const status = document.getElementById('cost-save-status');
-    status.textContent = res.ok ? '✓ {{ _("common.save") }}' : '✗ {{ _("common.error") }}';
+    status.textContent = res.ok ? '{{ _("common.save") }}' : '{{ _("common.error") }}';
     setTimeout(() => status.textContent = '', 3000);
   };
 
   /* ── General preferences ── */
   window.saveGeneralPrefs = async function() {
     const status = document.getElementById('general-save-status');
-    // Language change
-    const lang = document.getElementById('pref-language').value;
-    if (lang) {
-      try { await fetch('/lang/' + lang); } catch(e) {}
+    const lang = document.getElementById('pref-language').value || 'pl';
+    const body = {
+      language: lang,
+      theme: document.getElementById('pref-theme').value || 'dark',
+      default_workspace: document.getElementById('pref-workspace').value.trim() || 'default',
+      auto_refresh_seconds: parseInt(document.getElementById('pref-auto-refresh').value || '30', 10) || 30,
+      panel_preferences: {
+        settings_active_tab: _activeSettingsTab,
+      },
+    };
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      status.textContent = res.ok ? '{{ _("common.save") }}' : '{{ _("common.error") }}';
+      if (res.ok && _currentSettingsLang !== lang) {
+        _currentSettingsLang = lang;
+        setTimeout(() => window.location.reload(), 250);
+      }
+    } catch(e) {
+      status.textContent = '{{ _("common.error") }}';
     }
-    status.textContent = '✓ {{ _("common.save") }}';
     setTimeout(() => status.textContent = '', 3000);
   };
 
@@ -604,7 +1140,179 @@
     } catch(e) {
       document.getElementById('advanced-quota-data').textContent = 'Error loading quotas';
     }
+    /* SET7 — Permission policies */
+    try {
+      const ppRes = await fetch('/admin/audit?action=permission&limit=20', { headers: { Accept: 'application/json' } });
+      const ppData = await ppRes.json();
+      var items = ppData.logs || ppData.items || [];
+      var el = document.getElementById('permission-policies-list');
+      if (!items.length) { el.innerHTML = '<p class="empty-msg">No permission policies found</p>'; }
+      else { el.innerHTML = items.map(function(p) { return '<div class="glass-card" style="padding:8px;margin-bottom:4px"><strong>' + (p.action||'') + '</strong> — ' + JSON.stringify(p.detail||{}).substring(0,100) + '</div>'; }).join(''); }
+    } catch(e) {}
   }
+
+  /* SET2 — Save budget limits */
+  window.saveBudgetLimits = async function() {
+    var session = document.getElementById('budget-session-limit').value;
+    var daily = document.getElementById('budget-daily-limit').value;
+    try {
+      var res = await fetch('/api/budget/limits', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_limit: parseInt(session) || null, daily_limit: parseInt(daily) || null }) });
+      if (res.ok) { if (typeof showToast === 'function') showToast('Budget limits saved', 'success'); }
+      else if (typeof showToast === 'function') showToast('Budget limits save failed', 'error');
+    } catch(e) { if (typeof showToast === 'function') showToast('Budget limits save failed', 'error'); }
+  };
+
+  /* SET3 — Save notification channels */
+  window.saveNotifChannels = async function() {
+    var channels = {};
+    document.querySelectorAll('#notif-channel-matrix input[type=checkbox]').forEach(function(cb) {
+      var ev = cb.dataset.event, ch = cb.dataset.ch;
+      if (!channels[ev]) channels[ev] = [];
+      if (cb.checked) channels[ev].push(ch);
+    });
+    try {
+      var res = await fetch('/settings/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channels: channels }) });
+      if (res.ok) { if (typeof showToast === 'function') showToast('Notification channels saved', 'success'); }
+      else if (typeof showToast === 'function') showToast('Notification channels save failed', 'error');
+    } catch(e) { if (typeof showToast === 'function') showToast('Notification channels save failed', 'error'); }
+  };
+
+  /* SET4 — Test webhook */
+  window.testWebhook = async function(id) {
+    try {
+      var res = await fetch('/api/webhooks/' + encodeURIComponent(id) + '/test', { method: 'POST' });
+      if (res.ok) { if (typeof showToast === 'function') showToast('Webhook test sent', 'success'); }
+      else { if (typeof showToast === 'function') showToast('Webhook test failed', 'error'); }
+      loadWebhooks();
+    } catch(e) { if (typeof showToast === 'function') showToast('Webhook test error', 'error'); }
+  };
+
+  /* SET6 — Load login attempts when security tab opened */
+  var origSwitchSettings = window.switchSettings;
+  window.switchSettings = function(name, btn) {
+    origSwitchSettings(name, btn);
+    if (name === 'security') loadLoginAttempts();
+    if (name === 'permissions') loadPermissions();
+  };
+  async function loadLoginAttempts() {
+    try {
+      var res = await fetch('/admin/audit?action=login&limit=20', { headers: { Accept: 'application/json' } });
+      var data = await res.json();
+      var items = data.logs || data.items || [];
+      var el = document.getElementById('login-attempts-list');
+      if (!items.length) { el.innerHTML = '<p class="empty-msg">No login attempts recorded</p>'; return; }
+      el.innerHTML = '<table class="glass-table"><thead><tr><th>Date</th><th>User</th><th>IP</th><th>Status</th></tr></thead><tbody>' +
+        items.map(function(l) {
+          var ok = (l.detail && l.detail.success) !== false;
+          return '<tr><td>' + new Date(l.created_at).toLocaleString() + '</td><td>' + (l.email || l.user_id || '') + '</td><td>' + (l.ip_address || '—') + '</td><td><span class="glass-badge ' + (ok ? 'badge-success' : 'badge-error') + '">' + (ok ? 'OK' : 'Failed') + '</span></td></tr>';
+        }).join('') + '</tbody></table>';
+    } catch(e) {}
+  }
+
+  /* ── Permissions tab ── */
+  var _permState = { allow_all: false, granted_once: [] };
+  var _permResources = [];
+
+  async function loadPermissions() {
+    try {
+      var [permRes, resRes] = await Promise.all([
+        fetch('/api/permissions'),
+        fetch('/api/permissions/resources'),
+      ]);
+      if (permRes.ok) {
+        _permState = await permRes.json();
+        document.getElementById('perm-allow-all').checked = _permState.allow_all;
+        document.getElementById('perm-allow-all-label').textContent =
+          _permState.allow_all
+            ? (window.t ? window.t('permissions.status_on', 'Global access ON') : 'Global access ON')
+            : (window.t ? window.t('permissions.status_off', 'Per-resource mode') : 'Per-resource mode');
+      }
+      if (resRes.ok) {
+        var data = await resRes.json();
+        _permResources = data.resources || [];
+        renderResourceToggles();
+      }
+    } catch(e) {
+      console.warn('Failed to load permissions', e);
+    }
+  }
+
+  function renderResourceToggles() {
+    var el = document.getElementById('perm-resource-list');
+    if (!_permResources.length) {
+      el.innerHTML = '<p class="empty-msg">' + (window.t ? window.t('permissions.no_resources', 'No resources defined') : 'No resources defined') + '</p>';
+      return;
+    }
+    var granted = new Set(_permState.granted_once || []);
+    el.innerHTML = _permResources.map(function(r) {
+      var checked = _permState.allow_all || granted.has(r.key);
+      var disabled = _permState.allow_all ? 'disabled' : '';
+      var label = (window.t && r.label) ? window.t(r.label, r.key) : r.key;
+      return '<div class="perm-resource-item">' +
+        '<label class="glass-switch" title="' + r.key + '">' +
+        '<input type="checkbox" data-resource="' + r.key + '" ' +
+        (checked ? 'checked ' : '') + disabled +
+        ' onchange="onPermResourceChange(this)">' +
+        '<span class="glass-switch__slider"></span>' +
+        '</label>' +
+        '<span class="perm-resource-label">' + label + '</span>' +
+        '<span class="glass-badge glass-badge--muted">' + r.category + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  window.onPermAllowAllChange = function(cb) {
+    _permState.allow_all = cb.checked;
+    document.getElementById('perm-allow-all-label').textContent =
+      cb.checked
+        ? (window.t ? window.t('permissions.status_on', 'Global access ON') : 'Global access ON')
+        : (window.t ? window.t('permissions.status_off', 'Per-resource mode') : 'Per-resource mode');
+    renderResourceToggles();
+  };
+
+  window.onPermResourceChange = function(cb) {
+    var key = cb.dataset.resource;
+    var granted = new Set(_permState.granted_once || []);
+    if (cb.checked) granted.add(key);
+    else granted.delete(key);
+    _permState.granted_once = Array.from(granted).sort();
+  };
+
+  window.savePermissions = async function() {
+    var status = document.getElementById('perm-save-status');
+    try {
+      var res = await fetch('/api/permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allow_all: _permState.allow_all,
+          granted_once: _permState.granted_once || [],
+        }),
+      });
+      if (res.ok) {
+        var data = await res.json();
+        _permState.allow_all = data.allow_all;
+        _permState.granted_once = data.granted_once || [];
+        status.textContent = window.t ? window.t('common.save', 'Saved') : 'Saved';
+      } else {
+        status.textContent = window.t ? window.t('common.error', 'Error') : 'Error';
+      }
+    } catch(e) {
+      status.textContent = window.t ? window.t('common.error', 'Error') : 'Error';
+    }
+    setTimeout(function() { status.textContent = ''; }, 3000);
+  };
+
+  window.resetPermissions = async function() {
+    if (!confirm(window.t ? window.t('permissions.confirm_reset', 'Reset all permissions?') : 'Reset all permissions?')) return;
+    _permState = { allow_all: false, granted_once: [] };
+    document.getElementById('perm-allow-all').checked = false;
+    document.getElementById('perm-allow-all-label').textContent =
+      window.t ? window.t('permissions.status_off', 'Per-resource mode') : 'Per-resource mode';
+    renderResourceToggles();
+    await savePermissions();
+  };
+
 })();
 </script>
 {% endblock %}

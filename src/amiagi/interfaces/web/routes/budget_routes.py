@@ -2,6 +2,7 @@
 
 Endpoints:
     GET  /api/budget/history   — budget usage history (time-series)
+    GET  /api/budget/quotas    — current thresholds and policy actions
     PUT  /api/budget/quotas    — update per-role & session quotas
     POST /api/budget/reset     — reset agent or session budget counters
 """
@@ -20,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 _BUDGET_DEFAULTS_PATH = Path("config/budget_defaults.yaml")
 _QUOTA_DEFAULTS_PATH = Path("config/quota_defaults.yaml")
+
+
+def _default_budget_config() -> dict:
+    return {
+        "session": {"limit_usd": 50.0},
+        "agents": {"default": {"limit_usd": 5.0}},
+        "thresholds": {
+            "warning_pct": 80,
+            "blocked_pct": 100,
+            "warning_action": "notify",
+            "blocked_action": "block",
+            "approval_threshold_usd": 10.0,
+        },
+    }
 
 
 # ── GET /api/budget/history ──────────────────────────────────
@@ -66,6 +81,22 @@ async def budget_history(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+# ── GET /api/budget/quotas ───────────────────────────────────
+
+async def budget_quotas_get(request: Request) -> JSONResponse:
+    """Return saved budget thresholds and actions."""
+    config = _read_yaml(_BUDGET_DEFAULTS_PATH) or _default_budget_config()
+    thresholds = config.setdefault("thresholds", {})
+    thresholds.setdefault("warning_pct", 80)
+    thresholds.setdefault("blocked_pct", 100)
+    thresholds.setdefault("warning_action", "notify")
+    thresholds.setdefault("blocked_action", "block")
+    thresholds.setdefault("approval_threshold_usd", 10.0)
+    config.setdefault("session", {}).setdefault("limit_usd", 50.0)
+    config.setdefault("agents", {}).setdefault("default", {"limit_usd": 5.0})
+    return JSONResponse({"ok": True, "config": config})
+
+
 # ── PUT /api/budget/quotas ───────────────────────────────────
 
 async def budget_quotas_update(request: Request) -> JSONResponse:
@@ -80,11 +111,7 @@ async def budget_quotas_update(request: Request) -> JSONResponse:
     body = await request.json()
 
     # Read current config
-    config = _read_yaml(_BUDGET_DEFAULTS_PATH) or {
-        "session": {"limit_usd": 50.0},
-        "agents": {"default": {"limit_usd": 5.0}},
-        "thresholds": {"warning_pct": 80, "blocked_pct": 100},
-    }
+    config = _read_yaml(_BUDGET_DEFAULTS_PATH) or _default_budget_config()
 
     changed = False
 
@@ -98,6 +125,18 @@ async def budget_quotas_update(request: Request) -> JSONResponse:
 
     if "blocked_pct" in body:
         config.setdefault("thresholds", {})["blocked_pct"] = int(body["blocked_pct"])
+        changed = True
+
+    if "warning_action" in body:
+        config.setdefault("thresholds", {})["warning_action"] = str(body["warning_action"])
+        changed = True
+
+    if "blocked_action" in body:
+        config.setdefault("thresholds", {})["blocked_action"] = str(body["blocked_action"])
+        changed = True
+
+    if "approval_threshold_usd" in body:
+        config.setdefault("thresholds", {})["approval_threshold_usd"] = float(body["approval_threshold_usd"])
         changed = True
 
     if "agents" in body and isinstance(body["agents"], dict):
@@ -126,6 +165,41 @@ async def budget_quotas_update(request: Request) -> JSONResponse:
         })
 
     return JSONResponse({"ok": True, "config": config})
+
+
+async def budget_limits_update(request: Request) -> JSONResponse:
+    """Update lightweight session/daily limits from the Settings page."""
+    body = await request.json()
+    config = _read_yaml(_QUOTA_DEFAULTS_PATH) or {}
+
+    session_limit = body.get("session_limit")
+    daily_limit = body.get("daily_limit")
+
+    if session_limit is not None:
+        config["session_limit"] = int(session_limit)
+    if daily_limit is not None:
+        config["daily_limit"] = int(daily_limit)
+
+    _write_yaml(_QUOTA_DEFAULTS_PATH, config)
+
+    bm = getattr(request.app.state, "budget_manager", None)
+    if bm is not None and session_limit is not None and hasattr(bm, "set_session_budget"):
+        try:
+            bm.set_session_budget(float(session_limit))
+        except Exception:
+            logger.debug("Failed to apply session limit to running budget manager", exc_info=True)
+
+    from amiagi.interfaces.web.audit.log_helpers import log_action
+    await log_action(request, "budget.limits_update", {
+        "session_limit": session_limit,
+        "daily_limit": daily_limit,
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "session_limit": config.get("session_limit"),
+        "daily_limit": config.get("daily_limit"),
+    })
 
 
 # ── POST /api/budget/reset ───────────────────────────────────
@@ -187,6 +261,8 @@ def _write_yaml(path: Path, data: dict) -> None:
 
 budget_routes: list[Route] = [
     Route("/api/budget/history", budget_history, methods=["GET"]),
+    Route("/api/budget/limits", budget_limits_update, methods=["PUT"]),
+    Route("/api/budget/quotas", budget_quotas_get, methods=["GET"]),
     Route("/api/budget/quotas", budget_quotas_update, methods=["PUT"]),
     Route("/api/budget/reset", budget_reset, methods=["POST"]),
 ]

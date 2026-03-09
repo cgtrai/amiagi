@@ -22,6 +22,7 @@ class SessionTimeline extends HTMLElement {
     this._playIndex = 0;
     this._playTimer = null;
     this._autoScroll = true;
+    this._speed = 1;
   }
 
   connectedCallback() {
@@ -32,6 +33,12 @@ class SessionTimeline extends HTMLElement {
     this._scrubberLabel = this.shadowRoot.querySelector(".tl-scrubber-label");
     this._btnPlay?.addEventListener("click", () => this._togglePlay());
     this._scrubber?.addEventListener("input", (e) => this._onScrub(e));
+    this._speedSelect = this.shadowRoot.querySelector(".tl-speed-select");
+    if (this._speedSelect) {
+      this._speedSelect.addEventListener("change", (e) => {
+        this._speed = parseFloat(e.target.value) || 1;
+      });
+    }
     if (this.sessionId) this.load();
     this._startPoll();
   }
@@ -67,7 +74,7 @@ class SessionTimeline extends HTMLElement {
     try {
       const resp = await fetch("/api/sessions/" + encodeURIComponent(this.sessionId) + "/events");
       if (!resp.ok) {
-        this._showError("Failed to load events (" + resp.status + ")");
+        this._showError(window.t("timeline.error.load_failed", "Failed to load events") + " (" + resp.status + ")");
         return;
       }
       const data = await resp.json();
@@ -75,7 +82,7 @@ class SessionTimeline extends HTMLElement {
       this._events = events;
       this._renderItems();
     } catch (err) {
-      this._showError("Network error");
+      this._showError(window.t("timeline.error.network", "Network error"));
     }
   }
 
@@ -104,7 +111,7 @@ class SessionTimeline extends HTMLElement {
     if (this._events.length === 0) return;
     this._playing = true;
     this._autoScroll = true;
-    if (this._btnPlay) this._btnPlay.textContent = "⏸ Pause";
+    if (this._btnPlay) this._btnPlay.textContent = window.t("timeline.controls.pause", "⏸ Pause");
     this._container.innerHTML = "";
     this._playIndex = 0;
     this._updateScrubber();
@@ -118,12 +125,12 @@ class SessionTimeline extends HTMLElement {
       this._scrollToBottom();
       this._playIndex++;
       this._updateScrubber();
-    }, speed);
+    }, speed / this._speed);
   }
 
   _stopPlay() {
     this._playing = false;
-    if (this._btnPlay) this._btnPlay.textContent = "▶ Play";
+    if (this._btnPlay) this._btnPlay.textContent = window.t("timeline.controls.play", "▶ Play");
     if (this._playTimer) {
       clearInterval(this._playTimer);
       this._playTimer = null;
@@ -165,7 +172,7 @@ class SessionTimeline extends HTMLElement {
     this._container.innerHTML = "";
     this._updateScrubberMax();
     if (this._events.length === 0) {
-      this._container.innerHTML = '<div class="tl-empty">No events yet</div>';
+      this._container.innerHTML = '<div class="tl-empty">' + window.t("timeline.empty", "No events yet") + '</div>';
       return;
     }
     this._events.forEach(evt => this._appendRow(evt));
@@ -219,7 +226,7 @@ class SessionTimeline extends HTMLElement {
       <div class="tl-content">
         <div class="tl-header">
           <span class="tl-icon">${this._typeIcon(evt.type)}</span>
-          <span class="tl-type" style="color:${this._typeColor(evt.type)}">${this._esc(evt.type || "event")}</span>
+          <span class="tl-type" style="color:${this._typeColor(evt.type)}">${this._esc(evt.type || window.t("timeline.event.default_type", "event"))}</span>
           ${actor ? '<span class="tl-actor">' + this._esc(actor) + '</span>' : ''}
           <span class="tl-time">${ts}</span>
         </div>
@@ -393,13 +400,28 @@ class SessionTimeline extends HTMLElement {
           text-align: right;
           font-variant-numeric: tabular-nums;
         }
+        .tl-speed-select {
+          background: var(--glass-bg, rgba(255,255,255,0.06));
+          color: var(--text-primary, #e2e8f0);
+          border: 1px solid var(--border-secondary, #334155);
+          border-radius: var(--radius-sm, 8px);
+          padding: 3px 6px;
+          font-size: 0.75rem;
+          cursor: pointer;
+        }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-4px); }
           to   { opacity: 1; transform: translateY(0); }
         }
       </style>
       <div class="tl-controls">
-        <button class="tl-btn-play">▶ Play</button>
+        <button class="tl-btn-play">${window.t ? window.t("timeline.controls.play", "▶ Play") : "▶ Play"}</button>
+        <select class="tl-speed-select">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
         <div class="tl-scrubber-wrap">
           <input type="range" class="tl-scrubber" min="0" max="0" value="0"/>
           <span class="tl-scrubber-label">0 / 0</span>

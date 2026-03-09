@@ -1,49 +1,78 @@
 {% extends "base.html" %}
 {% block title %}Amiagi — {{ _("admin.traits") }}{% endblock %}
+{% block head %}
+<style>
+.tab-strip{display:flex;gap:var(--space-2);margin-bottom:var(--space-4)}
+.tab-strip a{padding:.55rem .9rem;border:1px solid var(--glass-border);border-radius:999px;text-decoration:none;color:var(--text-primary)}
+.tab-strip a.active{background:rgba(96,165,250,.14);box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+.traits-toolbar{display:flex;justify-content:space-between;gap:var(--space-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-4)}
+.traits-filters{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.trait-group{padding:var(--space-4);margin-bottom:var(--space-4)}
+.trait-group summary{cursor:pointer;font-weight:700;color:var(--text-primary)}
+.trait-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--space-4);margin-top:var(--space-4)}
+.trait-card{padding:var(--space-4);display:grid;gap:var(--space-3)}
+.modal-overlay[hidden]{display:none!important}.modal-overlay{position:fixed;inset:0;background:rgba(2,6,23,.72);display:grid;place-items:center;z-index:1000}
+.modal-card{width:min(820px,92vw);max-height:88vh;overflow:auto;padding:var(--space-5);display:grid;gap:var(--space-4)}
+.modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.field{display:grid;gap:.4rem}.btn-row{display:flex;justify-content:flex-end;gap:var(--space-2)}
+.markdown-preview{background:rgba(15,23,42,.4);border:1px solid var(--glass-border);border-radius:var(--glass-radius-sm);padding:var(--space-3);white-space:pre-wrap;color:var(--text-secondary);min-height:120px}
+.toolbar-tight{margin-bottom:0}
+.heading-reset{margin:0}
+.stack-grid{display:grid;gap:var(--space-4)}
+@media (max-width: 900px){.modal-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
 {% block content %}
 <div class="container">
   {% include "partials/admin_nav.html" %}
-  <div class="page-header">
-    <h1>{{ _("admin.traits") }}</h1>
-    <button class="btn btn-primary" onclick="openCreateTrait()">+ {{ _("admin.traits") }}</button>
+  <div class="tab-strip">
+    <a href="/admin/skills">{{ _("admin.skills") }}</a>
+    <a href="/admin/traits" class="active">{{ _("admin.traits") }}</a>
   </div>
 
-  <div class="glass-card">
-    <table class="table" id="traits-table">
-      <thead>
-        <tr>
-          <th>{{ _("admin.name") }}</th>
-          <th>{{ _("admin.description") }}</th>
-          <th>Category</th>
-          <th>{{ _("admin.actions") }}</th>
-        </tr>
-      </thead>
-      <tbody id="traits-body">
-        <tr><td colspan="4">{{ _("common.loading") }}</td></tr>
-      </tbody>
-    </table>
+  <div class="traits-toolbar">
+    <div>
+      <h1>{{ _("admin.traits") }}</h1>
+      <p class="text-muted">Grouped traits with filters by category and role.</p>
+    </div>
+    <div class="traits-filters">
+      <select class="glass-input" id="trait-type-filter" title="Filter traits by category" aria-label="Filter traits by category"><option value="">All categories</option></select>
+      <select class="glass-input" id="trait-role-filter" title="Filter traits by role" aria-label="Filter traits by role"><option value="">All roles</option></select>
+      <select class="glass-input" id="trait-status-filter" title="Filter traits by status" aria-label="Filter traits by status">
+        <option value="all">All statuses</option>
+        <option value="active" selected>Active</option>
+        <option value="inactive">Inactive</option>
+      </select>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="openCreateTrait()">+ {{ _("admin.traits") }}</button>
+    </div>
+  </div>
+
+  <div id="traits-groups">
+    <div class="glass-card trait-group"><p class="text-muted">{{ _("common.loading") }}</p></div>
   </div>
 </div>
 
-<!-- Create modal -->
 <div class="modal-overlay" id="create-modal" hidden>
   <div class="glass-card modal-card">
-    <h2>New Trait</h2>
-    <div class="field">
-      <label for="tr-name">Name</label>
-      <input id="tr-name" placeholder="e.g. creative-writing">
-    </div>
-    <div class="field">
-      <label for="tr-desc">Description</label>
-      <textarea id="tr-desc" rows="3" placeholder="What this trait provides"></textarea>
-    </div>
-    <div class="field">
-      <label for="tr-cat">Category</label>
-      <input id="tr-cat" placeholder="e.g. style, domain, tool">
+    <div class="traits-toolbar toolbar-tight"><h2 class="heading-reset">New Trait</h2><button class="glass-btn glass-btn--ghost" type="button" onclick="closeCreateModal()">{{ _("common.close") }}</button></div>
+    <div class="modal-grid">
+      <div class="stack-grid">
+        <div class="field"><label for="tr-name">Name</label><input class="glass-input" id="tr-name" placeholder="creative-writing"></div>
+        <div class="field"><label for="tr-type">Category</label><input class="glass-input" id="tr-type" placeholder="style"></div>
+        <div class="field"><label for="tr-role">Agent role</label><input class="glass-input" id="tr-role" placeholder="executor"></div>
+        <div class="modal-grid">
+          <div class="field"><label for="tr-cost">Token cost</label><input class="glass-input" id="tr-cost" type="number" value="50"></div>
+          <div class="field"><label for="tr-priority">Priority</label><input class="glass-input" id="tr-priority" type="number" value="50"></div>
+        </div>
+      </div>
+      <div class="stack-grid">
+        <div class="field"><label for="tr-content">Content</label><textarea class="glass-input" id="tr-content" rows="10" placeholder="Trait prompt / instruction"></textarea></div>
+        <div><label>Markdown preview</label><div class="markdown-preview" id="tr-markdown-preview"></div></div>
+      </div>
     </div>
     <div class="btn-row">
-      <button class="btn" onclick="closeCreateModal()">{{ _("common.cancel") }}</button>
-      <button class="btn btn-primary" onclick="createTrait()">{{ _("common.save") }}</button>
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="closeCreateModal()">{{ _("common.cancel") }}</button>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="createTrait()">{{ _("common.save") }}</button>
     </div>
   </div>
 </div>
@@ -52,62 +81,135 @@
 {% block scripts %}
 <script>
 (function() {
+  let allTraits = [];
+
+  function esc(value) {
+    const d = document.createElement('div');
+    d.textContent = value || '';
+    return d.innerHTML;
+  }
+
+  function currentFilters() {
+    return {
+      type: document.getElementById('trait-type-filter')?.value || '',
+      role: document.getElementById('trait-role-filter')?.value || '',
+      status: document.getElementById('trait-status-filter')?.value || 'active',
+    };
+  }
+
+  function renderMarkdownPreview() {
+    document.getElementById('tr-markdown-preview').innerHTML = esc(document.getElementById('tr-content')?.value || '');
+  }
+
+  function fillFilterOptions(traits) {
+    const types = [...new Set(traits.map(trait => trait.trait_type || 'general'))].sort();
+    const roles = [...new Set(traits.map(trait => trait.agent_role || 'general'))].sort();
+    document.getElementById('trait-type-filter').innerHTML = '<option value="">All categories</option>' + types.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('');
+    document.getElementById('trait-role-filter').innerHTML = '<option value="">All roles</option>' + roles.map(role => `<option value="${esc(role)}">${esc(role)}</option>`).join('');
+  }
+
+  function renderTraits() {
+    const filters = currentFilters();
+    const filtered = allTraits.filter(trait => {
+      if (filters.type && trait.trait_type !== filters.type) return false;
+      if (filters.role && trait.agent_role !== filters.role) return false;
+      if (filters.status === 'active' && trait.is_active === false) return false;
+      if (filters.status === 'inactive' && trait.is_active !== false) return false;
+      return true;
+    });
+    const groups = filtered.reduce((acc, trait) => {
+      const key = trait.trait_type || 'general';
+      (acc[key] = acc[key] || []).push(trait);
+      return acc;
+    }, {});
+    const container = document.getElementById('traits-groups');
+    const keys = Object.keys(groups).sort();
+    if (!keys.length) {
+      container.innerHTML = '<div class="glass-card trait-group"><p class="text-muted">No traits match current filters.</p></div>';
+      return;
+    }
+    container.innerHTML = keys.map((key, index) => `
+      <details class="glass-card trait-group" ${index === 0 ? 'open' : ''}>
+        <summary>${esc(key)} <span class="text-muted">(${groups[key].length})</span></summary>
+        <div class="trait-grid">
+          ${groups[key].map(trait => `
+            <article class="glass-card trait-card">
+              <div style="display:flex;justify-content:space-between;gap:var(--space-2);align-items:flex-start">
+                <div>
+                  <strong>${esc(trait.name)}</strong>
+                  <div class="text-muted">${esc(trait.agent_role || '—')}</div>
+                </div>
+                <span class="glass-badge ${trait.is_active === false ? 'badge-muted' : 'badge-success'}">${trait.is_active === false ? 'Inactive' : 'Active'}</span>
+              </div>
+              <div class="text-muted" style="white-space:pre-wrap">${esc((trait.content || '').slice(0, 180))}${trait.content && trait.content.length > 180 ? '…' : ''}</div>
+              <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+                <span class="glass-badge badge-idle">Priority ${trait.priority || 0}</span>
+                <span class="glass-badge badge-idle">Cost ${trait.token_cost || 0}</span>
+              </div>
+              <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+                <button class="glass-btn glass-btn--xs" type="button" onclick="openTraitPreview('${trait.id}')">Preview</button>
+                <button class="glass-btn glass-btn--xs glass-btn--danger" type="button" onclick="delTrait('${trait.id}')">Delete</button>
+              </div>
+            </article>`).join('')}
+        </div>
+      </details>`).join('');
+  }
+
   function load() {
-    fetch('/admin/traits')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var traits = data.traits || [];
-        var tbody = document.getElementById('traits-body');
-        if (traits.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4">No traits defined yet.</td></tr>';
-          return;
-        }
-        tbody.innerHTML = traits.map(function(t) {
-          return '<tr>'
-            + '<td>' + esc(t.name) + '</td>'
-            + '<td>' + esc(t.description || '') + '</td>'
-            + '<td>' + esc(t.category || '') + '</td>'
-            + '<td>'
-            + '  <button class="btn btn-xs btn-danger" onclick="delTrait(\'' + t.id + '\')">Delete</button>'
-            + '</td>'
-            + '</tr>';
-        }).join('');
+    const status = document.getElementById('trait-status-filter')?.value || 'active';
+    const params = new URLSearchParams();
+    if (status !== 'all') params.set('active', status === 'active' ? 'true' : 'false');
+    fetch('/admin/traits?' + params.toString())
+      .then(r => r.json())
+      .then(data => {
+        allTraits = data.traits || [];
+        fillFilterOptions(allTraits);
+        renderTraits();
       });
   }
 
   window.openCreateTrait = function() {
     document.getElementById('create-modal').hidden = false;
+    renderMarkdownPreview();
   };
   window.closeCreateModal = function() {
     document.getElementById('create-modal').hidden = true;
   };
-
   window.createTrait = function() {
-    var body = {
+    const body = {
       name: document.getElementById('tr-name').value,
-      description: document.getElementById('tr-desc').value,
-      category: document.getElementById('tr-cat').value || null,
+      trait_type: document.getElementById('tr-type').value || 'general',
+      agent_role: document.getElementById('tr-role').value || 'executor',
+      content: document.getElementById('tr-content').value,
+      token_cost: parseInt(document.getElementById('tr-cost').value, 10) || 50,
+      priority: parseInt(document.getElementById('tr-priority').value, 10) || 50,
     };
     fetch('/admin/traits', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
-    }).then(function(r) {
-      if (r.ok) { closeCreateModal(); load(); }
+    }).then(r => {
+      if (r.ok) {
+        closeCreateModal();
+        load();
+      }
     });
   };
-
   window.delTrait = function(id) {
     if (!confirm('Delete this trait?')) return;
-    fetch('/admin/traits/' + id, { method: 'DELETE' })
-      .then(function() { load(); });
+    fetch('/admin/traits/' + id, { method: 'DELETE' }).then(() => load());
+  };
+  window.openTraitPreview = function(id) {
+    const trait = allTraits.find(item => item.id === id);
+    if (!trait) return;
+    const html = `<div style="display:grid;gap:var(--space-3)"><strong>${esc(trait.name)}</strong><div class="markdown-preview">${esc(trait.content || '')}</div><div style="display:flex;gap:var(--space-2);flex-wrap:wrap"><span class="glass-badge badge-idle">${esc(trait.trait_type || 'general')}</span><span class="glass-badge badge-idle">${esc(trait.agent_role || '—')}</span></div></div>`;
+    if (typeof openDetailDrawer === 'function') openDetailDrawer('Trait preview', html);
   };
 
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
-  }
+  document.getElementById('tr-content')?.addEventListener('input', renderMarkdownPreview);
+  document.getElementById('trait-type-filter')?.addEventListener('change', renderTraits);
+  document.getElementById('trait-role-filter')?.addEventListener('change', renderTraits);
+  document.getElementById('trait-status-filter')?.addEventListener('change', load);
 
   load();
 })();

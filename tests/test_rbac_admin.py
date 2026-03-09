@@ -191,6 +191,16 @@ class TestAdminRoles:
         assert r.status_code == 200
         assert len(r.json()["roles"]) == 1
 
+    def test_role_detail_json(self):
+        repo = _fake_rbac_repo()
+        role = repo.list_roles.return_value[0]
+        client = TestClient(_make_admin_app(rbac_repo=repo))
+        r = client.get(f"/admin/roles/{role.id}")
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["role"]["name"] == role.name
+        assert payload["all_permissions"][0]["codename"] == role.permissions[0].codename
+
     def test_create_role(self):
         client = TestClient(_make_admin_app())
         r = client.post("/admin/roles", json={"name": "analyst", "description": "Data analyst"})
@@ -227,6 +237,13 @@ class TestAdminPermissions:
         r = client.get("/admin/permissions")
         assert r.status_code == 200
         assert len(r.json()["permissions"]) == 1
+
+    def test_export_permissions_matrix_csv(self):
+        client = TestClient(_make_admin_app())
+        r = client.get("/admin/permissions/export?format=csv")
+        assert r.status_code == 200
+        assert "text/csv" in r.headers["content-type"]
+        assert "permission,category,description" in r.text
 
 
 class TestAdminAudit:

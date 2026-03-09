@@ -21,6 +21,7 @@ backend is used transparently (backward compatible with CLI mode).
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -29,6 +30,30 @@ from starlette.routing import Route
 from amiagi.interfaces.web.rbac.middleware import require_permission
 
 logger = logging.getLogger(__name__)
+
+
+def _make_secret_id(agent_id: str, key: str) -> str:
+    return f"{agent_id}:{key}"
+
+
+def _parse_secret_id(secret_id: str) -> tuple[str, str]:
+    if ":" not in secret_id:
+        raise ValueError("invalid_secret_id")
+    agent_id, key = secret_id.split(":", 1)
+    if not agent_id or not key:
+        raise ValueError("invalid_secret_id")
+    return agent_id, key
+
+
+def _parse_expires_at(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("invalid_expires_at")
+    raw = value.strip()
+    if not raw:
+        return None
+    return datetime.fromisoformat(raw.replace("Z", "+00:00"))
 
 
 def _get_vault(request: Request):
@@ -41,9 +66,56 @@ def _get_audit_chain(request: Request):
     return getattr(request.app.state, "audit_chain", None)
 
 
+def _get_cron_scheduler(request: Request):
+    """Retrieve CronScheduler from app.state or return None."""
+    return getattr(request.app.state, "cron_scheduler", None)
+
+
 def _get_user_id(request: Request) -> str:
     user = getattr(request.state, "user", None)
     return str(user.user_id) if user else "anonymous"
+
+
+def _rotation_job_name(agent_id: str, key: str) -> str:
+    return f"vault-rotation:{agent_id}:{key}"
+
+
+def _rotation_job_description(agent_id: str, key: str) -> str:
+    secret_id = _make_secret_id(agent_id, key)
+    return (
+        "[vault-rotation]\n"
+        f"vault_secret_id={secret_id}\n"
+        f"agent_id={agent_id}\n"
+        f"key={key}"
+    )
+
+
+def _is_rotation_job_for_secret(job: object, agent_id: str, key: str) -> bool:
+    name = str(getattr(job, "name", "") or "")
+    description = str(getattr(job, "task_description", "") or "")
+    return name == _rotation_job_name(agent_id, key) or f"vault_secret_id={_make_secret_id(agent_id, key)}" in description
+
+
+def _serialize_cron_job(job: object) -> dict[str, object]:
+    from amiagi.interfaces.web.scheduling.cron_scheduler import cron_to_human
+
+    if hasattr(job, "to_dict"):
+        data = job.to_dict()
+    else:
+        data = {
+            "id": getattr(job, "id", ""),
+            "name": getattr(job, "name", ""),
+            "cron_expr": getattr(job, "cron_expr", ""),
+            "task_title": getattr(job, "task_title", ""),
+            "task_description": getattr(job, "task_description", ""),
+            "enabled": getattr(job, "enabled", True),
+            "last_run": getattr(job, "last_run", None),
+            "created_at": getattr(job, "created_at", ""),
+            "next_run": getattr(job, "next_run", None),
+        }
+    cron_expr = str(data.get("cron_expr", "") or "")
+    data["human_readable"] = cron_to_human(cron_expr) if cron_expr else ""
+    return data
 
 
 async def _log_vault_access(
@@ -96,6 +168,13 @@ async def vault_list(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@require_permission("vault.admin")
+async def vault_root(request: Request) -> JSONResponse:
+    if request.method == "POST":
+        return await vault_create_secret(request)
+    return await vault_list(request)
+
+
 # ── GET /api/vault/{agent_id} ────────────────────────────────
 
 @require_permission("vault.admin")
@@ -108,7 +187,7 @@ async def vault_agent_keys(request: Request) -> JSONResponse:
     agent_id = request.path_params["agent_id"]
 
     try:
-        keys = await vault.alist_keys(agent_id)
+        keys = await vault.alist_keys(agent_id, include_metadata=True)
         await _log_vault_access(request, agent_id, "*", "list_keys")
         return JSONResponse({
             "ok": True,
@@ -136,6 +215,7 @@ async def vault_set_secret(request: Request) -> JSONResponse:
     body = await request.json()
     key = body.get("key", "").strip()
     value = body.get("value", "")
+    secret_type = str(body.get("type") or body.get("secret_type") or "api_key").strip() or "api_key"
 
     if not key:
         return JSONResponse({"error": "key_required"}, status_code=400)
@@ -143,7 +223,18 @@ async def vault_set_secret(request: Request) -> JSONResponse:
         return JSONResponse({"error": "value_required"}, status_code=400)
 
     try:
-        await vault.aset_secret(agent_id, key, value)
+        expires_at = _parse_expires_at(body.get("expires_at"))
+    except ValueError:
+        return JSONResponse({"error": "invalid_expires_at"}, status_code=400)
+
+    try:
+        await vault.aset_secret(
+            agent_id,
+            key,
+            value,
+            secret_type=secret_type,
+            expires_at=expires_at,
+        )
         await _log_vault_access(request, agent_id, key, "set")
 
         from amiagi.interfaces.web.audit.log_helpers import log_action
@@ -154,6 +245,7 @@ async def vault_set_secret(request: Request) -> JSONResponse:
 
         return JSONResponse({
             "ok": True,
+            "id": _make_secret_id(agent_id, key),
             "agent_id": agent_id,
             "key": key,
         }, status_code=201)
@@ -284,6 +376,252 @@ async def vault_access_log(request: Request) -> JSONResponse:
     ]
 
     return JSONResponse({"ok": True, "entries": serialized, "total": len(serialized)})
+
+
+@require_permission("vault.admin")
+async def vault_create_secret(request: Request) -> JSONResponse:
+    body = await request.json()
+    agent_id = str(body.get("agent_id") or "").strip()
+    if not agent_id:
+        return JSONResponse({"error": "agent_id_required"}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    return await vault_set_secret(request)
+
+
+@require_permission("vault.admin")
+async def vault_update_secret(request: Request) -> JSONResponse:
+    vault = _get_vault(request)
+    if vault is None:
+        return JSONResponse({"error": "vault_not_configured"}, status_code=503)
+
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    body = await request.json()
+    value = body.get("value", "")
+    if not value:
+        return JSONResponse({"error": "value_required"}, status_code=400)
+    secret_type = str(body.get("type") or body.get("secret_type") or "api_key").strip() or "api_key"
+    try:
+        expires_at = _parse_expires_at(body.get("expires_at"))
+    except ValueError:
+        return JSONResponse({"error": "invalid_expires_at"}, status_code=400)
+
+    existing = await vault.aget_secret(agent_id, key)
+    if existing is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    await vault.aset_secret(
+        agent_id,
+        key,
+        value,
+        secret_type=secret_type,
+        expires_at=expires_at,
+    )
+    await _log_vault_access(request, agent_id, key, "update")
+    return JSONResponse({"ok": True, "id": _make_secret_id(agent_id, key), "agent_id": agent_id, "key": key})
+
+
+@require_permission("vault.admin")
+async def vault_delete_secret_alias(request: Request) -> JSONResponse:
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    request.path_params["key"] = key
+    return await vault_delete_secret(request)
+
+
+@require_permission("vault.admin")
+async def vault_rotate_secret_alias(request: Request) -> JSONResponse:
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    request.path_params["key"] = key
+    return await vault_rotate_secret(request)
+
+
+@require_permission("vault.admin")
+async def vault_secret_access_log(request: Request) -> JSONResponse:
+    vault = _get_vault(request)
+    if vault is None:
+        return JSONResponse({"error": "vault_not_configured"}, status_code=503)
+
+    limit = int(request.query_params.get("limit", "20"))
+    agent_id = request.path_params["agent_id"]
+    key = request.path_params["key"]
+
+    if await vault.aget_secret(agent_id, key) is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if getattr(vault, "has_db", False):
+        entries = await vault.aget_secret_access_log(agent_id, key, limit=limit)
+        return JSONResponse({"ok": True, "entries": entries, "total": len(entries)})
+
+    chain = _get_audit_chain(request)
+    if chain is None:
+        return JSONResponse({"ok": True, "entries": [], "total": 0})
+
+    entries = []
+    for action in ("vault.set", "vault.update", "vault.delete", "vault.rotate", "vault.update_assignments"):
+        for item in chain.query(action=action, limit=limit):
+            if item.agent_id == agent_id and item.target == key:
+                entries.append(
+                    {
+                        "timestamp": item.timestamp,
+                        "agent_id": item.agent_id,
+                        "key": item.target,
+                        "action": item.action,
+                        "user": item.approved_by,
+                    }
+                )
+    entries.sort(key=lambda entry: entry["timestamp"], reverse=True)
+    entries = entries[:limit]
+    return JSONResponse({"ok": True, "entries": entries, "total": len(entries)})
+
+
+@require_permission("vault.admin")
+async def vault_secret_access_log_alias(request: Request) -> JSONResponse:
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    request.path_params["key"] = key
+    return await vault_secret_access_log(request)
+
+
+@require_permission("vault.admin")
+async def vault_rotation_schedule(request: Request) -> JSONResponse:
+    vault = _get_vault(request)
+    if vault is None:
+        return JSONResponse({"error": "vault_not_configured"}, status_code=503)
+
+    scheduler = _get_cron_scheduler(request)
+    if scheduler is None:
+        return JSONResponse({"error": "scheduler_unavailable"}, status_code=503)
+
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if await vault.aget_secret(agent_id, key) is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    jobs = [_serialize_cron_job(job) for job in scheduler.list_jobs() if _is_rotation_job_for_secret(job, agent_id, key)]
+    jobs.sort(key=lambda job: str(job.get("created_at") or ""), reverse=True)
+    return JSONResponse({
+        "ok": True,
+        "secret_id": _make_secret_id(agent_id, key),
+        "jobs": jobs,
+        "total": len(jobs),
+    })
+
+
+@require_permission("vault.admin")
+async def vault_create_rotation_schedule(request: Request) -> JSONResponse:
+    vault = _get_vault(request)
+    if vault is None:
+        return JSONResponse({"error": "vault_not_configured"}, status_code=503)
+
+    scheduler = _get_cron_scheduler(request)
+    if scheduler is None:
+        return JSONResponse({"error": "scheduler_unavailable"}, status_code=503)
+
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if await vault.aget_secret(agent_id, key) is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    body = await request.json()
+    schedule = body.get("schedule") or body.get("schedule_builder")
+    cron_expr = body.get("cron_expr") or body.get("cron_expression")
+    if schedule:
+        from amiagi.interfaces.web.scheduling.cron_scheduler import build_cron_expression
+
+        try:
+            cron_expr = build_cron_expression(schedule if isinstance(schedule, dict) else {})
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    cron_expr = str(cron_expr or "").strip()
+    if not cron_expr:
+        return JSONResponse({"error": "cron_expr_required"}, status_code=400)
+
+    existing_jobs = [job for job in scheduler.list_jobs() if _is_rotation_job_for_secret(job, agent_id, key)]
+    if existing_jobs:
+        return JSONResponse({"error": "rotation_schedule_exists"}, status_code=409)
+
+    from amiagi.interfaces.web.scheduling.cron_scheduler import CronJob
+
+    job = CronJob(
+        name=_rotation_job_name(agent_id, key),
+        cron_expr=cron_expr,
+        task_title=str(body.get("task_title") or f"Rotate vault secret {agent_id}/{key}"),
+        task_description=str(body.get("task_description") or _rotation_job_description(agent_id, key)),
+        enabled=bool(body.get("enabled", True)),
+    )
+
+    try:
+        created = await scheduler.create_job(job)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    await _log_vault_access(request, agent_id, key, "schedule_rotation")
+
+    from amiagi.interfaces.web.audit.log_helpers import log_action
+    await log_action(request, "vault.schedule_rotation", {
+        "agent_id": agent_id,
+        "key": key,
+        "cron_expr": created.cron_expr,
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "secret_id": _make_secret_id(agent_id, key),
+        "job": _serialize_cron_job(created),
+    }, status_code=201)
+
+
+@require_permission("vault.admin")
+async def vault_delete_rotation_schedule(request: Request) -> JSONResponse:
+    scheduler = _get_cron_scheduler(request)
+    if scheduler is None:
+        return JSONResponse({"error": "scheduler_unavailable"}, status_code=503)
+
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    job_id = request.path_params["job_id"]
+    matched_job = next((job for job in scheduler.list_jobs() if getattr(job, "id", None) == job_id and _is_rotation_job_for_secret(job, agent_id, key)), None)
+    if matched_job is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    deleted = await scheduler.delete_job(job_id)
+    if not deleted:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    await _log_vault_access(request, agent_id, key, "delete_rotation_schedule")
+
+    from amiagi.interfaces.web.audit.log_helpers import log_action
+    await log_action(request, "vault.delete_rotation_schedule", {
+        "agent_id": agent_id,
+        "key": key,
+        "job_id": job_id,
+    })
+
+    return JSONResponse({"ok": True, "secret_id": _make_secret_id(agent_id, key), "job_id": job_id})
 
 
 # ── GET /api/vault/{agent_id}/{key}/assignments ──────────────
@@ -423,15 +761,47 @@ async def vault_update_assignments(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@require_permission("vault.admin")
+async def vault_get_assignments_alias(request: Request) -> JSONResponse:
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    request.path_params["key"] = key
+    return await vault_get_assignments(request)
+
+
+@require_permission("vault.admin")
+async def vault_update_assignments_alias(request: Request) -> JSONResponse:
+    try:
+        agent_id, key = _parse_secret_id(request.path_params["secret_id"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    request.path_params["agent_id"] = agent_id
+    request.path_params["key"] = key
+    return await vault_update_assignments(request)
+
+
 # ── Route table ──────────────────────────────────────────────
 
 vault_routes: list[Route] = [
-    Route("/api/vault", vault_list, methods=["GET"]),
+    Route("/api/vault", vault_root, methods=["GET", "POST"]),
     Route("/api/vault/access-log", vault_access_log, methods=["GET"]),
     Route("/api/vault/{agent_id}", vault_agent_keys, methods=["GET"]),
     Route("/api/vault/{agent_id}", vault_set_secret, methods=["POST"]),
+    Route("/api/vault/{secret_id}", vault_update_secret, methods=["PUT"]),
+    Route("/api/vault/{secret_id}", vault_delete_secret_alias, methods=["DELETE"]),
+    Route("/api/vault/{secret_id}/rotation-schedule", vault_rotation_schedule, methods=["GET"]),
+    Route("/api/vault/{secret_id}/rotation-schedule", vault_create_rotation_schedule, methods=["POST"]),
+    Route("/api/vault/{secret_id}/rotation-schedule/{job_id}", vault_delete_rotation_schedule, methods=["DELETE"]),
     Route("/api/vault/{agent_id}/{key}", vault_delete_secret, methods=["DELETE"]),
+    Route("/api/vault/{secret_id}/rotate", vault_rotate_secret_alias, methods=["PUT"]),
     Route("/api/vault/{agent_id}/{key}/rotate", vault_rotate_secret, methods=["POST"]),
+    Route("/api/vault/{secret_id}/access-log", vault_secret_access_log_alias, methods=["GET"]),
+    Route("/api/vault/{agent_id}/{key}/access-log", vault_secret_access_log, methods=["GET"]),
+    Route("/api/vault/{secret_id}/assignments", vault_get_assignments_alias, methods=["GET"]),
+    Route("/api/vault/{secret_id}/assignments", vault_update_assignments_alias, methods=["PUT"]),
     Route("/api/vault/{agent_id}/{key}/assignments", vault_get_assignments, methods=["GET"]),
     Route("/api/vault/{agent_id}/{key}/assignments", vault_update_assignments, methods=["PUT"]),
 ]

@@ -170,6 +170,8 @@ def test_textual_models_show_and_chose_commands(tmp_path: Path) -> None:
         permission_manager=cast(Any, permission_manager),
         shell_policy_path=tmp_path / "shell_allowlist.json",
     )
+    # Redirect model config to tmp_path so tests don't overwrite the real data/model_config.json
+    app._model_config_path = tmp_path / "model_config.json"
 
     show_outcome = app._handle_cli_like_commands("/models show")
     choose_outcome = app._handle_cli_like_commands("/models chose 2")

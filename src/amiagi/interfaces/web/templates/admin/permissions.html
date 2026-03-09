@@ -6,6 +6,11 @@
   <h1>{{ _("admin.permissions") }}</h1>
   <p class="text-secondary">{{ _("admin.roles") }} × {{ _("admin.permissions") }}</p>
 
+  <div class="u-flex u-gap-3 u-flex-center u-mb-4 u-flex-wrap">
+    <input id="perm-filter-search" class="glass-input" placeholder="Filter permissions">
+    <button class="glass-btn glass-btn--ghost" id="btn-export-permissions-matrix">Export RBAC Matrix</button>
+  </div>
+
   <div class="glass-card glass-card--scroll-x">
     <table class="table" id="perm-matrix">
       <thead>
@@ -55,6 +60,13 @@
     var tbody = document.getElementById('perm-body');
     tbody.innerHTML = '';
     permissions.forEach(function(perm) {
+      var filterNeedle = (document.getElementById('perm-filter-search')?.value || '').trim().toLowerCase();
+      if (filterNeedle) {
+        var haystack = ((perm.codename || '') + ' ' + (perm.description || '') + ' ' + (perm.category || '')).toLowerCase();
+        if (haystack.indexOf(filterNeedle) === -1) {
+          return;
+        }
+      }
       var tr = document.createElement('tr');
       var tdName = document.createElement('td');
       tdName.innerHTML = '<strong>' + esc(perm.codename) + '</strong>'
@@ -78,6 +90,11 @@
       tbody.appendChild(tr);
     });
   }
+
+  document.getElementById('perm-filter-search')?.addEventListener('input', render);
+  document.getElementById('btn-export-permissions-matrix')?.addEventListener('click', function() {
+    window.open('/admin/permissions/export?format=csv', '_blank', 'noopener');
+  });
 
   function togglePerm(role, permId, enabled) {
     var permIds = (role.permissions || []).slice();

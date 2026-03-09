@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from starlette.applications import Starlette
@@ -114,6 +115,8 @@ class _FakeKnowledgeRepo:
             for s in base_sources:
                 if s["id"] == source_id:
                     s["status"] = status
+                    if indexed_at_now:
+                        s["indexed_at"] = "2026-03-09T00:00:00+00:00"
                     return
 
     async def ensure_global_base(self):
@@ -155,6 +158,22 @@ class TestListBases:
         r = client.get("/api/knowledge/bases")
         bases = r.json()["bases"]
         assert any(b["id"] == GLOBAL_BASE_UUID for b in bases)
+
+    def test_bases_include_enriched_metadata(self, tmp_path) -> None:
+        file_path = tmp_path / "doc.txt"
+        file_path.write_text("hello", encoding="utf-8")
+        app = _make_app(_FakeKB())
+        client = TestClient(app)
+        create = client.post("/api/knowledge/bases", json={"name": "docs", "engine": "tfidf"})
+        base_id = create.json()["id"]
+        client.post(f"/api/knowledge/bases/{base_id}/sources", json={"path": str(file_path), "type": "file"})
+        response = client.get("/api/knowledge/bases")
+        base = next(item for item in response.json()["bases"] if item["id"] == base_id)
+        assert base["engine"] == "tfidf"
+        assert base["document_count"] >= 0
+        assert "total_size_bytes" in base
+        assert "agents_using" in base
+        assert "last_updated" in base
 
 
 class TestCreateBase:
@@ -227,6 +246,152 @@ class TestPipelineStatus:
         data = r.json()
         assert data["status"] == "idle"
         assert data["active_jobs"] == 0
+        assert data["refresh_frequency"] == "manual"
+        assert data["last_refresh"] is None
+        assert data["next_refresh"] is None
+        assert data["config"]["chunking"] == "paragraph"
+        assert data["config"]["embedding_model"] == "tfidf"
+        assert data["runtime_available"] is False
+
+    def test_pipeline_schedule_updates_frequency(self) -> None:
+        client = TestClient(_make_app())
+        response = client.put(
+            "/api/knowledge/pipeline/schedule",
+            json={"frequency": "daily", "chunking": "fixed", "chunk_size": 256, "overlap": 32, "embedding_model": "tfidf"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["refresh_frequency"] == "daily"
+        assert data["next_refresh"] is not None
+        assert data["config"]["chunking"] == "fixed"
+        assert data["config"]["chunk_size"] == 256
+        assert data["config"]["overlap"] == 32
+
+    def test_pipeline_schedule_manual_clears_next_refresh(self) -> None:
+        client = TestClient(_make_app())
+        client.put("/api/knowledge/pipeline/schedule", json={"frequency": "weekly"})
+        response = client.put("/api/knowledge/pipeline/schedule", json={"frequency": "manual"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["refresh_frequency"] == "manual"
+        assert data["next_refresh"] is None
+
+    def test_pipeline_refresh_endpoint_exists(self) -> None:
+        client = TestClient(_make_app(_FakeKB()))
+        response = client.post("/api/knowledge/pipeline/refresh")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["status"] == "indexing"
+        assert data["last_refresh"] is not None
+
+    def test_pipeline_refresh_requires_runtime(self) -> None:
+        client = TestClient(_make_app())
+        response = client.post("/api/knowledge/pipeline/refresh")
+        assert response.status_code == 409
+        assert response.json()["error"] == "knowledge_refresh_not_supported"
+
+
+class TestKnowledgeRuntimeSemantics:
+    def test_global_add_source_uses_saved_pipeline_chunking(self, tmp_path) -> None:
+        file_path = tmp_path / "doc.txt"
+        file_path.write_text("A" * 60, encoding="utf-8")
+        client = TestClient(_make_app(_FakeKB()))
+        client.get("/api/knowledge/bases")
+        response = client.put(
+            "/api/knowledge/pipeline/schedule",
+            json={"frequency": "manual", "chunking": "fixed", "chunk_size": 20, "overlap": 0, "embedding_model": "tfidf"},
+        )
+        assert response.status_code == 200
+
+        added = client.post(
+            "/api/knowledge/bases/global/sources",
+            json={"path": str(file_path), "type": "file"},
+        )
+
+        assert added.status_code == 201
+        data = added.json()["source"]
+        assert data["status"] == "indexed"
+        assert data["chunks_count"] == 3
+        assert data["pipeline_config"]["chunking"] == "fixed"
+
+    def test_global_add_source_requires_runtime(self, tmp_path) -> None:
+        file_path = tmp_path / "doc.txt"
+        file_path.write_text("hello", encoding="utf-8")
+        app = _make_app()
+        client = TestClient(app)
+        client.get("/api/knowledge/bases")
+
+        added = client.post(
+            "/api/knowledge/bases/global/sources",
+            json={"path": str(file_path), "type": "file"},
+        )
+
+        assert added.status_code == 409
+        assert added.json()["error"] == "knowledge_ingest_not_supported"
+        assert app.state.knowledge_repo._sources.get(GLOBAL_BASE_UUID) in (None, [])
+
+    def test_non_global_search_is_explicitly_not_supported(self) -> None:
+        client = TestClient(_make_app(_FakeKB()))
+        create = client.post("/api/knowledge/bases", json={"name": "docs"})
+        base_id = create.json()["id"]
+
+        response = client.get(f"/api/knowledge/bases/{base_id}/search?q=test")
+
+        assert response.status_code == 409
+        assert response.json()["error"] == "knowledge_search_not_supported"
+
+    def test_non_global_reindex_is_explicitly_not_supported(self) -> None:
+        client = TestClient(_make_app(_FakeKB()))
+        create = client.post("/api/knowledge/bases", json={"name": "docs"})
+        base_id = create.json()["id"]
+
+        response = client.post(f"/api/knowledge/bases/{base_id}/reindex")
+
+        assert response.status_code == 409
+        assert response.json()["error"] == "knowledge_reindex_not_supported"
+
+
+class TestKnowledgePageAssets:
+    def test_knowledge_template_contains_refresh_schedule_controls(self) -> None:
+        template = Path("src/amiagi/interfaces/web/templates/knowledge.html").read_text(encoding="utf-8")
+        assert 'id="kb-refresh-freq"' in template
+        assert 'id="btn-save-schedule"' in template
+        assert 'id="btn-refresh-now"' in template
+        assert 'id="kb-last-refresh"' in template
+        assert 'id="kb-next-refresh"' in template
+
+    def test_knowledge_js_renders_extended_metadata_and_schedule_flow(self) -> None:
+        script = Path("src/amiagi/interfaces/web/static/js/knowledge.js").read_text(encoding="utf-8")
+        assert "total_size_bytes" in script
+        assert "agents_using" in script
+        assert "last_updated" in script
+        assert "formatBytes" in script
+        assert "/api/knowledge/pipeline/schedule" in script
+        assert "/api/knowledge/pipeline/refresh" in script
+        assert "cfg-chunking" in script
+        assert "embedding_model" in script
+        assert "supports_reindex" in script
+        assert "sourceStatusLabel" in script
+        assert "sourceTypeLabel" in script
+        assert "function notify(message, level)" in script
+        assert 'notify("Reindex started", "success")' in script
+        assert 'notify("Source added", "success")' in script
+        assert 'notify("Knowledge base created", "success")' in script
+        assert 'notify(await responseErrorMessage(res, "Failed to save pipeline settings"), "error")' in script
+        assert 'notify(await responseErrorMessage(res, "Failed to start reindex"), "error")' in script
+        assert 'notify(await responseErrorMessage(res, "Failed to add source"), "error")' in script
+        assert "alert(" not in script
+
+    def test_knowledge_ui_avoids_colorful_emoji_action_labels(self) -> None:
+        template = Path("src/amiagi/interfaces/web/templates/knowledge.html").read_text(encoding="utf-8")
+        script = Path("src/amiagi/interfaces/web/static/js/knowledge.js").read_text(encoding="utf-8")
+
+        assert "🔄 {{ _(\"knowledge.refresh_now\") }}" not in template
+        assert "📘" not in script
+        assert "📗" not in script
+        assert "🗑" not in script
+        assert "📁" not in script
 
 
 class TestBaseStats:
