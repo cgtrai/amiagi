@@ -1,4 +1,4 @@
-# amiagi
+# AmIAGI
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
@@ -8,18 +8,19 @@
 [![Web UI: Operator Console](https://img.shields.io/badge/web%20ui-operator%20console-6f42c1.svg)](WEB_INTERFACE.md)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
-Lokalna, CLI-first platforma do orkiestracji autonomicznych zespołów agentów z pełnoprawną webową konsolą operatorską.
+Lokalna, multi-agentowa platforma orkiestracyjna dla ludzi zadających sobie poważne pytanie: **Am I AGI?**
 
-`amiagi` to kompletne środowisko pracy dla autonomicznych zespołów AI: dynamiczny rejestr agentów, kolejka zadań, workflow, budżety, ewaluacje, wiedza, REST API oraz rozbudowana konsola WWW do codziennego sterowania operacyjnego. Całość łączy izolację per agent, pełny audyt JSONL, governance modeli i obsługę lokalnych oraz zewnętrznych backendów.
+`AmIAGI` (pakiet/repozytorium: `amiagi`) to kompletne środowisko pracy dla autonomicznych zespołów AI: dynamiczny rejestr agentów, kolejka zadań, workflow, budżety, ewaluacje, wiedza, REST API oraz dopracowana konsola WWW do realnego sterowania operacyjnego. Całość łączy izolację per agent, pełny audyt JSONL, governance modeli i obsługę lokalnych oraz zewnętrznych backendów.
 
 Aktualna wersja: **v1.3.0** — domknięcie planu 02 i gotowość do UAT, **2868 testów**.
 
-v1.3.0 to moment, w którym interfejs przeglądarkowy staje się pełnoprawnym centrum dowodzenia: Mission Control, live stream zdarzeń, inbox zgód, Model Hub, ewaluacje, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes i narzędzia administracyjne tworzą jedną spójną konsolę operatorską.
+v1.3.0 to moment, w którym warstwa przeglądarkowa przestaje być dodatkiem, a staje się centrum dowodzenia produktu: Mission Control, live stream zdarzeń, inbox zgód, Model Hub, ewaluacje, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes i narzędzia administracyjne tworzą jedną spójną konsolę operatorską.
 
 Dokumenty wydania: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md).
 
 ## Dlaczego v1.3.0 jest ważne
 
+- **AmIAGI wreszcie wygląda jak system, którym już jest** — nie tylko eksperyment CLI, ale kontrolowalne środowisko do poważnej pracy wieloagentowej
 - **Pełnoprawna Web Management Console** — jedna przeglądarkowa powierzchnia dla Supervisor, Agents, Teams, Tasks, Models, Evaluations, Knowledge, Memory, Budget, Vault, Settings, Sessions, Metrics, Inbox, Sandboxes i Admin
 - **Widoczność operacyjna w czasie rzeczywistym** — WebSockety, health monitoring, live streamy, status bary i jawne komunikaty powodzenia/błędu
 - **Governance modeli zgodny z runtime** — lokalne modele z Ollama, modele komercyjne definiowane przez użytkownika, wsparcie dla OpenAI, Anthropic i Google
@@ -28,7 +29,9 @@ Dokumenty wydania: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_R
 
 ## Web Management Console
 
-Interfejs WWW jest teraz jedną z głównych cech amiagi, a nie dodatkiem do monitoringu.
+Interfejs WWW jest teraz jedną z głównych cech AmIAGI, a nie dodatkiem do monitoringu.
+
+To właśnie ta warstwa zamienia runtime agentów w prawdziwy produkt operatorski: można nadzorować pracę, inspekować stan, bezpiecznie interweniować, zarządzać modelami, przeglądać ewaluacje, knowledge, budżety i administrować systemem z jednego miejsca.
 
 - **Mission Control / Supervisor** — podgląd aktywnych agentów, bieżących zadań, logów na żywo i interwencji operatora
 - **Inbox i zgody** — obsługa Human-in-the-Loop z jawnymi akcjami approve/reject/reply

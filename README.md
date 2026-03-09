@@ -1,4 +1,4 @@
-# amiagi
+# AmIAGI
 
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
@@ -8,18 +8,19 @@
 [![Web UI: Operator Console](https://img.shields.io/badge/web%20ui-operator%20console-6f42c1.svg)](WEB_INTERFACE.md)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
-A local, CLI-first multi-agent orchestration platform with an operator-grade web management console.
+A local-first multi-agent orchestration platform for people asking a serious question: **Am I AGI?**
 
-`amiagi` is a full-featured operating environment for autonomous AI teams: dynamic agent registry, task queueing, workflow engine, budget governance, evaluations, knowledge, REST API, and a rich browser console for day-to-day operator control. It combines per-agent isolation, JSONL auditability, model governance, and multi-backend support across Ollama and OpenAI-compatible providers.
+`AmIAGI` (package/repo: `amiagi`) is a full operating environment for autonomous AI teams: dynamic agent registry, task queueing, workflow execution, budget governance, evaluations, knowledge workflows, REST API, and a polished browser console for real operator control. It combines per-agent isolation, JSONL auditability, model governance, and multi-backend support across Ollama and OpenAI-compatible providers.
 
 Current version: **v1.3.0** — UAT-ready operator console after Plan 02 closure, **2868 tests**.
 
-v1.3.0 is the release where the browser experience becomes a serious operator surface: Mission Control, live event streams, inbox approvals, model hub, evaluations, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes, and admin tooling now form a cohesive web management console instead of a thin monitoring add-on.
+v1.3.0 is the release where the browser experience stops being a sidecar and becomes the product's command layer: Mission Control, live event streams, inbox approvals, Model Hub, evaluations, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes, and admin tooling now form a cohesive web management console instead of a thin monitoring add-on.
 
 Key release docs: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md).
 
 ## Why v1.3.0 matters
 
+- **AmIAGI finally looks like the system it already is** — not just a CLI experiment, but a controllable runtime for serious multi-agent work
 - **Operator-grade Web Management Console** — full browser control surface for Supervisor, Agents, Teams, Tasks, Models, Evaluations, Knowledge, Memory, Budget, Vault, Settings, Sessions, Metrics, Inbox, Sandboxes, and Admin views
 - **Real-time operational visibility** — live updates over WebSockets, health monitoring, event streams, status bars, and explicit runtime feedback for critical actions
 - **Model governance that matches reality** — Ollama-first local model inventory, user-defined commercial registry, and configurable provider support for OpenAI, Anthropic, and Google
@@ -28,7 +29,9 @@ Key release docs: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RE
 
 ## Web Management Console
 
-The web interface is now one of amiagi's defining features, not a side panel.
+The web interface is now one of AmIAGI's defining features, not a side panel.
+
+This is the layer that turns an agent runtime into an operator product: you can supervise work, inspect state, intervene safely, manage models, review evaluations, browse knowledge, control budgets, and administer the system from one place.
 
 - **Mission Control / Supervisor** — monitor active agents, current tasks, live logs, and operator interventions
 - **Inbox and approvals** — handle Human-in-the-Loop requests with explicit approve/reject/reply flows
