@@ -3,19 +3,40 @@
 [![CI](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml/badge.svg)](https://github.com/cgtrai/amiagi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Non-Commercial](https://img.shields.io/badge/license-non--commercial-orange.svg)](LICENSE)
-[![Tests: 2868](https://img.shields.io/badge/tests-2868%20passed-brightgreen.svg)](tests/)
-[![Version: 1.3.0](https://img.shields.io/badge/version-1.3.0-blueviolet.svg)](pyproject.toml)
+[![Tests: 2868](https://img.shields.io/badge/tests-2868-brightgreen.svg)](tests/)
+[![Release: 1.3.0](https://img.shields.io/badge/release-1.3.0-blueviolet.svg)](pyproject.toml)
+[![Web UI: Operator Console](https://img.shields.io/badge/web%20ui-operator%20console-6f42c1.svg)](WEB_INTERFACE.md)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
 
-Lokalny framework CLI do orkiestracji autonomicznych zespołów agentów LLM w kontrolowanym środowisku.
+Lokalna, CLI-first platforma do orkiestracji autonomicznych zespołów agentów z pełnoprawną webową konsolą operatorską.
 
-`amiagi` to pełnoprawna platforma orkiestracji agentów: dynamiczny rejestr agentów, kolejka zadań, silnik workflow, budżetowanie, framework ewaluacyjny, REST API, web dashboard i kompozycja zespołów — wszystko z izolacją bezpieczeństwa per agent, pełnym audytem JSONL i obsługą wielu backendów (Ollama, OpenAI, OpenRouter, Azure, vLLM).
+`amiagi` to kompletne środowisko pracy dla autonomicznych zespołów AI: dynamiczny rejestr agentów, kolejka zadań, workflow, budżety, ewaluacje, wiedza, REST API oraz rozbudowana konsola WWW do codziennego sterowania operacyjnego. Całość łączy izolację per agent, pełny audyt JSONL, governance modeli i obsługę lokalnych oraz zewnętrznych backendów.
 
 Aktualna wersja: **v1.3.0** — domknięcie planu 02 i gotowość do UAT, **2868 testów**.
 
-v1.3.0 utwardza Web Management Console pod operatora: parity Supervisor WWW/TUI dla głównych scenariuszy, jawne semantyki runtime dla Teams/Evaluations/Knowledge, przywrócony katalog lokalnych modeli oparty o Ollama, modele komercyjne definiowane wyłącznie przez użytkownika oraz domknięty finalny gate regresyjny przed UAT.
+v1.3.0 to moment, w którym interfejs przeglądarkowy staje się pełnoprawnym centrum dowodzenia: Mission Control, live stream zdarzeń, inbox zgód, Model Hub, ewaluacje, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes i narzędzia administracyjne tworzą jedną spójną konsolę operatorską.
 
 Dokumenty wydania: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md).
+
+## Dlaczego v1.3.0 jest ważne
+
+- **Pełnoprawna Web Management Console** — jedna przeglądarkowa powierzchnia dla Supervisor, Agents, Teams, Tasks, Models, Evaluations, Knowledge, Memory, Budget, Vault, Settings, Sessions, Metrics, Inbox, Sandboxes i Admin
+- **Widoczność operacyjna w czasie rzeczywistym** — WebSockety, health monitoring, live streamy, status bary i jawne komunikaty powodzenia/błędu
+- **Governance modeli zgodny z runtime** — lokalne modele z Ollama, modele komercyjne definiowane przez użytkownika, wsparcie dla OpenAI, Anthropic i Google
+- **Bezpieczniejsze operacje administracyjne** — polityki uprawnień, sejf sekretów, audit trail, shell policy i wyraźny feedback operatora
+- **Release gotowy do UAT** — domknięty plan naprawczy, odświeżona dokumentacja i zamknięte kluczowe bramy regresji
+
+## Web Management Console
+
+Interfejs WWW jest teraz jedną z głównych cech amiagi, a nie dodatkiem do monitoringu.
+
+- **Mission Control / Supervisor** — podgląd aktywnych agentów, bieżących zadań, logów na żywo i interwencji operatora
+- **Inbox i zgody** — obsługa Human-in-the-Loop z jawnymi akcjami approve/reject/reply
+- **Model Hub** — podgląd lokalnych modeli Ollama, przypisania modeli do ról i konfiguracja dostawców komercyjnych
+- **Knowledge + Evaluations** — ewaluacje, baseline'y, bazy wiedzy, źródła i postęp indeksacji
+- **Powierzchnia operacyjna** — health, metrics, sessions, budget, vault, files, memory, cron, settings, sandboxes i admin w jednej konsoli
+
+Architektura, trasy i uruchomienie: [WEB_INTERFACE.md](WEB_INTERFACE.md).
 
 ## Disclaimer bezpieczeństwa (koniecznie przeczytaj)
 
@@ -94,7 +115,7 @@ Pełne warunki: [LICENSE](LICENSE).
 - **Kolektor metryk** — ringbuffer na zużycie tokenów, czas zadań, success/error rate
 - **Menedżer alertów** — konfigurowalne reguły z priorytetami
 - **Odtwarzanie sesji** — rekonstrukcja zdarzeń z logów JSONL
-- **Web dashboard** — przeglądarkowy panel z agentami, taskami, metrykami, zdarzeniami (zob. [WEB_INTERFACE.md](WEB_INTERFACE.md))
+- **Web Management Console** — operatorski interfejs WWW obejmujący Supervisor, Inbox, Tasks, Teams, Models, Evaluations, Knowledge, Memory, Budget, Vault, Sessions, Metrics, Settings i Admin (zob. [WEB_INTERFACE.md](WEB_INTERFACE.md))
 
 ### Wspólny kontekst i pamięć (Faza 5)
 
@@ -291,18 +312,20 @@ Komendy zespołów (v1.0+):
 
 ## Interfejsy webowe
 
-amiagi udostępnia dwa interfejsy HTTP. Pełna dokumentacja: [WEB_INTERFACE.md](WEB_INTERFACE.md).
+amiagi udostępnia obecnie trzy powierzchnie HTTP.
 
-### Dashboard monitoringowy (Faza 4)
+### Web Management Console (v1.3.0)
 
-Jednopanelowa aplikacja przeglądarkowa (vanilla JS, zero zależności) z czterema widokami: Agenci, Zadania, Metryki i Log zdarzeń. Auto-odświeżanie co 5 sekund z live-push SSE.
+To główne środowisko przeglądarkowe dla operatora: nadzór, modele, zadania, zespoły, ewaluacje, knowledge, vault, budget, settings, sessions, metrics i admin.
 
+```bash
+pip install -e ".[web]"
+amiagi --ui web
 ```
-/dashboard start [port]   # domyślnie 8080, potem otwórz http://localhost:8080
-/dashboard stop
-```
 
-### REST API (Faza 10)
+Po uruchomieniu otwórz `http://localhost:8080`. Warstwa WWW jest zbudowana na Starlette, korzysta z trwałej persystencji i wspiera aktualizacje w czasie rzeczywistym. Szczegóły: [WEB_INTERFACE.md](WEB_INTERFACE.md).
+
+### REST API
 
 Programmatyczny interfejs HTTP z auth bearer token do integracji zewnętrznych, CI/CD i klientów SDK.
 
@@ -311,7 +334,14 @@ Programmatyczny interfejs HTTP z auth bearer token do integracji zewnętrznych, 
 /api stop
 ```
 
-Szczegóły endpointów, konfiguracji i użycia SDK: [WEB_INTERFACE.md](WEB_INTERFACE.md).
+### Legacy dashboard monitoringowy
+
+Lżejszy dashboard monitoringowy nadal jest dostępny dla prostszych scenariuszy podglądu w przeglądarce.
+
+```
+/dashboard start [port]   # domyślnie 8080, potem otwórz http://localhost:8080
+/dashboard stop
+```
 
 ## Wymagania
 
@@ -443,20 +473,23 @@ conda activate <twoja_nazwa_env>  # conda
 | `amiagi --cold_start --auto` | Czysta karta + autonomia — najlepszy do nowego projektu |
 | `amiagi --ui textual` | Textual TUI (domyślny) — wielopanelowy interfejs ze statusem aktorów |
 | `amiagi --ui cli` | Klasyczne synchroniczne CLI — prosty stdin/stdout |
-| `amiagi --ui web` | Web GUI — dashboard w przeglądarce (wymaga `pip install -e ".[web]"`) |
+| `amiagi --ui web` | Web Management Console — operatorska konsola WWW na `http://localhost:8080` |
 | `amiagi --lang en` | Interfejs po angielsku |
 | `amiagi --lang pl` | Interfejs po polsku (domyślny) |
 | `amiagi --vram-off` | Wyłącz monitoring VRAM — Ollama sam zarządza pamięcią GPU |
 
 ### Scenariusze użycia
 
-**Web GUI — dashboard w przeglądarce:**
+**Web Management Console — przeglądarkowa konsola operatorska:**
 ```bash
 pip install -e ".[web]"   # jednorazowo — instaluje Starlette, Uvicorn, Jinja2 …
 amiagi --ui web
 ```
-Otwiera dashboard pod `http://localhost:8080`.
-Szczegóły: [WEB_INTERFACE.md](WEB_INTERFACE.md).
+Otwiera pełną konsolę operatorską pod `http://localhost:8080`.  
+Zalecane środowisko: **PostgreSQL 13+** dla pełnej persystencji, z fallbackiem
+SQLite do developmentu, oraz **Ollama** dla lokalnych modeli.  
+Szczegóły architektury, tras, RBAC, OAuth2, migracji i funkcji operatorskich:
+[WEB_INTERFACE.md](WEB_INTERFACE.md).
 
 **Pierwsze uruchomienie:**
 ```bash
