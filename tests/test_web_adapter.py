@@ -109,6 +109,10 @@ class TestWebAdapterBroadcast:
         assert call_args[0][1]["channel"] == "executor"
         assert call_args[0][1]["source_label"] == "Polluks"
         assert call_args[0][1]["summary"] == "Polluks: hello"
+        assert call_args[0][1]["from"] == "Polluks"
+        assert call_args[0][1]["to"] == "polluks"
+        assert call_args[0][1]["message_type"] == "log"
+        assert call_args[0][1]["timestamp"]
         loop.close()
 
     def test_actor_state_event(self, adapter, event_bus):
@@ -127,6 +131,11 @@ class TestWebAdapterBroadcast:
         assert payload["channel"] == "supervisor"
         assert payload["source_label"] == "Kastor"
         assert payload["summary"] == "Kastor · ACTIVE · started"
+        assert payload["thread_owners"] == ["agent:kastor"]
+        assert payload["from"] == "Kastor"
+        assert payload["to"] == "kastor"
+        assert payload["message_type"] == "actor_state"
+        assert payload["status"] == "active"
         loop.close()
 
     def test_log_event_enriches_agent_id(self, adapter, event_bus):
@@ -142,6 +151,23 @@ class TestWebAdapterBroadcast:
         loop.run_until_complete(asyncio.sleep(0.05))
         payload = hub.broadcast.call_args[0][1]
         assert payload["agent_id"] == "polluks"
+        loop.close()
+
+    def test_user_model_log_routes_to_supervisor_and_polluks(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(LogEvent(panel="user_model_log", message="Model: gotowe", agent_id="polluks", source_label="Polluks"))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        payload = hub.broadcast.call_args[0][1]
+        assert payload["thread_owners"] == ["supervisor", "agent:polluks"]
+        assert payload["from"] == "Polluks"
+        assert payload["to"] == "Supervisor"
         loop.close()
 
     def test_log_event_prefers_explicit_metadata(self, adapter, event_bus):
@@ -182,14 +208,86 @@ class TestWebAdapterBroadcast:
             stage="review",
             reason_code="OK",
             notes="note",
-            answer="answer",
+            answer="[Polluks -> Sponsor] answer",
         ))
 
         loop.run_until_complete(asyncio.sleep(0.05))
-        payload = hub.broadcast.call_args[0][1]
-        assert payload["agent_id"] == "kastor"
-        assert payload["channel"] == "supervisor"
-        assert payload["summary"] == "note"
+        assert hub.broadcast.await_count == 2
+        internal_payload = hub.broadcast.await_args_list[0].args[1]
+        report_payload = hub.broadcast.await_args_list[1].args[1]
+
+        assert internal_payload["agent_id"] == "kastor"
+        assert internal_payload["channel"] == "supervisor"
+        assert internal_payload["summary"] == "note"
+        assert internal_payload["thread_owners"] == ["agent:polluks"]
+        assert internal_payload["from"] == "Kastor"
+        assert internal_payload["to"] == "Polluks"
+        assert internal_payload["message_type"] == "supervisor_message"
+
+        assert report_payload["agent_id"] == "kastor"
+        assert report_payload["channel"] == "supervisor"
+        assert report_payload["summary"] == "answer"
+        assert report_payload["thread_owners"] == ["supervisor", "agent:kastor"]
+        assert report_payload["from"] == "Kastor"
+        assert report_payload["to"] == "Sponsor"
+        assert report_payload["message_type"] == "supervisor_message"
+        loop.close()
+
+    def test_internal_supervisor_tool_message_targets_polluks_only(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        event_bus.emit(SupervisorMessageEvent(
+            stage="tool_flow",
+            reason_code="OK",
+            notes="Polluks, pamiętaj o protokole",
+            answer='```tool_call\n{"tool":"fetch_web","args":{"url":"https://example.com"},"intent":"scan"}\n```',
+        ))
+
+        loop.run_until_complete(asyncio.sleep(0.05))
+        assert hub.broadcast.await_count == 1
+        payload = hub.broadcast.await_args_list[0].args[1]
+        assert payload["thread_owners"] == ["agent:polluks"]
+        assert payload["to"] == "Polluks"
+        assert payload["summary"] == "Polluks, pamiętaj o protokole"
+        loop.close()
+
+    def test_duplicate_sponsor_supervisor_summary_is_not_broadcast_twice(self, adapter, event_bus):
+        adapter.start()
+        hub = MagicMock()
+        hub.broadcast = AsyncMock()
+        loop = asyncio.new_event_loop()
+        adapter.set_event_hub(hub)
+        adapter.set_loop(loop)
+
+        duplicate_event = SupervisorMessageEvent(
+            stage="review",
+            reason_code="OK",
+            notes="note one",
+            answer="[Polluks -> Sponsor] status bez zmian",
+        )
+
+        event_bus.emit(duplicate_event)
+        loop.run_until_complete(asyncio.sleep(0.05))
+        event_bus.emit(SupervisorMessageEvent(
+            stage="review",
+            reason_code="OK",
+            notes="note two",
+            answer="[Polluks -> Sponsor] status bez zmian",
+        ))
+        loop.run_until_complete(asyncio.sleep(0.05))
+
+        sponsor_payloads = [
+            call.args[1]
+            for call in hub.broadcast.await_args_list
+            if call.args[1].get("to") == "Sponsor"
+        ]
+        assert len(sponsor_payloads) == 1
+        assert sponsor_payloads[0]["summary"] == "status bez zmian"
         loop.close()
 
     def test_actor_state_prefers_explicit_metadata(self, adapter, event_bus):
@@ -234,6 +332,8 @@ class TestWebAdapterBroadcast:
         payload = hub.broadcast.call_args[0][1]
         assert payload["channel"] == "system"
         assert payload["summary"] == "something broke"
+        assert payload["message_type"] == "error"
+        assert payload["status"] == "error"
         loop.close()
 
     def test_cycle_event_carries_system_summary(self, adapter, event_bus):
@@ -251,6 +351,7 @@ class TestWebAdapterBroadcast:
         assert hub.broadcast.call_args[0][0] == "cycle_finished"
         assert payload["channel"] == "system"
         assert payload["summary"] == "Cycle finished · completed"
+        assert payload["thread_owners"] == ["agent:router"]
         loop.close()
 
     def test_no_broadcast_without_hub(self, adapter, event_bus):

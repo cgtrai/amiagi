@@ -138,6 +138,8 @@ class AgentWizardService:
             role = "supervisor"
 
         tools: list[str] = ["read_file", "list_dir"]
+        if any(w in need.lower() for w in ("audit", "review", "inventory", "report", "analysis")):
+            tools.append("analyze_workspace")
         if any(w in need.lower() for w in ("code", "python", "program", "script")):
             tools.extend(["run_python", "check_python_syntax", "write_file"])
         if any(w in need.lower() for w in ("web", "search", "research", "http")):

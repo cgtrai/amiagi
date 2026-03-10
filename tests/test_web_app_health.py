@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -105,3 +107,145 @@ class TestHealthRouteModule:
         from amiagi.interfaces.web.routes.health_routes import health_routes
         route = [r for r in health_routes if r.path == "/health"][0]
         assert route.methods is not None and "GET" in route.methods
+
+
+@pytest.mark.asyncio
+async def test_router_continuity_scheduler_drives_watchdog_and_idle_reactivation():
+    from amiagi.interfaces.web.app import _RouterContinuityScheduler
+
+    class _FakeRouterEngine:
+        def __init__(self) -> None:
+            self.watchdog_ticks = 0
+            self.idle_reactivation_cycles = 0
+
+        def watchdog_tick(self) -> None:
+            self.watchdog_ticks += 1
+
+        def run_idle_reactivation_cycle(self) -> None:
+            self.idle_reactivation_cycles += 1
+
+    router_engine = _FakeRouterEngine()
+    scheduler = _RouterContinuityScheduler(router_engine, interval_seconds=0.1)
+    scheduler.start(asyncio.get_running_loop())
+
+    await asyncio.sleep(0.25)
+    await scheduler.stop()
+
+    assert router_engine.watchdog_ticks >= 2
+    assert router_engine.idle_reactivation_cycles >= 2
+
+
+@pytest.mark.asyncio
+async def test_router_continuity_scheduler_stop_is_idempotent():
+    from amiagi.interfaces.web.app import _RouterContinuityScheduler
+
+    class _FakeRouterEngine:
+        def watchdog_tick(self) -> None:
+            pass
+
+        def run_idle_reactivation_cycle(self) -> None:
+            pass
+
+    scheduler = _RouterContinuityScheduler(_FakeRouterEngine(), interval_seconds=0.1)
+    scheduler.start(asyncio.get_running_loop())
+
+    await scheduler.stop()
+    await scheduler.stop()
+
+
+def test_cleanup_stale_web_server_terminates_pid_from_pid_file(monkeypatch, tmp_path):
+    from amiagi.interfaces.web import run as web_run
+
+    settings = type(
+        "Settings",
+        (),
+        {
+            "work_dir": tmp_path / "amiagi-my-work",
+            "activity_log_path": tmp_path / "logs" / "activity.jsonl",
+        },
+    )()
+
+    terminated: list[int] = []
+    written: list[tuple[Path, int]] = []
+    pid_file = tmp_path / "logs" / "web_gui.pid"
+
+    monkeypatch.setattr(web_run, "_web_runtime_pid_path", lambda _settings: pid_file)
+    monkeypatch.setattr(web_run, "_read_pid_file", lambda _path: 4321)
+    monkeypatch.setattr(web_run, "_pid_exists", lambda pid: pid == 4321)
+    monkeypatch.setattr(web_run, "_looks_like_amiagi_web_process", lambda pid, repo_root: pid == 4321)
+    monkeypatch.setattr(web_run, "_find_listening_pid_on_port_linux", lambda _port: None)
+    monkeypatch.setattr(web_run, "_terminate_process", lambda pid: terminated.append(pid) or True)
+    monkeypatch.setattr(web_run, "_write_pid_file", lambda path, pid: written.append((path, pid)))
+    monkeypatch.setattr(web_run.os, "getpid", lambda: 9999)
+
+    result = web_run._cleanup_stale_web_server(settings, 8080)
+
+    assert result == pid_file
+    assert terminated == [4321]
+    assert written == [(pid_file, 9999)]
+
+
+def test_cleanup_stale_web_server_terminates_port_holder_when_pid_file_is_stale(monkeypatch, tmp_path):
+    from amiagi.interfaces.web import run as web_run
+
+    settings = type(
+        "Settings",
+        (),
+        {
+            "work_dir": tmp_path / "amiagi-my-work",
+            "activity_log_path": tmp_path / "logs" / "activity.jsonl",
+        },
+    )()
+
+    removed: list[Path] = []
+    terminated: list[int] = []
+    written: list[tuple[Path, int]] = []
+    pid_file = tmp_path / "logs" / "web_gui.pid"
+
+    monkeypatch.setattr(web_run, "_web_runtime_pid_path", lambda _settings: pid_file)
+    monkeypatch.setattr(web_run, "_read_pid_file", lambda _path: 1234)
+    monkeypatch.setattr(web_run, "_pid_exists", lambda pid: pid == 5678)
+    monkeypatch.setattr(web_run, "_remove_pid_file", lambda path: removed.append(path))
+    monkeypatch.setattr(web_run, "_looks_like_amiagi_web_process", lambda pid, repo_root: pid == 5678)
+    monkeypatch.setattr(web_run, "_find_listening_pid_on_port_linux", lambda _port: 5678)
+    monkeypatch.setattr(web_run, "_terminate_process", lambda pid: terminated.append(pid) or True)
+    monkeypatch.setattr(web_run, "_write_pid_file", lambda path, pid: written.append((path, pid)))
+    monkeypatch.setattr(web_run.os, "getpid", lambda: 9999)
+
+    result = web_run._cleanup_stale_web_server(settings, 8080)
+
+    assert result == pid_file
+    assert removed == [pid_file]
+    assert terminated == [5678]
+    assert written == [(pid_file, 9999)]
+
+
+def test_cleanup_stale_web_server_does_not_kill_unrelated_port_holder(monkeypatch, tmp_path):
+    from amiagi.interfaces.web import run as web_run
+
+    settings = type(
+        "Settings",
+        (),
+        {
+            "work_dir": tmp_path / "amiagi-my-work",
+            "activity_log_path": tmp_path / "logs" / "activity.jsonl",
+        },
+    )()
+
+    terminated: list[int] = []
+    written: list[tuple[Path, int]] = []
+    pid_file = tmp_path / "logs" / "web_gui.pid"
+
+    monkeypatch.setattr(web_run, "_web_runtime_pid_path", lambda _settings: pid_file)
+    monkeypatch.setattr(web_run, "_read_pid_file", lambda _path: None)
+    monkeypatch.setattr(web_run, "_find_listening_pid_on_port_linux", lambda _port: 7777)
+    monkeypatch.setattr(web_run, "_looks_like_amiagi_web_process", lambda pid, repo_root: False)
+    monkeypatch.setattr(web_run, "_terminate_process", lambda pid: terminated.append(pid) or True)
+    monkeypatch.setattr(web_run, "_write_pid_file", lambda path, pid: written.append((path, pid)))
+    monkeypatch.setattr(web_run.os, "getpid", lambda: 9999)
+
+    result = web_run._cleanup_stale_web_server(settings, 8080)
+
+    assert result == pid_file
+    assert terminated == []
+    assert written == [(pid_file, 9999)]

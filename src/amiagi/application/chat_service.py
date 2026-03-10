@@ -42,7 +42,8 @@ SYSTEM_PROMPT = (
     "Masz być świadomy aktualnych możliwości frameworka amiagi: pamięć trwała, "
     "zgody zasobowe, logi JSON/JSONL, uruchamianie skryptów i shell z polityką bezpieczeństwa, "
     "ciągłość sesji i adaptacja pod VRAM. "
-    "Możesz proponować i planować rozbudowę frameworka zgodnie z własną oceną potrzeb. W tym celu możesz tworzyć samodzielnie skrypty w gałęzi amiagi-my-work/tools/ i uruchamiać je przez run_python. "
+    "Możesz proponować i planować rozbudowę frameworka zgodnie z własną oceną potrzeb. Robocze skrypty pomocnicze możesz tworzyć w gałęzi amiagi-my-work/tools/ i uruchamiać je przez run_python. "
+    "Standardowe narzędzia frameworka AmiAGI są częścią kodu aplikacji w src/amiagi/system_tools/, są wersjonowane razem z repozytorium i nie wolno ich modyfikować przez zwykłą pracę agenta. "
     "Nie musisz pytać użytkownika o zgodę w treści odpowiedzi — samodzielnie uruchamiaj realne kroki przez tool_call, "
     "a framework sam obsłuży wykonanie poleceń. "
     "Gdy użytkownik zadaje krótkie pytanie tożsamościowe/meta (np. 'kim jesteś?'), odpowiadaj jednym zdaniem i bez tool_call. "
@@ -93,24 +94,27 @@ TOOL_CALLING_GUIDE = (
     "       wynik zawiera has_more=true i next_offset — użyj kolejnego read_file z tym offset.\n"
     "     - Przy przetwarzaniu długich dokumentów rób notatki w notes/ z kluczowymi informacjami z każdego chunka.\n"
     "  2) list_dir args: {\"path\":\"/abs/path\"}\n"
-    "  3) run_shell args: {\"command\":\"<cmd>\"} (tylko whitelist read-only)\n"
-    "  4) run_python args: {\"path\":\"/abs/path.py\",\"args\":[...]}\n"
-    "  5) check_python_syntax args: {\"path\":\"/abs/path.py\"}\n"
-    "  6) fetch_web args: {\"url\":\"https://...\",\"max_chars\":12000,\"offset\":0}\n"
+    "  3) analyze_workspace args: {\"path\":\"/abs/path\",\"format\":\"txt|json\"}\n"
+    "     - Wbudowane narzędzie frameworka do szybkiego checku struktury projektu: liczy pliki, linie kodu, rekordy JSON i linie treści.\n"
+    "     - Preferuj je, gdy potrzebujesz szybkiej orientacji w skali repo, materiału do wyceny albo oceny postępu prac agentów.\n"
+    "  4) run_shell args: {\"command\":\"<cmd>\"} (tylko whitelist read-only)\n"
+    "  5) run_python args: {\"path\":\"/abs/path.py\",\"args\":[...]}\n"
+    "  6) check_python_syntax args: {\"path\":\"/abs/path.py\"}\n"
+    "  7) fetch_web args: {\"url\":\"https://...\",\"max_chars\":12000,\"offset\":0}\n"
     "     - Obsługuje offset tak samo jak read_file — używaj do przeglądania długich stron chunkami.\n"
-    "  7) search_web args: {\"query\":\"...\",\"engine\":\"duckduckgo|google\",\"max_results\":5}\n"
-    "  8) download_file args: {\"url\":\"https://...\",\"output_path\":\"downloads/plik.pdf\",\"max_size_mb\":50}\n"
+    "  8) search_web args: {\"query\":\"...\",\"engine\":\"duckduckgo|google\",\"max_results\":5}\n"
+    "  9) download_file args: {\"url\":\"https://...\",\"output_path\":\"downloads/plik.pdf\",\"max_size_mb\":50}\n"
     "     - Pobiera plik binarny z URL i zapisuje na dysku. Domyślnie do downloads/.\n"
-    "  9) convert_pdf_to_markdown args: {\"path\":\"/abs/path.pdf\",\"output_path\":\"converted/plik.md\"}\n"
+    "  10) convert_pdf_to_markdown args: {\"path\":\"/abs/path.pdf\",\"output_path\":\"converted/plik.md\"}\n"
     "     - Konwertuje PDF na markdown (markitdown → PyPDF2 → pdftotext). Wynik w converted/.\n"
     "     - Po konwersji użyj read_file na output_path aby przeczytać treść (z chunkami jeśli długa).\n"
-    "  10) capture_camera_frame args: {\"output_path\":\"artifacts/camera.jpg\",\"device\":\"/dev/video0\"}\n"
-    "  11) record_microphone_clip args: {\"output_path\":\"artifacts/mic.wav\",\"duration_seconds\":5,\"sample_rate_hz\":16000,\"channels\":1}\n"
+    "  11) capture_camera_frame args: {\"output_path\":\"artifacts/camera.jpg\",\"device\":\"/dev/video0\"}\n"
+    "  12) record_microphone_clip args: {\"output_path\":\"artifacts/mic.wav\",\"duration_seconds\":5,\"sample_rate_hz\":16000,\"channels\":1}\n"
     "     - Dla nagrywania mikrofonu używaj WYŁĄCZNIE record_microphone_clip (nie run_shell/arecord).\n"
     "     - Runtime automatycznie emituje komunikaty bezpieczeństwa [MIC] (prepare/active/done/failed) do konsoli i activity logu.\n"
-    "  12) check_capabilities args: {\"check_network\":false}\n"
-    "  13) write_file args: {\"path\":\"/abs/path\",\"content\":\"...\",\"overwrite\":true}\n"
-    "  14) append_file args: {\"path\":\"/abs/path\",\"content\":\"...\"}\n"
+    "  13) check_capabilities args: {\"check_network\":false}\n"
+    "  14) write_file args: {\"path\":\"/abs/path\",\"content\":\"...\",\"overwrite\":true}\n"
+    "  15) append_file args: {\"path\":\"/abs/path\",\"content\":\"...\"}\n"
     "- Kompatybilne formaty odpowiedzi tool_call:\n"
     "  a) {\"tool\":\"name\",\"args\":{...},\"intent\":\"...\"}\n"
     "  b) {\"tool_call\":{\"name\":\"name\",\"arguments\":{...}}}\n"
@@ -127,6 +131,7 @@ TOOL_CALLING_GUIDE = (
     "run_command → run_shell, dir_list → list_dir, download → download_file, "
     "pdf_to_md → convert_pdf_to_markdown, convert_pdf → convert_pdf_to_markdown. "
     "Nie używaj nieistniejących nazw narzędzi.\n"
+    "- Przy analizie zawartości katalogów i wyników pracy agentów najpierw rozważ analyze_workspace zamiast ręcznego zliczania.\n"
     "WERYFIKACJA I NAPRAWA NARZĘDZI (OBOWIĄZKOWA):\n"
     "1) Po `write_file` najpierw wykonaj `read_file` tego samego pliku, aby potwierdzić zapis.\n"
     "2) Jeśli zapisany plik to skrypt `.py`, uruchom najpierw `check_python_syntax` (bez wykonywania kodu).\n"
@@ -430,23 +435,23 @@ class ChatService:
         return profile.suggested_num_ctx
 
     def ask(self, user_message: str, *, actor: str = "Sponsor") -> str:
-        framework_answer = self._handle_framework_meta_query(user_message)
-        if framework_answer is not None:
+        local_answer = self._handle_local_meta_query(user_message)
+        if local_answer is not None:
             stored_user_message = self._normalize_user_message_for_storage(user_message)
             self.memory_repository.append_message("user", stored_user_message, actor=actor)
-            self.memory_repository.append_message("assistant", framework_answer, actor="Polluks")
+            self.memory_repository.append_message("assistant", local_answer, actor="Polluks")
             self.memory_repository.add_memory(
                 kind="interaction",
-                content=f"U: {stored_user_message}\nA: {framework_answer}",
+                content=f"U: {stored_user_message}\nA: {local_answer}",
                 source="auto",
             )
             if self.activity_logger:
                 self.activity_logger.log(
-                    action="framework.meta.answer",
-                    intent="Udzielenie precyzyjnej odpowiedzi o możliwościach frameworka bez delegacji do modelu.",
+                    action="runtime.meta.answer",
+                    intent="Udzielenie lokalnej odpowiedzi meta bez delegacji do modelu.",
                     details={"user_message_chars": len(user_message)},
                 )
-            return framework_answer
+            return local_answer
 
         if self.activity_logger:
             self.activity_logger.log(
@@ -669,9 +674,6 @@ class ChatService:
         Falls back to legacy *SkillsLoader* when the provider returns no
         results or is not configured.
         """
-        if not self.is_api_model():
-            return ""
-
         # C1: Delegate to SkillSelector via skill_provider
         if self.skill_provider is not None:
             try:
@@ -685,6 +687,9 @@ class ChatService:
                     return "\n".join(parts) + "\n\n"
             except Exception:  # noqa: BLE001
                 pass  # Fall through to legacy loader
+
+        if not self.is_api_model():
+            return ""
 
         # C2: Fallback to legacy SkillsLoader
         if self.skills_loader is None:
@@ -733,8 +738,18 @@ class ChatService:
             )
         return user_message
 
-    def _handle_framework_meta_query(self, user_message: str) -> str | None:
+    def _handle_local_meta_query(self, user_message: str) -> str | None:
         normalized = user_message.strip().lower()
+        identity_markers = [
+            "kim jesteś",
+            "kto ty jesteś",
+            "jak masz na imię",
+            "co to za model",
+            "jesteś polluks",
+        ]
+        if any(marker in normalized for marker in identity_markers):
+            return "Jestem Polluks, modelem wykonawczym frameworka amiagi."
+
         markers = [
             "jak działa framework",
             "czy wiesz jak działa framework",

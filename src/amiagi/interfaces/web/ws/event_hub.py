@@ -21,6 +21,8 @@ from typing import Any
 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from amiagi.interfaces.web.stream_contract import normalize_stream_payload
+
 logger = logging.getLogger(__name__)
 
 # Heartbeat settings
@@ -41,6 +43,9 @@ class EventHub:
         self._agent_listeners: dict[str, list[WebSocket]] = defaultdict(list)
         self._last_seen: dict[int, float] = {}  # id(ws) → monotonic time
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._recent_events: list[dict[str, Any]] = []
+        self._recent_limit = 200
+        self._next_event_id = 1
 
     # ------------------------------------------------------------------
     # Heartbeat
@@ -150,6 +155,12 @@ class EventHub:
         if panel is not None:
             msg_dict["panel"] = panel
         msg_dict.setdefault("ts", datetime.now(timezone.utc).isoformat())
+        msg_dict = normalize_stream_payload(event_type, msg_dict)
+        msg_dict.setdefault("event_id", self._next_event_id)
+        self._next_event_id = int(msg_dict["event_id"]) + 1
+        self._recent_events.append(dict(msg_dict))
+        if len(self._recent_events) > self._recent_limit:
+            self._recent_events = self._recent_events[-self._recent_limit:]
         message = json.dumps(msg_dict)
 
         # 1. Global broadcast
@@ -185,3 +196,23 @@ class EventHub:
     @property
     def agent_listener_count(self) -> int:
         return sum(len(v) for v in self._agent_listeners.values())
+
+    def get_recent_events(self, *, limit: int | None = None) -> list[dict[str, Any]]:
+        if limit is None or limit <= 0:
+            return list(self._recent_events)
+        return list(self._recent_events[-limit:])
+
+    def get_events_after(self, event_id: int, *, limit: int | None = None) -> tuple[list[dict[str, Any]], bool]:
+        if event_id < 0:
+            event_id = 0
+        events = self.get_recent_events(limit=limit)
+        if not events:
+            return [], False
+
+        oldest_event_id = int(events[0].get("event_id") or 0)
+        truncated = event_id > 0 and event_id < (oldest_event_id - 1)
+        if truncated:
+            return events, True
+
+        filtered = [event for event in events if int(event.get("event_id") or 0) > event_id]
+        return filtered, False

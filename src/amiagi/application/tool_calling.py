@@ -29,6 +29,7 @@ _COLON_TOOL_CALL_HEADER = re.compile(
     re.IGNORECASE,
 )
 _DIRECT_TOOL_NAMES = {
+    "analyze_workspace",
     "read_file",
     "list_dir",
     "run_shell",
@@ -564,10 +565,15 @@ def _extract_colon_style_args(tool: str, chunk: str) -> dict[str, Any]:
             return None
         return found.group("value").lower() == "true"
 
-    if tool in {"read_file", "list_dir", "write_file", "append_file", "run_python"}:
+    if tool in {"analyze_workspace", "read_file", "list_dir", "write_file", "append_file", "run_python"}:
         path = extract_string_arg("path")
         if path is not None:
             args["path"] = path
+
+    if tool == "analyze_workspace":
+        output_format = extract_string_arg("format")
+        if output_format is not None:
+            args["format"] = output_format
 
     if tool == "fetch_web":
         url = extract_string_arg("url")
@@ -630,7 +636,7 @@ def _apply_positional_args(tool: str, positional: list[Any], args: dict[str, Any
     if not positional:
         return
 
-    if tool in {"read_file", "list_dir", "write_file", "append_file", "run_python"}:
+    if tool in {"analyze_workspace", "read_file", "list_dir", "write_file", "append_file", "run_python"}:
         path = positional[0]
         if isinstance(path, str) and path.strip():
             args.setdefault("path", path)
@@ -645,6 +651,10 @@ def _apply_positional_args(tool: str, positional: list[Any], args: dict[str, Any
 
 
 def _has_required_args_for_tool(tool: str, args: dict[str, Any]) -> bool:
+    if tool == "analyze_workspace":
+        path = args.get("path")
+        return path is None or (isinstance(path, str) and bool(path.strip()))
+
     if tool in {"read_file", "list_dir", "run_python"}:
         path = args.get("path")
         return isinstance(path, str) and bool(path.strip())
@@ -809,6 +819,7 @@ def _normalize_tool_and_args(tool: str, args: dict[str, Any]) -> tuple[str, dict
 def _infer_root_args(payload: dict[str, Any]) -> dict[str, Any]:
     allowed = {
         "path",
+        "format",
         "max_chars",
         "url",
         "query",

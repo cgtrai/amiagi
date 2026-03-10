@@ -61,6 +61,17 @@ class TestPermissionEnforcer:
         result = enforcer.check_path("a1", "/etc/passwd", write=True)
         assert not result.allowed
 
+    def test_check_path_denies_protected_system_tools_write(self, enforcer: PermissionEnforcer) -> None:
+        enforcer.set_policy("a1", AgentPermissionPolicy.allow_all())
+        result = enforcer.check_path("a1", "src/amiagi/system_tools/demo.py", write=True)
+        assert not result.allowed
+        assert "protected system tools" in result.reason
+
+    def test_check_path_allows_protected_system_tools_read(self, enforcer: PermissionEnforcer) -> None:
+        enforcer.set_policy("a1", AgentPermissionPolicy.allow_all())
+        result = enforcer.check_path("a1", "src/amiagi/system_tools/demo.py", write=False)
+        assert result.allowed
+
     def test_check_path_no_policy(self, enforcer: PermissionEnforcer) -> None:
         result = enforcer.check_path("a1", "any/path")
         assert not result.allowed

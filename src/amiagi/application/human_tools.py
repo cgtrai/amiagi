@@ -210,13 +210,16 @@ class HumanInteractionBridge:
         self, item_id: str, item_type: str, agent_id: str
     ) -> None:
         """Send a real-time event to connected WebSocket clients."""
-        if self._hub is None:
+        if self._hub is None or self._loop is None:
             return
         try:
-            self._hub.broadcast("inbox.new", {
-                "inbox_item_id": item_id,
-                "item_type": item_type,
-                "agent_id": agent_id,
-            })
+            asyncio.run_coroutine_threadsafe(
+                self._hub.broadcast("inbox.new", {
+                    "inbox_item_id": item_id,
+                    "item_type": item_type,
+                    "agent_id": agent_id,
+                }),
+                self._loop,
+            )
         except Exception:
             logger.debug("Failed to broadcast inbox event", exc_info=True)

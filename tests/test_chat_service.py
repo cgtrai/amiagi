@@ -210,6 +210,18 @@ def test_framework_meta_query_mentions_work_dir_and_tool_calling(tmp_path: Path)
     assert len(client.calls) == 0
 
 
+def test_identity_meta_query_is_answered_without_model_call(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, model_client=client)
+
+    answer = service.ask("[Sponsor -> all] kim jesteś?")
+
+    assert "polluks" in answer.lower()
+    assert "amiagi" in answer.lower()
+    assert len(client.calls) == 0
+
+
 def test_autonomy_trigger_includes_existing_intro_path(tmp_path: Path, monkeypatch) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()

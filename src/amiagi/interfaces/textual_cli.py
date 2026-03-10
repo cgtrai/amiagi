@@ -97,6 +97,7 @@ SUPERVISOR_IDLE_THRESHOLD_SECONDS = 45.0
 
 
 _SUPPORTED_TEXTUAL_TOOLS = {
+    "analyze_workspace",
     "read_file",
     "list_dir",
     "run_shell",

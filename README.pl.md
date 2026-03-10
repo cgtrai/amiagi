@@ -472,8 +472,8 @@ conda activate <twoja_nazwa_env>  # conda
 |---------|------|
 | `amiagi` | Standardowy start — kreator modeli, potem Textual TUI |
 | `amiagi --auto` | Tryb autonomiczny — agent pracuje bez czekania na potwierdzenie |
-| `amiagi --cold_start` | Świeży start — czyści bazę, logi, konfigurację modeli, historię |
-| `amiagi --cold_start --auto` | Czysta karta + autonomia — najlepszy do nowego projektu |
+| `amiagi --cold_start` | Pełny reset — usuwa zawartość `amiagi-my-work` i dane runtime przed startem |
+| `amiagi --cold_start --auto` | Pełny reset + autonomia — najlepszy do nowego projektu |
 | `amiagi --ui textual` | Textual TUI (domyślny) — wielopanelowy interfejs ze statusem aktorów |
 | `amiagi --ui cli` | Klasyczne synchroniczne CLI — prosty stdin/stdout |
 | `amiagi --ui web` | Web Management Console — operatorska konsola WWW na `http://localhost:8080` |
@@ -502,17 +502,18 @@ Interaktywny kreator przeprowadzi przez wybór modeli dla obu ról
 (Polluks — wykonawca, Kastor — nadzorca). Wybory są zapisywane
 na przyszłe sesje.
 
-**Nowy projekt (czysta karta):**
+**Nowy projekt (pełny reset):**
 ```bash
 amiagi --cold_start
 ```
-Czyści wszystkie dane z poprzedniej sesji:
-- Bazę pamięci SQLite
-- Wszystkie logi JSONL (model I/O, aktywność, dialog nadzorczy)
-- Zapisaną konfigurację modeli (wymusza ponowny wybór)
-- Historię poleceń
+Usuwa stan runtime z poprzedniej pracy, w tym:
+- zawartość `amiagi-my-work/`
+- bazę pamięci SQLite i pomocnicze bazy danych
+- logi JSONL (model I/O, aktywność, dialog nadzorczy, audit, mailbox)
+- zapisaną konfigurację modeli i historię poleceń
+- shared workspace, sandboxy, checkpointy workflow i cross-agent memory
 
-Użyj, gdy przechodzisz do zupełnie innego projektu lub zadania.
+Użyj, gdy przechodzisz do zupełnie innego projektu albo musisz mieć pewność, że żaden artefakt poprzedniej pracy nie wpłynie na kolejne uruchomienie.
 
 **Tryb autonomiczny — agent pracuje samodzielnie:**
 ```bash
@@ -526,7 +527,7 @@ Idealny do dłuższych zadań: generowanie kodu, research.
 ```bash
 amiagi --cold_start --auto
 ```
-Łączy oba: czysta historia + agent działa samodzielnie. Rekomendowany
+Łączy oba: pełny reset runtime + agent działa samodzielnie. Rekomendowany
 sposób na rozpoczęcie nowego zadania programistycznego lub badawczego.
 
 **Interfejs po angielsku:**

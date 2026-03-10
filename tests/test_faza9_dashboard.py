@@ -46,6 +46,12 @@ class TestMonitoringTab:
         assert "panel-event-log" in content
         assert "panel-costs" in content
 
+    def test_dashboard_agent_overview_row_is_clickable(self):
+        path = Path(__file__).parent.parent / "src/amiagi/interfaces/web/static/js/dashboard.js"
+        content = path.read_text(encoding="utf-8")
+        assert "agent-overview-row agent-overview-row--link" in content
+        assert "buildAgentDetailUrl" in content
+
     def test_api_agents_route_exists(self):
         from amiagi.interfaces.web.routes.api_routes import api_routes
         paths = [r.path for r in api_routes]
@@ -283,6 +289,40 @@ class TestAssignAgentModel:
             tmp_path.unlink(missing_ok=True)
 
     @pytest.mark.asyncio
+    async def test_assign_model_uses_settings_model_config_path(self):
+        from amiagi.interfaces.web.routes.model_routes import assign_agent_model
+
+        mock_agent = MagicMock()
+        mock_agent.model_name = "new-model"
+        mock_agent.model_backend = "ollama"
+
+        registry = MagicMock()
+        registry.get.return_value = mock_agent
+        registry.update_model = MagicMock()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({}, f)
+            tmp_path = Path(f.name)
+
+        try:
+            request = MagicMock()
+            request.path_params = {"agent_id": "agent-1"}
+            request.app.state.agent_registry = registry
+            request.app.state.activity_logger = None
+            request.app.state.settings = SimpleNamespace(model_config_path=tmp_path)
+            request.json = AsyncMock(return_value={"model_name": "new-model", "model_backend": "ollama"})
+            request.state.user = None
+
+            resp = await assign_agent_model(request)
+            body = json.loads(bytes(resp.body))
+            assert body["status"] == "ok"
+
+            saved = json.loads(tmp_path.read_text(encoding="utf-8"))
+            assert saved["agent-1_model"] == "new-model"
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
     async def test_assign_model_not_found(self):
         from amiagi.interfaces.web.routes.model_routes import assign_agent_model
 
@@ -481,6 +521,42 @@ class TestAgentConfig:
         assert body["status"] == "ok"
         assert "persona_prompt" in body["changed"]
         assert "skills" in body["changed"]
+
+    @pytest.mark.asyncio
+    async def test_update_agent_config_model_uses_settings_model_config_path(self):
+        from amiagi.interfaces.web.routes.agent_config_routes import update_agent_config
+
+        mock_agent = MagicMock()
+        mock_agent.persona_prompt = "old"
+        mock_agent.skills = []
+        mock_agent.model_backend = "ollama"
+
+        registry = MagicMock()
+        registry.get.return_value = mock_agent
+        registry.update_model = MagicMock()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({}, f)
+            tmp_path = Path(f.name)
+
+        try:
+            request = MagicMock()
+            request.path_params = {"agent_id": "a1"}
+            request.app.state.agent_registry = registry
+            request.app.state.activity_logger = None
+            request.app.state.settings = SimpleNamespace(model_config_path=tmp_path)
+            request.state.user = None
+            request.json = AsyncMock(return_value={"model_name": "cogito:14b", "model_backend": "ollama"})
+
+            resp = await update_agent_config(request)
+            body = json.loads(bytes(resp.body))
+            assert body["status"] == "ok"
+
+            saved = json.loads(tmp_path.read_text(encoding="utf-8"))
+            assert saved["a1_model"] == "cogito:14b"
+            assert saved["a1_source"] == "ollama"
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     @pytest.mark.asyncio
     async def test_update_agent_config_no_changes(self):

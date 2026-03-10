@@ -63,6 +63,15 @@
     }
   }
 
+  function activateTab(tabName) {
+    tabs.forEach(function (tab) {
+      tab.classList.toggle("active", tab.dataset.tab === tabName);
+    });
+    panels.forEach(function (panel) {
+      panel.classList.toggle("active", panel.id === "panel-" + tabName);
+    });
+  }
+
   async function responseErrorMessage(response, fallback) {
     var payload = await response.json().catch(function () { return {}; });
     return payload.error || fallback;
@@ -71,13 +80,32 @@
   /* ── Tab switching ─────────────────────────────────────────── */
   tabs.forEach(function (tab) {
     tab.addEventListener("click", function () {
-      tabs.forEach(function (t) { t.classList.remove("active"); });
-      panels.forEach(function (p) { p.classList.remove("active"); });
-      tab.classList.add("active");
-      var panel = document.getElementById("panel-" + tab.dataset.tab);
-      if (panel) panel.classList.add("active");
+      activateTab(tab.dataset.tab);
     });
   });
+
+  function applyNavigationContext() {
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get("tab");
+    var provider = params.get("provider");
+    var model = params.get("model");
+
+    if (tab === "local" || tab === "cloud" || tab === "benchmark") {
+      activateTab(tab);
+    }
+
+    if (provider && providerSel) {
+      providerSel.value = provider;
+      providerSel.dispatchEvent(new Event("change"));
+    }
+
+    if (tab === "cloud" && model && cloudModel && !cloudModel.value) {
+      cloudModel.value = model;
+      if (cloudName && !cloudName.value) {
+        cloudName.value = model;
+      }
+    }
+  }
 
   /* ══════════════════════════════════════════════════════════
    *  LOCAL MODELS
@@ -677,6 +705,7 @@
     await Promise.all([loadLocal(), loadCloud(), loadAssignments(), populateBenchModelSelect(), loadModelQueue()]);
   }
   if (refreshBtn) refreshBtn.addEventListener("click", loadAll);
+  applyNavigationContext();
   loadAll();
   setInterval(loadAll, 30000);
 })();

@@ -118,6 +118,24 @@ class TestBuildSkillsSection:
         svc = ChatService(memory_repository=repo, model_client=NotAPI())
         assert svc._build_skills_section("polluks", "test") == ""
 
+    def test_skill_provider_is_used_for_local_models(self, tmp_path: Path) -> None:
+        class NotAPI:
+            _is_api_client = False
+            def chat(self, **kwargs): return "ok"
+
+        from amiagi.application.chat_service import ChatService
+        from amiagi.infrastructure.memory_repository import MemoryRepository
+        repo = MemoryRepository(tmp_path / "local_with_provider.db")
+        provider = MagicMock(return_value=[{"name": "plan-checklist", "content": "Always create a plan."}])
+
+        svc = ChatService(memory_repository=repo, model_client=NotAPI(), skill_provider=provider)
+
+        result = svc._build_skills_section("polluks", "zaplanuj raport")
+
+        provider.assert_called_once_with("polluks", "zaplanuj raport", None)
+        assert "plan-checklist" in result
+        assert "Always create a plan." in result
+
 
 # ==================================================================
 # C3: SkillCatalog PG bridge methods

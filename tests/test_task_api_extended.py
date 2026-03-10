@@ -168,6 +168,24 @@ def test_create_task_broadcasts_live_event() -> None:
     assert event_name == "task.created"
     assert payload["task_id"] == response.json()["task_id"]
     assert payload["title"] == "Queue live refresh"
+    assert payload["thread_owners"] == ["supervisor"]
+    assert payload["message_type"] == "task.created"
+
+
+def test_create_task_for_agent_routes_only_to_target_agent_screen() -> None:
+    app = _make_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/tasks",
+        json={"title": "Queue live refresh", "priority": "high", "assigned_agent_id": "nova"},
+    )
+
+    assert response.status_code == 201
+    event_name, payload = app.state.event_hub.broadcast.await_args.args
+    assert event_name == "task.created"
+    assert payload["thread_owners"] == ["agent:nova"]
+    assert "supervisor" not in payload["thread_owners"]
 
 
 def test_reassign_task_broadcasts_live_event() -> None:
@@ -184,6 +202,7 @@ def test_reassign_task_broadcasts_live_event() -> None:
     assert payload["task_id"] == "t-live"
     assert payload["agent_id"] == "kastor"
     assert payload["status"] == "pending"
+    assert payload["thread_owners"] == ["agent:kastor"]
 
 
 def test_move_task_updates_status_and_broadcasts_live_event() -> None:
@@ -202,6 +221,22 @@ def test_move_task_updates_status_and_broadcasts_live_event() -> None:
     assert event_name == "task.moved"
     assert event_payload["task_id"] == "t-move"
     assert event_payload["to_status"] == "in_progress"
+    assert event_payload["thread_owners"] == ["supervisor"]
+
+
+def test_move_task_to_done_routes_completion_report_to_supervisor_and_agent() -> None:
+    app = _make_app()
+    task = Task(task_id="t-done", title="Done me")
+    task.assigned_agent_id = "nova"
+    app.state.task_queue.enqueue(task)
+    client = TestClient(app)
+
+    response = client.post("/api/tasks/t-done/move", json={"status": "done"})
+
+    assert response.status_code == 200
+    event_name, event_payload = app.state.event_hub.broadcast.await_args.args
+    assert event_name == "task.moved"
+    assert event_payload["thread_owners"] == ["supervisor", "agent:nova"]
 
 
 def test_tasks_template_contains_decompose_and_workflow_controls() -> None:

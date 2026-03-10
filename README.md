@@ -16,7 +16,7 @@ Current version: **v1.3.0** — UAT-ready operator console after Plan 02 closure
 
 v1.3.0 is the release where the browser experience stops being a sidecar and becomes the product's command layer: Mission Control, live event streams, inbox approvals, Model Hub, evaluations, knowledge, memory, budget, vault, settings, sessions, metrics, sandboxes, and admin tooling now form a cohesive web management console instead of a thin monitoring add-on.
 
-Key release docs: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md).
+Key release docs: [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md), [GITHUB_RELEASE_v1.3.0.md](GITHUB_RELEASE_v1.3.0.md), [RELEASE_NOTES_v1.3.1.md](RELEASE_NOTES_v1.3.1.md), [GITHUB_RELEASE_v1.3.1.md](GITHUB_RELEASE_v1.3.1.md).
 
 ## Why v1.3.0 matters
 
@@ -40,6 +40,8 @@ This is the layer that turns an agent runtime into an operator product: you can 
 - **Operations surface** — health, metrics, sessions, budget, vault, files, memory, cron, settings, sandboxes, and admin management in one browser UI
 
 See [WEB_INTERFACE.md](WEB_INTERFACE.md) for architecture, routes, and startup details.
+
+The v1.3.1 follow-up focuses on Supervisor operations: the browser now defaults to `/supervisor`, session runtime cost metrics in web mode are live, and repeated local web starts automatically reclaim a stale Amiagi GUI process when necessary.
 
 ## Safety Disclaimer (Read First)
 
@@ -138,6 +140,7 @@ See [LICENSE](LICENSE) for full terms.
 ### Security & isolation (Phase 7)
 
 - **Per-agent permission policies** — allowed tools, paths, network/shell access per agent
+- **Protected system tools** — built-in runtime tools live in `src/amiagi/system_tools/` and are blocked from agent-side modification
 - **Permission enforcer** — middleware that checks policy before every tool call
 - **Sandbox manager** — isolated working directory per agent
 - **Secret vault** — per-agent credential store with Fernet encryption, DB persistence, and access audit log
@@ -544,8 +547,8 @@ conda activate <your_env_name>  # conda
 |---------|-------------|
 | `amiagi` | Standard launch — interactive model wizard, then Textual TUI |
 | `amiagi --auto` | Autonomous mode — agent works without waiting for user confirmation |
-| `amiagi --cold_start` | Fresh start — clears DB, logs, model config, input history |
-| `amiagi --cold_start --auto` | Clean slate + autonomous — best for starting a brand new project |
+| `amiagi --cold_start` | Full reset — removes `amiagi-my-work` contents and runtime data before launch |
+| `amiagi --cold_start --auto` | Full reset + autonomous — best for starting a brand new project |
 | `amiagi --ui textual` | Textual TUI (default) — multi-panel interface with actor status |
 | `amiagi --ui cli` | Classic synchronous CLI — simple stdin/stdout loop |
 | `amiagi --ui web` | Web Management Console — operator-grade browser UI on `http://localhost:8080` |
@@ -574,17 +577,18 @@ The interactive wizard guides you through model selection for both roles
 (Polluks — executor, Kastor — supervisor). Your choices are saved for
 future sessions.
 
-**Starting a new project (clean slate):**
+**Starting a new project (full reset):**
 ```bash
 amiagi --cold_start
 ```
-Clears all data from the previous session:
-- SQLite memory database
-- All JSONL logs (model I/O, activity, supervision dialogue)
-- Saved model configuration (triggers the model wizard again)
-- Input command history
+Removes runtime state from previous work, including:
+- contents of `amiagi-my-work/`
+- SQLite memory and auxiliary databases
+- JSONL logs (model I/O, activity, supervision dialogue, audit, mailbox)
+- saved model configuration and input history
+- shared workspace, sandboxes, workflow checkpoints, cross-agent memory
 
-Use this when switching to a completely different project or task.
+Use this when switching to a completely different project or when you need to guarantee that no prior workspace artifact influences the next run.
 
 **Autonomous mode — let the agent work independently:**
 ```bash
@@ -598,7 +602,7 @@ Ideal for longer tasks like code generation or research.
 ```bash
 amiagi --cold_start --auto
 ```
-Combines both: clean history + agent runs independently. The recommended
+Combines both: full runtime reset + agent runs independently. The recommended
 way to start a brand new coding or research task.
 
 **English interface:**

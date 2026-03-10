@@ -1,16 +1,26 @@
 # amiagi Web Interface
 
-> Full documentation for the amiagi Web GUI — version 1.3.0
+> Full documentation for the amiagi Web GUI — version 1.3.1
 
 ## Overview
 
-The amiagi web interface provides a browser-based dashboard for managing
+The amiagi web interface provides a browser-based operator console for managing
 multi-agent AI workflows. It is built on **Starlette** (ASGI), uses
 **PostgreSQL** (with SQLite fallback) for persistence, and communicates in
 real time via WebSockets. The interface implements an operator-ready
 management surface across Supervisor, Agents, Teams, Tasks, Models,
 Evaluations, Knowledge, Sessions, Metrics, Settings, Budget, Vault,
 Inbox, Files, Memory, Cron, Productivity, Sandboxes, and Admin views.
+
+In v1.3.1 the Supervisor view is no longer described as a generic dashboard.
+It is the communication-centric operator entrypoint: the main Supervisor screen
+shows only the Supervisor-owned thread, while active agents render as embedded
+communication screens underneath their headers. Kastor is represented as its
+own communication screen as part of the same operator surface.
+
+This release also closes the most visible runtime-observability gaps in web
+mode: session tokens, blended session cost, GPU RAM used, GPU utilization, and
+reconnect state are now exposed directly in the Supervisor experience.
 
 ## Quick Start
 
@@ -96,14 +106,14 @@ src/amiagi/interfaces/web/
 ### Dashboard Pages
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Main dashboard |
+| GET | `/` | Redirect to Supervisor (default operator entrypoint) |
 | GET | `/health-dashboard` | Health Dashboard UI |
 | GET | `/settings` | Settings (12 tabs) |
 | GET | `/admin/sandboxes` | Sandbox management (admin) |
 | GET | `/admin/users` | User management (admin) |
 | GET | `/metrics` | Metrics & analytics |
 | GET | `/sessions` | Session history |
-| GET | `/supervisor` | Supervisor panel |
+| GET | `/supervisor` | Supervisor communication console with embedded agent screens |
 | GET | `/inbox` | Operator inbox |
 | GET | `/model-hub` | Model management |
 | GET | `/budget` | Budget tracking |
@@ -155,7 +165,9 @@ src/amiagi/interfaces/web/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET/POST | `/admin/skills` | Skill CRUD |
+| GET/POST | `/admin/project-skills` | Project-scoped file skill CRUD |
 | GET/PUT/DELETE | `/admin/skills/{id}` | Skill detail |
+| GET/PUT/DELETE | `/admin/project-skills/{role}/{name}` | Project skill detail |
 | POST | `/admin/skills/{id}/traits` | Trait management |
 | POST/DELETE | `/admin/skills/{id}/assign/{agent}` | Assignment |
 
@@ -193,8 +205,89 @@ src/amiagi/interfaces/web/
 ### WebSocket
 | Path | Description |
 |------|-------------|
-| `/ws/events` | Global event stream (JWT auth) |
+| `/ws/events` | Global event stream (JWT auth) with `stream.config` handshake and `stream.history` hydration |
 | `/ws/agent/{agent_id}` | Per-agent stream |
+
+## Supervisor v1.3.1 Model
+
+### Operator model
+
+- Supervisor is the default operator screen and the primary communication view.
+- Every actor has its own communication screen. The main Supervisor stream is only for communication addressed to Supervisor.
+- Agent-to-agent communication does not render on the Supervisor stream. It stays on the embedded screens of the participating agents.
+- Targeted operator-to-agent communication is rendered on the target agent screen, not mirrored onto the main Supervisor stream.
+- Reports sent by an agent to Supervisor, such as model answers, analysis results, and task completion/failure notifications, are rendered on the Supervisor stream because Supervisor is their addressee.
+- The same report may still remain visible on the originating agent screen when that agent is one of the conversation participants.
+- Each active agent has an embedded communication screen rendered under its header.
+- Kastor is surfaced as a first-class communication screen even when it is not presented as a normal registry-managed agent card.
+- The reason Supervisor still sees those conversations is the embedded per-actor previews, not because all traffic is merged back into one global stream.
+
+### Stream contract
+
+The Supervisor UI now relies on explicit routing metadata instead of heuristics over raw text.
+
+Minimal event fields used by the frontend:
+
+- `thread_owners`
+- `direction_per_owner`
+- `from`
+- `to`
+- `message_type`
+- `status`
+- `summary`
+- `timestamp`
+
+Legacy fields such as `source_label`, `target_agent`, and `type` may still be present for compatibility, but Supervisor v1.3.1 renderers now prefer the normalized semantic contract above.
+
+### Supervisor event inventory
+
+The canonical inventory lives in `amiagi.interfaces.web.stream_contract.supervisor_stream_event_catalog()` and groups stream events into these classes:
+
+- `protocol`: `stream.config`, `stream.history`, `stream.history.truncated`, `ping`, `pong`
+- `communication`: `log`, `actor_state`, `supervisor_message`
+- `operator`: `operator.input.accepted`, `operator.command.executed`, `system.current_task.*`, `system.reset`, `agent.spawned`, `agent.lifecycle*`, command output/failure helpers
+- `workflow`: `inbox.*`, `workflow.*`
+- `evaluation`: `eval.*`, `ab.*`
+- `technical`: `error`, `cycle_finished`, `knowledge.reindex.*`
+
+This inventory is the reference when deciding whether a new event belongs on the main Supervisor stream, only on an agent screen, or is transport-only.
+
+Routing rule of thumb:
+
+- `supervisor` owner: only messages addressed to Supervisor or Supervisor-only operator/workflow events
+- `supervisor` + `agent:<id>` owners: report-like events from an agent to Supervisor, for example model responses, analysis/evaluation results, inbox requests from that agent, and task completion/failure signals
+- `agent:<id>` owner: agent-local communication, targeted operator traffic, agent lifecycle, and other actor-local work that is not addressed to Supervisor
+- no event should rely on a missing owner and then "fall through" to the Supervisor screen by default
+
+### Reload and reconnect behavior
+
+- On connect, `/ws/events` sends `stream.config` with `session_id`, `active_agents`, and `retention_limit`.
+- The server then sends `stream.history` with recent events kept in the in-memory EventHub buffer.
+- On reconnect, the client passes `since_id=<last_event_id>` so the server can replay only the missing suffix when it is still inside retention.
+
+### Runtime metrics and startup behavior
+
+- Supervisor topbar runtime metrics are now sourced from consolidated runtime state rather than placeholder counters.
+- Session token and cost reporting in web mode are derived from live runtime usage plus energy cost aggregation.
+- GPU metrics expose used VRAM percentage and current GPU utilization when available.
+- If a stale local Amiagi web process is still holding the configured port, web startup now terminates that matching process before binding the new server.
+- If the reconnect gap exceeds the retained in-memory buffer, the server marks `stream.history.truncated` and falls back to the latest retained window instead of returning an empty screen.
+- This allows Supervisor and agent screens to recover recent visible context after browser reloads such as `F5`.
+- Live reconnect continues through the existing ping/pong and exponential backoff flow, now with targeted gap-fill instead of blind full replay.
+
+### Screen behavior
+
+- Supervisor stream has a fixed height controlled by CSS variable `--supervisor-screen-height`.
+- Embedded agent screens have a fixed height controlled by CSS variable `--agent-screen-height`.
+- Content scrolls inside each communication screen instead of expanding the whole page vertically.
+- Agent screens support collapse/expand, last-activity indicators, and retention warnings for truncated local buffers.
+
+### Keyboard support
+
+- `/` focuses the central operator input.
+- `Escape` removes focus from the operator input or closes overlays.
+- `j` and `k` move focus through agent headers.
+- No per-agent input boxes are exposed in Supervisor, by design: routing remains centralized through Kastor/router.
 
 ## Authentication
 

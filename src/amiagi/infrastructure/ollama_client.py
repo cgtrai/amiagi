@@ -4,6 +4,7 @@ import json
 import socket
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -31,6 +32,7 @@ class OllamaClient:
     client_role: str = "executor"
     queue_policy: ModelQueuePolicy | None = None
     vram_advisor: VramAdvisor | None = None
+    usage_callback: Callable[[str, str, int, int], None] | None = None
 
     def _get_json(self, path: str) -> dict:
         request = Request(
@@ -228,6 +230,27 @@ class OllamaClient:
                         "client_role": self.client_role,
                     },
                 )
+
+            prompt_tokens = int(result.get("prompt_eval_count", 0) or 0)
+            completion_tokens = int(result.get("eval_count", 0) or 0)
+            if self.usage_callback is not None and (prompt_tokens > 0 or completion_tokens > 0):
+                try:
+                    self.usage_callback(
+                        self.model,
+                        self.client_role,
+                        prompt_tokens,
+                        completion_tokens,
+                    )
+                except Exception:
+                    if self.activity_logger:
+                        self.activity_logger.log(
+                            action="model.chat.usage_callback_error",
+                            intent="Nie udało się przekazać metryk zużycia do warstwy budżetu.",
+                            details={
+                                "request_id": request_id,
+                                "client_role": self.client_role,
+                            },
+                        )
 
             message = result.get("message", {})
             content = message.get("content")

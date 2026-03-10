@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from io import StringIO
 import logging
+import subprocess
 import time
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -20,12 +21,25 @@ from amiagi.domain.task import TaskStatus
 from amiagi.interfaces.cli import HELP_TEXT
 from amiagi.interfaces.cli_commands import CliContext, collect_capabilities, dispatch_cli_command
 from amiagi.interfaces.shared_cli_helpers import _build_operator_command_catalog, _web_command_support
+from amiagi.interfaces.web.runtime_metrics import get_session_usage_metrics
+from amiagi.interfaces.web.stream_contract import normalize_stream_payload, routing_for_operator_input
 from amiagi.application.shell_policy import default_shell_policy, load_shell_policy
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
+
+
+def _request_user_label(request: Request) -> str:
+    user = getattr(getattr(request, "state", None), "user", None)
+    display_name = str(getattr(user, "display_name", "") or "").strip()
+    if display_name:
+        return display_name
+    email = str(getattr(user, "email", "") or "").strip()
+    if email:
+        return email
+    return "Operator"
 
 
 def _list_tasks(task_queue) -> list:
@@ -61,27 +75,102 @@ def _current_task_payload(task, model_name: str | None = None) -> dict | None:
     }
 
 
-def _operator_dispatch_payload(message: str, target_agent: str | None, submitted_message: str) -> dict:
-    normalized_target = str(target_agent or "").strip() or None
+def _percent(value: int | None, total: int | None) -> int | None:
+    if value is None or total in (None, 0):
+        return None
+    try:
+        ratio = float(value) / float(total)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return max(0, min(100, int(round(ratio * 100.0))))
+
+
+def _query_gpu_utilization_percent() -> int | None:
+    command = [
+        "nvidia-smi",
+        "--query-gpu=utilization.gpu",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    values: list[int] = []
+    for raw_line in completed.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            values.append(int(line))
+        except ValueError:
+            continue
+
+    if not values:
+        return None
+    return max(0, min(100, max(values)))
+
+
+def _gpu_summary(state) -> dict[str, int | None]:
+    chat_service = getattr(state, "chat_service", None)
+    vram_advisor = getattr(chat_service, "vram_advisor", None)
+    if vram_advisor is None:
+        client = getattr(chat_service, "ollama_client", None)
+        vram_advisor = getattr(client, "vram_advisor", None)
+    if vram_advisor is None:
+        vram_advisor = getattr(state, "vram_advisor", None)
+
+    gpu_ram_used_pct = None
+    if vram_advisor is not None and hasattr(vram_advisor, "detect"):
+        try:
+            profile = vram_advisor.detect()
+            free_pct = _percent(
+                getattr(profile, "free_mb", None),
+                getattr(profile, "total_mb", None),
+            )
+            gpu_ram_used_pct = None if free_pct is None else max(0, min(100, 100 - free_pct))
+        except Exception:
+            gpu_ram_used_pct = None
+
     return {
+        "gpu_ram_used_pct": gpu_ram_used_pct,
+        "gpu_usage_pct": _query_gpu_utilization_percent(),
+    }
+
+
+def _operator_dispatch_payload(message: str, target_agent: str | None, submitted_message: str, source_label: str) -> dict:
+    normalized_target = str(target_agent or "").strip() or None
+    payload = {
         "channel": "user",
         "actor": "operator",
+        "source_label": source_label,
         "target_agent": normalized_target,
         "target_scope": "agent" if normalized_target else "broadcast",
         "message": message,
         "submitted_message": submitted_message,
         "summary": (
-            f"Operator → {normalized_target}: {message}"
+            f"{source_label} → {normalized_target}: {message}"
             if normalized_target
-            else f"Operator → all: {message}"
+            else f"{source_label} → all: {message}"
         ),
     }
+    payload.update(routing_for_operator_input(normalized_target))
+    return normalize_stream_payload("operator.input.accepted", payload)
 
 
 async def _broadcast_if_available(request: Request, event_type: str, payload: dict) -> None:
     hub = getattr(request.app.state, "event_hub", None)
     if hub is not None:
-        await hub.broadcast(event_type, payload)
+        await hub.broadcast(event_type, normalize_stream_payload(event_type, payload))
 
 
 # ── GET /api/system/state ────────────────────────────────────
@@ -189,10 +278,12 @@ async def system_state(request: Request) -> JSONResponse:
         result["workflows"] = {"active_runs": 0}
 
     # Extended fields (S4)
-    budget_manager = getattr(state, "budget_manager", None)
+    session_metrics = get_session_usage_metrics(state)
+    result.update(_gpu_summary(state))
     result["cycle"] = getattr(state, "cycle_count", 0)
-    result["tokens_session"] = budget_manager.session_budget.tokens_used if budget_manager and hasattr(budget_manager, "session_budget") else 0
-    result["cost_session"] = float(budget_manager.session_budget.spent_usd) if budget_manager and hasattr(budget_manager, "session_budget") else 0.0
+    result["tokens_session"] = session_metrics["tokens_used"]
+    result["cost_session"] = round(float(session_metrics["total_cost"]), 6)
+    result["cost_currency"] = session_metrics["currency"]
     result["error_count"] = getattr(state, "error_count", 0)
     result["queue_length"] = task_queue.pending_count() if task_queue and hasattr(task_queue, "pending_count") else 0
 
@@ -316,9 +407,10 @@ async def system_command_execute(request: Request) -> JSONResponse:
     await _broadcast_if_available(request, "operator.command.executed", {
         "channel": "user",
         "actor": "operator",
-        "source_label": "Operator",
+        "source_label": _request_user_label(request),
         "command": command,
-        "summary": f"Operator command executed: {command}",
+        "summary": f"{_request_user_label(request)}: {command}",
+        "to": "Supervisor",
     })
 
     return JSONResponse({
@@ -343,7 +435,12 @@ async def system_current_task_pause(request: Request) -> JSONResponse:
         return JSONResponse({"error": "no current task"}, status_code=404)
 
     task.status = TaskStatus.ASSIGNED
-    await _broadcast_if_available(request, "system.current_task.paused", {"task_id": task.task_id})
+    await _broadcast_if_available(request, "system.current_task.paused", {
+        "task_id": task.task_id,
+        "source_label": _request_user_label(request),
+        "target_agent": getattr(task, "assigned_agent_id", None),
+        "summary": f"Current task paused: {task.task_id}",
+    })
     return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
 
 
@@ -360,7 +457,12 @@ async def system_current_task_stop(request: Request) -> JSONResponse:
         task.status = TaskStatus.CANCELLED
         task.completed_at = datetime.now(timezone.utc)
 
-    await _broadcast_if_available(request, "system.current_task.stopped", {"task_id": task.task_id})
+    await _broadcast_if_available(request, "system.current_task.stopped", {
+        "task_id": task.task_id,
+        "source_label": _request_user_label(request),
+        "target_agent": getattr(task, "assigned_agent_id", None),
+        "summary": f"Current task stopped: {task.task_id}",
+    })
     return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
 
 
@@ -384,7 +486,12 @@ async def system_current_task_retry(request: Request) -> JSONResponse:
     task.completed_at = None
     task.result = ""
 
-    await _broadcast_if_available(request, "system.current_task.retried", {"task_id": task.task_id})
+    await _broadcast_if_available(request, "system.current_task.retried", {
+        "task_id": task.task_id,
+        "source_label": _request_user_label(request),
+        "target_agent": getattr(task, "assigned_agent_id", None),
+        "summary": f"Current task retried: {task.task_id}",
+    })
     return JSONResponse({"ok": True, "task_id": task.task_id, "status": task.status.value})
 
 
@@ -429,10 +536,11 @@ async def system_input(request: Request) -> JSONResponse:
 
     try:
         submitted_message = message
+        source_label = _request_user_label(request)
         if target_agent and not message.startswith("["):
             submitted_message = f"[Sponsor -> {target_agent}] {message}"
 
-        dispatch_payload = _operator_dispatch_payload(message, target_agent, submitted_message)
+        dispatch_payload = _operator_dispatch_payload(message, target_agent, submitted_message, source_label)
 
         adapter.submit_user_turn(submitted_message)
         await _broadcast_if_available(request, "operator.input.accepted", dispatch_payload)
@@ -508,6 +616,9 @@ async def inbox_delegate(request: Request) -> JSONResponse:
         "original_item_id": item_id,
         "new_item_id": delegated_item.id,
         "agent_id": agent_id,
+        "source_label": _request_user_label(request),
+        "target_agent": agent_id,
+        "summary": f"Inbox item delegated to {agent_id}",
     })
 
     from amiagi.interfaces.web.audit.log_helpers import log_action
@@ -563,6 +674,9 @@ async def agent_spawn(request: Request) -> JSONResponse:
             "agent_id": str(agent_id),
             "name": name,
             "role": role,
+            "source_label": _request_user_label(request),
+            "target_agent": str(agent_id),
+            "summary": f"Agent spawned: {agent_id}",
         })
 
         from amiagi.interfaces.web.audit.log_helpers import log_action

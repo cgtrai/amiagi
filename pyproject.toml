@@ -40,6 +40,7 @@ dev = [
 amiagi = "amiagi.main:main"
 amiagi-ci = "amiagi.infrastructure.ci_adapter:cli_main"
 amiagi-plugin = "amiagi.application.plugin_loader:plugin_cli_main"
+amiagi-workspace-report = "amiagi.system_tools.workspace_inventory:cli_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +20,14 @@ class FakeMemoryRepository:
 
     def replace_memory(self, kind: str, source: str, content: str) -> None:
         _ = (kind, source, content)
+
+
+class CountingMemoryRepository(FakeMemoryRepository):
+    instances_created = 0
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(db_path)
+        CountingMemoryRepository.instances_created += 1
 
 
 class CapturingMemoryRepository(FakeMemoryRepository):
@@ -291,6 +300,18 @@ def test_main_auto_flag_works_with_frozen_settings_dataclass(tmp_path: Path, mon
         activity_log_path=tmp_path / "activity.jsonl",
         shell_policy_path=tmp_path / "shell_allowlist.json",
         model_config_path=tmp_path / "model_config.json",
+        metrics_db_path=tmp_path / "metrics.db",
+        knowledge_base_path=tmp_path / "knowledge.db",
+        cross_memory_path=tmp_path / "cross_agent_memory.jsonl",
+        input_history_path=tmp_path / "input_history.txt",
+        vault_path=tmp_path / "vault.json",
+        feedback_path=tmp_path / "human_feedback.jsonl",
+        audit_log_path=tmp_path / "audit.jsonl",
+        router_mailbox_log_path=tmp_path / "router_mailbox.jsonl",
+        shared_workspace_dir=tmp_path / "shared_workspace",
+        sandbox_dir=tmp_path / "sandboxes",
+        workflow_checkpoint_dir=tmp_path / "workflow_checkpoints",
+        db_sqlite_path=str(tmp_path / "web.db"),
         supervisor_enabled=False,
         autonomous_mode=False,
     )
@@ -385,11 +406,121 @@ def test_main_cold_start_clears_supervision_dialogue_log(tmp_path: Path, monkeyp
     monkeypatch.setattr(app_main, "VramAdvisor", lambda: object())
     monkeypatch.setattr(app_main, "OllamaClient", FakeOllamaClient)
     monkeypatch.setattr(app_main, "ChatService", FakeChatService)
+    monkeypatch.setattr(app_main, "MetricsCollector", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SharedWorkspace", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "KnowledgeBase", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "CrossAgentMemory", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SandboxManager", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SecretVault", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "WorkflowCheckpoint", lambda *args, **kwargs: object())
     monkeypatch.setattr(app_main, "run_cli", lambda *_args, **_kwargs: None)
 
     app_main.main(["-cs", "--startup_dialogue_path", str(tmp_path / "missing.md")])
 
-    assert settings.supervisor_dialogue_log_path.read_text(encoding="utf-8") == ""
+    assert settings.supervisor_dialogue_log_path.exists() is False
+
+
+def test_main_cold_start_removes_persistent_runtime_state(tmp_path: Path, monkeypatch) -> None:
+    settings = app_main.Settings(
+        work_dir=tmp_path / "amiagi-my-work",
+        db_path=tmp_path / "amiagi.db",
+        executor_model_io_log_path=tmp_path / "model_io_executor.jsonl",
+        supervisor_model_io_log_path=tmp_path / "model_io_supervisor.jsonl",
+        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
+        model_io_log_path=tmp_path / "model_io.jsonl",
+        activity_log_path=tmp_path / "activity.jsonl",
+        router_mailbox_log_path=tmp_path / "router_mailbox.jsonl",
+        shell_policy_path=tmp_path / "shell_allowlist.json",
+        model_config_path=tmp_path / "model_config.json",
+        input_history_path=tmp_path / "input_history.txt",
+        metrics_db_path=tmp_path / "metrics.db",
+        shared_workspace_dir=tmp_path / "shared_workspace",
+        knowledge_base_path=tmp_path / "knowledge.db",
+        cross_memory_path=tmp_path / "cross_agent_memory.jsonl",
+        sandbox_dir=tmp_path / "sandboxes",
+        vault_path=tmp_path / "vault.json",
+        audit_log_path=tmp_path / "audit.jsonl",
+        workflow_checkpoint_dir=tmp_path / "workflow_checkpoints",
+        feedback_path=tmp_path / "human_feedback.jsonl",
+        db_sqlite_path=str(tmp_path / "web.db"),
+        supervisor_enabled=False,
+        autonomous_mode=False,
+    )
+
+    (settings.work_dir / "notes").mkdir(parents=True, exist_ok=True)
+    (settings.work_dir / "notes" / "main_plan.json").write_text('{"goal":"legacy"}', encoding="utf-8")
+    (settings.work_dir / "my-interests.txt").write_text("legacy interests", encoding="utf-8")
+    settings.model_config_path.write_text(
+        '{"polluks_model": "qwen3.5:27b", "polluks_source": "ollama"}\n',
+        encoding="utf-8",
+    )
+    settings.db_path.write_text("db", encoding="utf-8")
+    settings.metrics_db_path.write_text("metrics", encoding="utf-8")
+    settings.knowledge_base_path.write_text("knowledge", encoding="utf-8")
+    settings.cross_memory_path.write_text("cross-memory", encoding="utf-8")
+    settings.input_history_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.input_history_path.write_text("/goal-status\n", encoding="utf-8")
+    Path(settings.db_sqlite_path).write_text("webdb", encoding="utf-8")
+
+    monkeypatch.setattr(app_main.Settings, "from_env", staticmethod(lambda: settings))
+    monkeypatch.setattr(app_main, "MemoryRepository", FakeMemoryRepository)
+    monkeypatch.setattr(app_main, "ModelIOLogger", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "ActivityLogger", lambda _path: FakeActivityLogger(settings.activity_log_path))
+    monkeypatch.setattr(app_main, "ModelQueuePolicy", lambda **kwargs: object())
+    monkeypatch.setattr(app_main, "VramAdvisor", lambda: object())
+    monkeypatch.setattr(app_main, "OllamaClient", FakeOllamaClient)
+    monkeypatch.setattr(app_main, "ChatService", FakeChatService)
+    monkeypatch.setattr(app_main, "MetricsCollector", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SharedWorkspace", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "KnowledgeBase", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "CrossAgentMemory", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SandboxManager", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "SecretVault", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "WorkflowCheckpoint", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "run_cli", lambda *_args, **_kwargs: None)
+
+    app_main.main(["-cs", "--startup_dialogue_path", str(tmp_path / "missing.md")])
+
+    assert settings.work_dir.exists() is True
+    assert list(settings.work_dir.iterdir()) == []
+    assert settings.model_config_path.exists() is False
+    assert settings.db_path.exists() is False
+    assert settings.metrics_db_path.exists() is False
+    assert settings.knowledge_base_path.exists() is False
+    assert settings.cross_memory_path.exists() is False
+    assert settings.input_history_path.exists() is False
+    assert Path(settings.db_sqlite_path).exists() is False
+
+
+def test_main_cold_start_reinitializes_memory_repository_after_reset(tmp_path: Path, monkeypatch) -> None:
+    settings = app_main.Settings(
+        work_dir=tmp_path / "amiagi-my-work",
+        db_path=tmp_path / "amiagi.db",
+        executor_model_io_log_path=tmp_path / "model_io_executor.jsonl",
+        supervisor_model_io_log_path=tmp_path / "model_io_supervisor.jsonl",
+        supervisor_dialogue_log_path=tmp_path / "supervision_dialogue.jsonl",
+        model_io_log_path=tmp_path / "model_io.jsonl",
+        activity_log_path=tmp_path / "activity.jsonl",
+        shell_policy_path=tmp_path / "shell_allowlist.json",
+        supervisor_enabled=False,
+        autonomous_mode=False,
+    )
+
+    CountingMemoryRepository.instances_created = 0
+
+    monkeypatch.setattr(app_main.Settings, "from_env", staticmethod(lambda: settings))
+    monkeypatch.setattr(app_main, "MemoryRepository", CountingMemoryRepository)
+    monkeypatch.setattr(app_main, "ModelIOLogger", lambda *args, **kwargs: object())
+    monkeypatch.setattr(app_main, "ActivityLogger", lambda _path: FakeActivityLogger(settings.activity_log_path))
+    monkeypatch.setattr(app_main, "ModelQueuePolicy", lambda **kwargs: object())
+    monkeypatch.setattr(app_main, "VramAdvisor", lambda: object())
+    monkeypatch.setattr(app_main, "OllamaClient", FakeOllamaClient)
+    monkeypatch.setattr(app_main, "ChatService", FakeChatService)
+    monkeypatch.setattr(app_main, "run_cli", lambda *_args, **_kwargs: None)
+
+    app_main.main(["-cs", "--startup_dialogue_path", str(tmp_path / "missing.md")])
+
+    assert CountingMemoryRepository.instances_created == 2
 
 
 def test_main_ui_textual_dispatches_to_textual_runner(tmp_path: Path, monkeypatch) -> None:

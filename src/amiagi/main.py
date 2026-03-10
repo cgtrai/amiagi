@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from dataclasses import is_dataclass, replace
 from pathlib import Path
@@ -169,6 +170,57 @@ def _resolve_startup_dialogue_path(raw_path: str, work_dir: Path) -> Path:
     return direct_path
 
 
+def _remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    path.unlink(missing_ok=True)
+
+
+def _reset_cold_start_state(settings: Settings, repository: MemoryRepository) -> dict[str, list[str]]:
+    repository.clear_all()
+
+    files_to_remove = {
+        settings.db_path,
+        settings.executor_model_io_log_path,
+        settings.supervisor_model_io_log_path,
+        settings.model_io_log_path,
+        settings.supervisor_dialogue_log_path,
+        settings.activity_log_path,
+        settings.router_mailbox_log_path,
+        settings.input_history_path,
+        settings.model_config_path,
+        settings.metrics_db_path,
+        settings.knowledge_base_path,
+        settings.cross_memory_path,
+        settings.vault_path,
+        settings.feedback_path,
+        settings.audit_log_path,
+        Path(settings.db_sqlite_path),
+    }
+    directories_to_remove = {
+        settings.work_dir,
+        settings.shared_workspace_dir,
+        settings.sandbox_dir,
+        settings.workflow_checkpoint_dir,
+    }
+
+    removed_files: list[str] = []
+    removed_dirs: list[str] = []
+    for file_path in sorted(files_to_remove, key=str):
+        _remove_path(file_path)
+        removed_files.append(str(file_path))
+    for dir_path in sorted(directories_to_remove, key=str):
+        _remove_path(dir_path)
+        removed_dirs.append(str(dir_path))
+
+    settings.work_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "removed_files": removed_files,
+        "removed_directories": removed_dirs,
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
 
@@ -203,33 +255,12 @@ def main(argv: list[str] | None = None) -> None:
     activity_logger = ActivityLogger(settings.activity_log_path)
 
     if args.cold_start:
-        repository.clear_all()
-        log_paths_to_clear = {
-            executor_log_path,
-            supervisor_log_path,
-            settings.model_io_log_path,
-            settings.supervisor_dialogue_log_path,
-        }
-        for path in log_paths_to_clear:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("", encoding="utf-8")
-        settings.activity_log_path.parent.mkdir(parents=True, exist_ok=True)
-        settings.activity_log_path.write_text("", encoding="utf-8")
-        # Clear persisted model assignment and input history
-        SessionModelConfig.clear(settings.model_config_path)
-        if settings.input_history_path.exists():
-            settings.input_history_path.unlink(missing_ok=True)
+        reset_details = _reset_cold_start_state(settings, repository)
+        repository = MemoryRepository(settings.db_path)
         activity_logger.log(
             action="startup.cold_start",
-            intent="Wyczyszczenie historii, logów JSONL, konfiguracji modeli i historii poleceń.",
-            details={
-                "db_path": str(settings.db_path),
-                "executor_model_io_log_path": str(executor_log_path),
-                "supervisor_model_io_log_path": str(supervisor_log_path),
-                "activity_log_path": str(settings.activity_log_path),
-                "model_config_path": str(settings.model_config_path),
-                "input_history_path": str(settings.input_history_path),
-            },
+            intent="Wyczyszczenie katalogu roboczego i trwałych artefaktów runtime przed świeżym startem.",
+            details=reset_details,
         )
 
     startup_dialogue_path = _resolve_startup_dialogue_path(
@@ -254,6 +285,27 @@ def main(argv: list[str] | None = None) -> None:
         else None
     )
     vram_advisor = VramAdvisor()
+    budget_manager_holder: dict[str, BudgetManager | None] = {"manager": None}
+
+    def _record_runtime_model_usage(
+        model: str,
+        client_role: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> None:
+        manager = budget_manager_holder["manager"]
+        if manager is None:
+            return
+        agent_id = {
+            "executor": "polluks",
+            "supervisor": "kastor",
+        }.get(str(client_role or "").strip().lower(), str(client_role or "unknown").strip() or "unknown")
+        manager.record_model_usage(
+            agent_id,
+            model=model,
+            input_tokens=prompt_tokens,
+            output_tokens=completion_tokens,
+        )
 
     ollama = OllamaClient(
         base_url=settings.ollama_base_url,
@@ -266,6 +318,7 @@ def main(argv: list[str] | None = None) -> None:
         client_role="executor",
         queue_policy=queue_policy,
         vram_advisor=vram_advisor,
+        usage_callback=_record_runtime_model_usage,
     )
 
     # Model auto-select removed — the startup wizard in the UI handles
@@ -286,6 +339,7 @@ def main(argv: list[str] | None = None) -> None:
             client_role="supervisor",
             queue_policy=queue_policy,
             vram_advisor=vram_advisor,
+            usage_callback=_record_runtime_model_usage,
         )
         if supervisor_client.ping():
             supervisor_service = SupervisorService(
@@ -422,6 +476,7 @@ def main(argv: list[str] | None = None) -> None:
     # Resource & Cost Governance (Phase 8)
     # ------------------------------------------------------------------
     budget_manager = BudgetManager()
+    budget_manager_holder["manager"] = budget_manager
     quota_policy = QuotaPolicy()
     if settings.quota_policy_path.exists():
         try:

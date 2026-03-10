@@ -35,6 +35,11 @@ def test_system_input_submits_plain_message() -> None:
     assert adapter.submitted == ["hello"]
     assert response.json()["dispatch"]["target_scope"] == "broadcast"
     assert response.json()["dispatch"]["summary"] == "Operator → all: hello"
+    assert response.json()["dispatch"]["from"] == "Operator"
+    assert response.json()["dispatch"]["to"] == "all"
+    assert response.json()["dispatch"]["message_type"] == "operator.input.accepted"
+    assert response.json()["dispatch"]["status"] == "accepted"
+    assert response.json()["dispatch"]["thread_owners"] == ["supervisor"]
 
 
 def test_system_input_wraps_targeted_message() -> None:
@@ -51,3 +56,6 @@ def test_system_input_wraps_targeted_message() -> None:
     assert response.json()["submitted_message"] == "[Sponsor -> Kastor] sprawdź status"
     assert response.json()["dispatch"]["target_agent"] == "Kastor"
     assert response.json()["dispatch"]["summary"] == "Operator → Kastor: sprawdź status"
+    assert response.json()["dispatch"]["from"] == "Operator"
+    assert response.json()["dispatch"]["to"] == "Kastor"
+    assert response.json()["dispatch"]["thread_owners"] == ["agent:Kastor"]

@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Any
 
 from amiagi.application.communication_protocol import (
     CommunicationRules,
@@ -35,6 +36,8 @@ SUPERVISOR_SYSTEM_PROMPT = (
     "Zwracasz tekst oraz JSON BEZ markdown."
 )
 
+_MAX_SUPERVISOR_PARSE_RETRIES = 1
+
 
 @dataclass(frozen=True)
 class SupervisionResult:
@@ -54,6 +57,7 @@ class SupervisorService:
     dialogue_log_path: Path | None = None
     comm_rules: CommunicationRules = field(default_factory=load_communication_rules)
     sponsor_task: str = ""
+    task_dossier_provider: Callable[[str, str], dict[str, Any]] | None = None
 
     # Backward-compat alias — legacy code may still use ollama_client.
     @property
@@ -170,9 +174,22 @@ class SupervisorService:
                 + self.sponsor_task[:3000]
                 + "\n[/SPONSOR_TASK]\n\n"
             )
+        task_dossier_block = ""
+        if self.task_dossier_provider is not None:
+            try:
+                dossier = self.task_dossier_provider(self.sponsor_task, user_message)
+            except Exception:
+                dossier = None
+            if isinstance(dossier, dict) and dossier:
+                task_dossier_block = (
+                    "[TASK_DOSSIER]\n"
+                    + json.dumps(dossier, ensure_ascii=False)
+                    + "\n[/TASK_DOSSIER]\n\n"
+                )
         return (
             base_prompt
             + sponsor_task_block
+            + task_dossier_block
             + f"Etap: {stage}\n"
             + f"Próba: {attempt}\n"
             + f"Polecenie/wiadomość użytkownika lub systemowa:\n{user_message}\n\n"
@@ -323,45 +340,52 @@ class SupervisorService:
             system_prompt = self._full_system_prompt()
             if conversation_excerpt:
                 review_prompt += f"\n\n[CONVERSATION_EXCERPT]\n{conversation_excerpt}"
-            try:
-                reviewer_output = self.model_client.chat(
-                    messages=[{"role": "user", "content": review_prompt}],
-                    system_prompt=system_prompt,
-                )
-                self._append_dialogue_log(
-                    {
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "stage": stage,
-                        "attempt": attempt,
-                        "type": "review_exchange",
-                        "executor_answer": current,
-                        "review_prompt": review_prompt,
-                        "supervisor_raw_output": reviewer_output,
-                    }
-                )
-            except OllamaClientError as error:
-                if self.activity_logger is not None:
-                    self.activity_logger.log(
-                        action="supervisor.error",
-                        intent="Nadzorca nie odpowiedział poprawnie; pominięto korektę.",
-                        details={"stage": stage, "attempt": attempt, "error": str(error)},
+            payload = None
+            parse_retry_exhausted = False
+            for parse_retry in range(_MAX_SUPERVISOR_PARSE_RETRIES + 1):
+                try:
+                    reviewer_output = self.model_client.chat(
+                        messages=[{"role": "user", "content": review_prompt}],
+                        system_prompt=system_prompt,
                     )
-                return SupervisionResult(
-                    answer=current,
-                    repairs_applied=applied,
-                    status=last_status,
-                    reason_code="SUPERVISOR_ERROR",
-                    work_state=last_work_state,
-                    notes="",
-                )
+                    self._append_dialogue_log(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "stage": stage,
+                            "attempt": attempt,
+                            "parse_retry": parse_retry,
+                            "type": "review_exchange",
+                            "executor_answer": current,
+                            "review_prompt": review_prompt,
+                            "supervisor_raw_output": reviewer_output,
+                        }
+                    )
+                except OllamaClientError as error:
+                    if self.activity_logger is not None:
+                        self.activity_logger.log(
+                            action="supervisor.error",
+                            intent="Nadzorca nie odpowiedział poprawnie; pominięto korektę.",
+                            details={"stage": stage, "attempt": attempt, "error": str(error)},
+                        )
+                    return SupervisionResult(
+                        answer=current,
+                        repairs_applied=applied,
+                        status=last_status,
+                        reason_code="SUPERVISOR_ERROR",
+                        work_state=last_work_state,
+                        notes="",
+                    )
 
-            payload = self._parse_json_object(reviewer_output)
-            if payload is None:
+                payload = self._parse_json_object(reviewer_output)
+                if payload is not None:
+                    break
+
                 self._append_dialogue_log(
                     {
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "stage": stage,
                         "attempt": attempt,
+                        "parse_retry": parse_retry,
                         "type": "review_parse_error",
                         "executor_answer": current,
                         "review_prompt": review_prompt,
@@ -370,11 +394,21 @@ class SupervisorService:
                     }
                 )
                 if self.activity_logger is not None:
-                    self.activity_logger.log(
-                        action="supervisor.invalid_json",
-                        intent="Nadzorca zwrócił niepoprawny JSON; pominięto korektę.",
-                        details={"stage": stage, "attempt": attempt},
+                    action = "supervisor.invalid_json.retry" if parse_retry < _MAX_SUPERVISOR_PARSE_RETRIES else "supervisor.invalid_json"
+                    intent = (
+                        "Nadzorca zwrócił niepoprawny JSON; ponowiono próbę oceny." 
+                        if parse_retry < _MAX_SUPERVISOR_PARSE_RETRIES
+                        else "Nadzorca zwrócił niepoprawny JSON; pominięto korektę."
                     )
+                    self.activity_logger.log(
+                        action=action,
+                        intent=intent,
+                        details={"stage": stage, "attempt": attempt, "parse_retry": parse_retry},
+                    )
+                if parse_retry >= _MAX_SUPERVISOR_PARSE_RETRIES:
+                    parse_retry_exhausted = True
+
+            if payload is None and parse_retry_exhausted:
                 return SupervisionResult(
                     answer=current,
                     repairs_applied=applied,

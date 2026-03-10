@@ -1,4 +1,7 @@
 <aside class="glass-sidebar app-sidebar" id="sidebar">
+  <a href="/supervisor" class="sidebar-item{% if request.url.path == '/supervisor' %} active{% endif %}">
+    <span>🎯</span> {{ _("nav.supervisor") }}
+  </a>
   <a href="/dashboard" class="sidebar-item{% if request.url.path == '/dashboard' %} active{% endif %}">
     <span>🏠</span> {{ _("nav.dashboard") }}
   </a>
@@ -30,6 +33,7 @@
 
   <!-- Mobile-only navigation links -->
   <div class="mobile-nav-links">
+    <a href="/supervisor" onclick="closeMobileMenu()">{{ _("nav.supervisor") }}</a>
     <a href="/dashboard" onclick="closeMobileMenu()">{{ _("nav.dashboard") }}</a>
     <a href="/admin/users" onclick="closeMobileMenu()">{{ _("nav.admin") }}</a>
     <div class="mobile-lang-switcher">

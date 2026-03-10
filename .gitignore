@@ -22,3 +22,4 @@ logs/
 # User work directory — exclude everything except wprowadzenie.md
 amiagi-my-work/*
 !amiagi-my-work/wprowadzenie.md
+devdocs/*

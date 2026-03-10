@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Amiagi — Project Skills{% endblock %}
+{% block head %}
+<style>
+.tab-strip{display:flex;gap:var(--space-2);margin-bottom:var(--space-4)}
+.tab-strip a{padding:.55rem .9rem;border:1px solid var(--glass-border);border-radius:999px;text-decoration:none;color:var(--text-primary)}
+.tab-strip a.active{background:rgba(96,165,250,.14);box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+.toolbar{display:flex;justify-content:space-between;gap:var(--space-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-4)}
+.filters{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--space-4)}
+.card{padding:var(--space-4);display:grid;gap:var(--space-3)}
+.meta{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.body{white-space:pre-wrap;color:var(--text-secondary)}
+.section-card{padding:var(--space-4)}
+.toolbar-tight{margin-bottom:0}
+.heading-reset{margin:0}
+.modal-overlay[hidden]{display:none!important}
+.modal-overlay{position:fixed;inset:0;background:rgba(2,6,23,.72);display:grid;place-items:center;z-index:1000}
+.modal-card{width:min(920px,92vw);max-height:88vh;overflow:auto;padding:var(--space-5);display:grid;gap:var(--space-4)}
+.modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.field{display:grid;gap:.4rem}.field input,.field textarea{width:100%}
+.btn-row{display:flex;justify-content:flex-end;gap:var(--space-2)}
+.markdown-preview{background:rgba(15,23,42,.4);border:1px solid var(--glass-border);border-radius:var(--glass-radius-sm);padding:var(--space-3);white-space:pre-wrap;color:var(--text-secondary);min-height:120px}
+@media (max-width: 900px){.modal-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="container">
+  {% include "partials/admin_nav.html" %}
+  <div class="tab-strip">
+    <a href="/admin/skills">{{ _("admin.skills") }}</a>
+    <a href="/admin/project-skills" class="active">Project Skills</a>
+    <a href="/admin/traits">{{ _("admin.traits") }}</a>
+  </div>
+  <div class="toolbar">
+    <div>
+      <h1>Project Skills</h1>
+      <p class="text-muted">Temporary, project-scoped file skills stored under the current work directory.</p>
+    </div>
+    <div class="filters">
+      <select class="glass-input" id="role-filter" aria-label="Filter by role">
+        <option value="">All roles</option>
+      </select>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="openCreateProjectSkill()">+ {{ _("agents.create") }}</button>
+    </div>
+  </div>
+  <section class="glass-card section-card">
+    <div id="project-skills-body" class="grid">
+      <p class="text-muted">{{ _("common.loading") }}</p>
+    </div>
+  </section>
+</div>
+
+<div class="modal-overlay" id="project-skill-modal" hidden>
+  <div class="glass-card modal-card">
+    <div class="toolbar toolbar-tight">
+      <h2 id="modal-title" class="heading-reset">New Project Skill</h2>
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="closeProjectSkillModal()">{{ _("common.close") }}</button>
+    </div>
+    <div class="modal-grid">
+      <div>
+        <div class="field"><label for="ps-role">Role</label><input class="glass-input" id="ps-role" placeholder="polluks"></div>
+        <div class="field"><label for="ps-name">Name (slug)</label><input class="glass-input" id="ps-name" placeholder="web-research-local"></div>
+        <div class="field"><label for="ps-display">Display name</label><input class="glass-input" id="ps-display" placeholder="Web Research Local"></div>
+        <div class="field"><label for="ps-description">Description</label><input class="glass-input" id="ps-description" placeholder="Temporary project-specific procedure"></div>
+        <div class="field"><label for="ps-keywords">Keywords</label><input class="glass-input" id="ps-keywords" placeholder="internet, ofert, raport"></div>
+        <div class="field"><label for="ps-tools">Compatible tools</label><input class="glass-input" id="ps-tools" placeholder="search_web, fetch_web"></div>
+        <div class="field"><label for="ps-roles">Compatible roles</label><input class="glass-input" id="ps-roles" placeholder="polluks"></div>
+        <div class="field"><label for="ps-priority">Priority</label><input class="glass-input" id="ps-priority" type="number" value="50"></div>
+      </div>
+      <div>
+        <div class="field"><label for="ps-content">Content</label><textarea class="glass-input" id="ps-content" rows="14"></textarea></div>
+        <label>Markdown preview</label>
+        <div class="markdown-preview" id="ps-preview"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="glass-btn glass-btn--ghost" type="button" onclick="closeProjectSkillModal()">{{ _("common.cancel") }}</button>
+      <button class="glass-btn glass-btn--primary" type="button" onclick="saveProjectSkill()">{{ _("common.save") }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  let skills = [];
+  let editingKey = null;
+
+  function esc(value) {
+    const d = document.createElement('div');
+    d.textContent = value || '';
+    return d.innerHTML;
+  }
+
+  function csvToArray(value) {
+    return String(value || '').split(',').map(v => v.trim()).filter(Boolean);
+  }
+
+  function fillRoles(items) {
+    const select = document.getElementById('role-filter');
+    const current = select.value;
+    const roles = [...new Set(items.map(item => item.role).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">All roles</option>' + roles.map(role => `<option value="${esc(role)}">${esc(role)}</option>`).join('');
+    select.value = current;
+  }
+
+  function render() {
+    const container = document.getElementById('project-skills-body');
+    const role = document.getElementById('role-filter').value;
+    const filtered = skills.filter(item => !role || item.role === role);
+    if (!filtered.length) {
+      container.innerHTML = '<p class="text-muted">No project skills available.</p>';
+      return;
+    }
+    container.innerHTML = filtered.map(item => `
+      <article class="glass-card card">
+        <div>
+          <h3 style="margin:0">${esc(item.display_name || item.name)}</h3>
+          <div class="meta">
+            <span class="badge">${esc(item.role)}</span>
+            <span class="badge">priority ${esc(String(item.priority || 0))}</span>
+            <span class="badge">file</span>
+          </div>
+        </div>
+        <div class="body">${esc(item.description || item.content.slice(0, 220))}</div>
+        <div class="meta">
+          <button class="glass-btn glass-btn--xs" type="button" onclick="editProjectSkill('${encodeURIComponent(item.role)}','${encodeURIComponent(item.name)}')">Edit</button>
+          <button class="glass-btn glass-btn--xs glass-btn--ghost" type="button" onclick="deleteProjectSkill('${encodeURIComponent(item.role)}','${encodeURIComponent(item.name)}')">Delete</button>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  function preview() {
+    document.getElementById('ps-preview').textContent = document.getElementById('ps-content').value || '';
+  }
+
+  function resetForm() {
+    editingKey = null;
+    document.getElementById('modal-title').textContent = 'New Project Skill';
+    ['ps-role','ps-name','ps-display','ps-description','ps-keywords','ps-tools','ps-roles','ps-content'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('ps-priority').value = '50';
+    preview();
+  }
+
+  window.openCreateProjectSkill = function() {
+    resetForm();
+    document.getElementById('project-skill-modal').hidden = false;
+  };
+
+  window.closeProjectSkillModal = function() {
+    document.getElementById('project-skill-modal').hidden = true;
+  };
+
+  window.editProjectSkill = function(role, name) {
+    fetch('/admin/project-skills/' + role + '/' + name).then(r => r.json()).then(item => {
+      editingKey = {role: decodeURIComponent(role), name: decodeURIComponent(name)};
+      document.getElementById('modal-title').textContent = 'Edit Project Skill';
+      document.getElementById('ps-role').value = item.role || '';
+      document.getElementById('ps-name').value = item.name || '';
+      document.getElementById('ps-display').value = item.display_name || '';
+      document.getElementById('ps-description').value = item.description || '';
+      document.getElementById('ps-keywords').value = (item.trigger_keywords || []).join(', ');
+      document.getElementById('ps-tools').value = (item.compatible_tools || []).join(', ');
+      document.getElementById('ps-roles').value = (item.compatible_roles || []).join(', ');
+      document.getElementById('ps-priority').value = item.priority || 50;
+      document.getElementById('ps-content').value = item.content || '';
+      preview();
+      document.getElementById('project-skill-modal').hidden = false;
+    });
+  };
+
+  window.saveProjectSkill = function() {
+    const payload = {
+      role: document.getElementById('ps-role').value,
+      name: document.getElementById('ps-name').value,
+      display_name: document.getElementById('ps-display').value,
+      description: document.getElementById('ps-description').value,
+      trigger_keywords: csvToArray(document.getElementById('ps-keywords').value),
+      compatible_tools: csvToArray(document.getElementById('ps-tools').value),
+      compatible_roles: csvToArray(document.getElementById('ps-roles').value),
+      priority: Number(document.getElementById('ps-priority').value || 50),
+      content: document.getElementById('ps-content').value,
+    };
+    const url = editingKey ? '/admin/project-skills/' + encodeURIComponent(editingKey.role) + '/' + encodeURIComponent(editingKey.name) : '/admin/project-skills';
+    const method = editingKey ? 'PUT' : 'POST';
+    fetch(url, {
+      method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    }).then(async response => {
+      if (!response.ok) throw new Error(await response.text());
+      closeProjectSkillModal();
+      return load();
+    }).catch(error => {
+      console.error(error);
+      alert('Could not save project skill.');
+    });
+  };
+
+  window.deleteProjectSkill = function(role, name) {
+    if (!confirm('Delete project skill?')) return;
+    fetch('/admin/project-skills/' + role + '/' + name, {method: 'DELETE'}).then(() => load());
+  };
+
+  function load() {
+    const params = new URLSearchParams();
+    const role = document.getElementById('role-filter').value;
+    if (role) params.set('role', role);
+    return fetch('/admin/project-skills?' + params.toString())
+      .then(r => r.json())
+      .then(data => {
+        skills = (data.skills || []).sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        fillRoles(skills);
+        render();
+      });
+  }
+
+  document.getElementById('role-filter').addEventListener('change', load);
+  document.getElementById('ps-content').addEventListener('input', preview);
+  load();
+  preview();
+})();
+</script>
+{% endblock %}

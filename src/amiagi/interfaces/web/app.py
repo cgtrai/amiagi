@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -22,6 +23,81 @@ logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_WEB_ROUTER_CONTINUITY_INTERVAL_SECONDS = 5.0
+
+
+class _RouterContinuityScheduler:
+    """Drive RouterEngine watchdog and idle reactivation in web mode."""
+
+    def __init__(self, router_engine: Any, *, interval_seconds: float = _WEB_ROUTER_CONTINUITY_INTERVAL_SECONDS) -> None:
+        self._router_engine = router_engine
+        self._interval_seconds = max(0.1, float(interval_seconds))
+        self._task: asyncio.Task[None] | None = None
+
+    async def _run(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._interval_seconds)
+                try:
+                    self._router_engine.watchdog_tick()
+                    self._router_engine.run_idle_reactivation_cycle()
+                except Exception:
+                    logger.warning("Web router continuity tick failed", exc_info=True)
+        except asyncio.CancelledError:
+            raise
+
+    def start(self, loop: asyncio.AbstractEventLoop) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self._task = loop.create_task(self._run())
+
+    async def stop(self) -> None:
+        task = self._task
+        if task is None:
+            return
+        self._task = None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+def _build_stream_config(app_state: Any, session: Any) -> dict[str, Any]:
+    registry = getattr(app_state, "agent_registry", None)
+    active_agents: list[str] = []
+    if registry is not None and hasattr(registry, "list_all"):
+        try:
+            active_agents = [
+                str(getattr(agent, "agent_id", "") or "").strip()
+                for agent in registry.list_all()
+                if str(getattr(agent, "agent_id", "") or "").strip()
+            ]
+        except Exception:
+            active_agents = []
+    if "kastor" not in {agent_id.lower() for agent_id in active_agents}:
+        active_agents.insert(0, "kastor")
+
+    session_id = (
+        getattr(session, "session_id", None)
+        or getattr(session, "id", None)
+        or getattr(session, "email", None)
+        or "unknown"
+    )
+    return {
+        "type": "stream.config",
+        "session_id": str(session_id),
+        "active_agents": active_agents,
+        "retention_limit": 200,
+    }
+
+
+def _parse_since_id(raw_value: str | None) -> int:
+    try:
+        value = int(str(raw_value or "").strip() or "0")
+    except (TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
 
 
 # ------------------------------------------------------------------
@@ -58,14 +134,28 @@ async def _ws_events(websocket: WebSocket) -> None:
     hub = websocket.app.state.event_hub
     await hub.connect(websocket)
     try:
+        since_id = _parse_since_id(websocket.query_params.get("since_id"))
+        await websocket.send_text(json.dumps(_build_stream_config(websocket.app.state, session)))
+        history_events, truncated = hub.get_events_after(since_id, limit=200)
+        if history_events:
+            await websocket.send_text(json.dumps({
+                "type": "stream.history",
+                "events": history_events,
+                "since_id": since_id,
+                "truncated": truncated,
+                "latest_event_id": int(history_events[-1].get("event_id") or 0),
+            }))
         while True:
             data = await websocket.receive_text()
+            hub.mark_alive(websocket)
             # Handle client pings
             try:
                 import json as _json
                 msg = _json.loads(data)
                 if msg.get("type") == "ping":
                     await websocket.send_text(_json.dumps({"type": "pong"}))
+                elif msg.get("type") == "pong":
+                    continue
             except (ValueError, TypeError):
                 pass
     except WebSocketDisconnect:
@@ -119,12 +209,15 @@ def create_app(
     from amiagi.interfaces.web.routes.system_routes import system_routes
     from amiagi.interfaces.web.routes.model_hub_routes import model_hub_routes
     from amiagi.interfaces.web.routes.budget_routes import budget_routes
+    from amiagi.interfaces.web.runtime_metrics import get_session_usage_metrics
     from amiagi.interfaces.web.routes.vault_routes import vault_routes
     from amiagi.interfaces.web.routes.workflow_routes import workflow_routes
     from amiagi.interfaces.web.routes.eval_routes import eval_routes
     from amiagi.interfaces.web.routes.knowledge_routes import knowledge_routes
     from amiagi.interfaces.web.routes.sandbox_routes import sandbox_routes
     from amiagi.interfaces.web.routes.permission_routes import permission_routes
+    from amiagi.interfaces.web.skills.project_skill_repository import ProjectSkillRepository
+    from amiagi.interfaces.web.skills.runtime_skill_provider import RuntimeSkillProvider
     from amiagi.interfaces.web.ws.agent_stream import ws_agent_stream
     from amiagi.interfaces.web.ws.event_hub import EventHub
 
@@ -223,6 +316,10 @@ def create_app(
         app.state.skill_repository = SkillRepository(pool)
         app.state.skill_selector = SkillSelector(pool)
         app.state.user_settings_repo = UserSettingsRepository(pool)
+        app.state.project_skill_repository = ProjectSkillRepository(settings.work_dir / "skills")
+        runtime_skill_provider = RuntimeSkillProvider()
+        await runtime_skill_provider.refresh(app.state.skill_repository, app.state.project_skill_repository)
+        app.state.runtime_skill_provider = runtime_skill_provider
 
         # 3f. Productivity: prompts, search, snippets
         from amiagi.interfaces.web.productivity.prompt_repository import PromptRepository
@@ -278,10 +375,13 @@ def create_app(
                     # Broadcast so inbox UI updates in real-time
                     _hub = getattr(app.state, "event_hub", None)
                     if _hub is not None:
-                        _hub.broadcast("inbox.new", {
-                            "node_id": node.node_id,
-                            "run_id": run.run_id,
-                        })
+                        asyncio.run_coroutine_threadsafe(
+                            _hub.broadcast("inbox.new", {
+                                "node_id": node.node_id,
+                                "run_id": run.run_id,
+                            }),
+                            _wf_loop,
+                        )
                 except Exception:
                     logger.debug("Failed to create inbox item for gate %s", node.node_id, exc_info=True)
 
@@ -333,6 +433,9 @@ def create_app(
         _router_engine = extra.get("router_engine")
         if _router_engine is not None:
             _router_engine._human_bridge = _human_bridge
+            _router_scheduler = _RouterContinuityScheduler(_router_engine)
+            _router_scheduler.start(loop)
+            app.state.router_continuity_scheduler = _router_scheduler
             logger.info("HumanInteractionBridge wired to RouterEngine")
 
         # 4a-ii. SandboxMonitor (resource tracking + execution logging)
@@ -352,10 +455,13 @@ def create_app(
         from amiagi.interfaces.web.monitoring.performance_tracker import PerformanceTracker as _PT  # noqa: F811
         _perf_tracker: _PT = app.state.performance_tracker
         _event_bus = web_adapter._event_bus
+        app.state.cycle_count = 0
+        app.state.error_count = 0
 
         def _on_cycle_record_perf(event: Any) -> None:
             """Auto-record a performance entry when a cycle finishes."""
             try:
+                app.state.cycle_count = int(getattr(app.state, "cycle_count", 0) or 0) + 1
                 asyncio.run_coroutine_threadsafe(
                     _perf_tracker.record(
                         agent_role="router",
@@ -368,8 +474,15 @@ def create_app(
                 logger.debug("Failed to auto-record performance on CycleFinished", exc_info=True)
 
         from amiagi.application.event_bus import CycleFinishedEvent as _CFE
+        from amiagi.application.event_bus import ErrorEvent as _EE
+
+        def _on_error_count(_event: Any) -> None:
+            app.state.error_count = int(getattr(app.state, "error_count", 0) or 0) + 1
+
         _event_bus.on(_CFE, _on_cycle_record_perf)
+        _event_bus.on(_EE, _on_error_count)
         app.state._perf_cycle_handler = _on_cycle_record_perf  # prevent GC
+        app.state._error_counter_handler = _on_error_count
 
         # 4c. Wire SessionEventBuffer — auto-flush session events every 5s
         from amiagi.interfaces.web.monitoring.session_recorder import SessionEventBuffer
@@ -427,14 +540,15 @@ def create_app(
 
                 # ── Budget (session-level) ──
                 budget_mgr = getattr(state, "budget_manager", None)
+                session_metrics = get_session_usage_metrics(state)
                 if budget_mgr is not None:
                     try:
                         sb = budget_mgr.session_budget
                         ctx["budget_pct"] = round(sb.utilization_pct, 1)
-                        ctx["budget_used"] = f"{sb.spent_usd:.2f}"
+                        ctx["budget_used"] = f"{session_metrics['total_cost']:.2f}"
                         lim = sb.limit_usd
                         ctx["budget_limit"] = f"{lim:.2f}" if lim > 0 else "∞"
-                        ctx["token_count"] = sb.tokens_used
+                        ctx["token_count"] = session_metrics["tokens_used"]
                     except Exception:
                         pass
 
@@ -513,6 +627,17 @@ def create_app(
         for key, value in extra.items():
             setattr(app.state, key, value)
 
+        chat_service = extra.get("chat_service")
+        if chat_service is not None:
+            chat_service.skill_provider = runtime_skill_provider.select
+
+        supervisor_service = getattr(chat_service, "supervisor_service", None) if chat_service is not None else None
+        task_dossier_builder = extra.get("task_dossier_builder")
+        if task_dossier_builder is not None and hasattr(task_dossier_builder, "runtime_skill_provider"):
+            task_dossier_builder.runtime_skill_provider = runtime_skill_provider
+        if supervisor_service is not None and task_dossier_builder is not None:
+            supervisor_service.task_dossier_provider = task_dossier_builder.build
+
         # 7. Wire SecretVault → database persistence (if vault + pool available)
         _vault = getattr(app.state, "secret_vault", None)
         if _vault is not None and pool is not None:
@@ -533,6 +658,9 @@ def create_app(
         )
 
     async def on_shutdown() -> None:
+        router_scheduler = getattr(app.state, "router_continuity_scheduler", None)
+        if router_scheduler is not None:
+            await router_scheduler.stop()
         web_adapter.stop()
         # Final flush of session event buffer
         _buf = getattr(app.state, "_session_event_buffer", None)

@@ -11,6 +11,12 @@ def test_nav_notification_drawer_contains_channel_and_grouping_hooks() -> None:
     assert "/api/notifications/preferences" in nav
     assert "toggleMuteAgent" in nav
     assert "method: 'PUT'" in nav
+    assert "🔔" not in nav
+    assert "🌐" not in nav
+    assert "⚙️" not in nav
+    assert "📡" not in nav
+    assert "🔇" not in nav
+    assert ">✓<" not in nav
 
 
 def test_sidebar_mobile_notifications_use_drawer_flow() -> None:

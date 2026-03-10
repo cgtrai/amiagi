@@ -110,6 +110,8 @@
     z-index: var(--z-sticky);
 }
 .glass-nav .nav-brand {
+    display: inline-flex;
+    align-items: center;
     font-weight: var(--font-weight-bold);
     font-size: var(--font-size-lg);
     color: var(--text-primary);
@@ -117,11 +119,21 @@
 }
 .glass-nav .nav-links {
     display: flex;
+    align-items: center;
     gap: var(--space-4);
     margin-left: auto;
     list-style: none;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 0;
+}
+.glass-nav .nav-links li {
+    display: inline-flex;
+    align-items: center;
 }
 .glass-nav .nav-links a {
+    display: inline-flex;
+    align-items: center;
     color: var(--text-secondary);
     text-decoration: none;
     font-size: var(--font-size-sm);
@@ -391,6 +403,7 @@
 }
 .detail-drawer-overlay.active {
     display: block;
+    pointer-events: none;
 }
 
 .detail-drawer {
@@ -399,17 +412,20 @@
     right: 0;
     bottom: var(--status-bar-height);
     width: var(--drawer-width);
+    display: flex;
+    flex-direction: column;
     background: var(--glass-card-bg);
     -webkit-backdrop-filter: var(--glass-card-filter);
     backdrop-filter: var(--glass-card-filter);
     border-left: 1px solid var(--glass-border);
     z-index: var(--z-drawer);
-    overflow-y: auto;
+    overflow: hidden;
     transform: translateX(100%);
     transition: transform var(--transition-base);
 }
 .detail-drawer.open {
     transform: translateX(0);
+    pointer-events: auto;
 }
 
 .detail-drawer::before {
@@ -426,6 +442,7 @@
 
 .detail-drawer-header {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: space-between;
     padding: var(--space-4) var(--space-5);
@@ -466,7 +483,10 @@
     color: var(--text-primary);
 }
 .detail-drawer-body {
+    flex: 1 1 auto;
+    min-height: 0;
     padding: var(--space-5);
+    overflow-y: auto;
 }
 
 .budget-bar {
@@ -942,13 +962,17 @@ select.glass-input:disabled {
 .nav-bell-wrapper { position: relative; }
 
 .nav-bell-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
     cursor: pointer;
     color: var(--text-primary, #f1f5f9);
-    font-size: 1.2rem;
     position: relative;
-    padding: .25rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
 }
 
 .nav-bell-badge {
@@ -1063,6 +1087,12 @@ select.glass-input:disabled {
     align-items: center;
     gap: .25rem;
     margin-left: .5rem;
+}
+.lang-switcher__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary, #94a3b8);
 }
 .lang-switcher-btn {
     background: none;

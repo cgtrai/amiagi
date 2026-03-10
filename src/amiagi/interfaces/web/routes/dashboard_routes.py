@@ -8,7 +8,7 @@ from starlette.routing import Route
 
 
 async def dashboard_page(request: Request) -> RedirectResponse:
-    """Render the main dashboard.
+    """Render the secondary overview dashboard.
 
     Requires authentication (ensured by AuthMiddleware).
     """
@@ -16,9 +16,10 @@ async def dashboard_page(request: Request) -> RedirectResponse:
     return templates.TemplateResponse(request, "dashboard.html")
 
 
-# A bare ``/`` redirects to ``/dashboard``.
+# A bare ``/`` redirects to ``/supervisor`` because Mission Control is the
+# primary operator entrypoint equivalent to the TUI sponsor/supervisor view.
 async def root_redirect(request: Request) -> RedirectResponse:
-    return RedirectResponse(url="/dashboard", status_code=302)
+    return RedirectResponse(url="/supervisor", status_code=302)
 
 
 # ── Agent pages ──────────────────────────────────────────────────
@@ -112,7 +113,9 @@ async def teams_page(request: Request):
 async def supervisor_page(request: Request):
     """GET /supervisor — Mission Control (live agent overview)."""
     templates = request.app.state.templates
-    return templates.TemplateResponse(request, "supervisor.html")
+    user = getattr(request.state, "user", None)
+    current_user_label = str(getattr(user, "display_name", "") or getattr(user, "email", "") or "Operator").strip() or "Operator"
+    return templates.TemplateResponse(request, "supervisor.html", {"current_user_label": current_user_label})
 
 
 # ── Inbox page ───────────────────────────────────────────────────

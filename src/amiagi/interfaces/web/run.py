@@ -7,6 +7,9 @@ RouterEngine, EventBus, WebAdapter, and starts the Uvicorn ASGI server.
 from __future__ import annotations
 
 import logging
+import os
+import signal
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +46,209 @@ if TYPE_CHECKING:
     from amiagi.interfaces.team_dashboard import TeamDashboard
 
 logger = logging.getLogger(__name__)
+
+
+def _web_runtime_pid_path(settings: "Settings") -> Path:
+    base_dir = getattr(settings, "activity_log_path", Path("logs/activity.jsonl")).parent
+    return Path(base_dir) / "web_gui.pid"
+
+
+def _read_pid_file(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        pid = int(raw)
+    except ValueError:
+        return None
+    return pid if pid > 0 else None
+
+
+def _write_pid_file(path: Path, pid: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{int(pid)}\n", encoding="utf-8")
+
+
+def _remove_pid_file(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Web startup: failed to remove pid file %s", path, exc_info=True)
+
+
+def _remove_pid_file_if_owned(path: Path, pid: int) -> None:
+    stored_pid = _read_pid_file(path)
+    if stored_pid == int(pid):
+        _remove_pid_file(path)
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _read_proc_cmdline(pid: int) -> str:
+    path = Path("/proc") / str(int(pid)) / "cmdline"
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+
+
+def _read_proc_cwd(pid: int) -> Path | None:
+    try:
+        return Path(os.readlink(Path("/proc") / str(int(pid)) / "cwd")).resolve()
+    except OSError:
+        return None
+
+
+def _looks_like_amiagi_web_process(pid: int, repo_root: Path) -> bool:
+    cmdline = _read_proc_cmdline(pid).lower()
+    cwd = _read_proc_cwd(pid)
+    repo_root = repo_root.resolve()
+
+    cmdline_matches = (
+        "amiagi.main" in cmdline
+        or ("amiagi" in cmdline and "--ui web" in cmdline)
+        or ("uvicorn" in cmdline and str(repo_root).lower() in cmdline)
+    )
+    cwd_matches = cwd is not None and (cwd == repo_root or cwd.is_relative_to(repo_root))
+    return cmdline_matches or cwd_matches
+
+
+def _listening_socket_inodes_on_port_linux(port: int) -> set[str]:
+    inodes: set[str] = set()
+    port_hex = f"{int(port):04X}"
+    for table_name in ("tcp", "tcp6"):
+        table_path = Path("/proc/net") / table_name
+        try:
+            lines = table_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines[1:]:
+            fields = line.split()
+            if len(fields) < 10:
+                continue
+            local_address = fields[1]
+            state = fields[3]
+            inode = fields[9]
+            if state != "0A":
+                continue
+            local_port_hex = local_address.rsplit(":", 1)[-1].upper()
+            if local_port_hex == port_hex:
+                inodes.add(inode)
+    return inodes
+
+
+def _find_listening_pid_on_port_linux(port: int) -> int | None:
+    socket_inodes = _listening_socket_inodes_on_port_linux(port)
+    if not socket_inodes:
+        return None
+
+    proc_root = Path("/proc")
+    for proc_dir in sorted(proc_root.iterdir(), key=lambda item: item.name):
+        if not proc_dir.name.isdigit():
+            continue
+        fd_dir = proc_dir / "fd"
+        if not fd_dir.is_dir():
+            continue
+        try:
+            fd_entries = list(fd_dir.iterdir())
+        except OSError:
+            continue
+        for fd_entry in fd_entries:
+            try:
+                target = os.readlink(fd_entry)
+            except OSError:
+                continue
+            if not target.startswith("socket:["):
+                continue
+            inode = target[8:-1]
+            if inode in socket_inodes:
+                return int(proc_dir.name)
+    return None
+
+
+def _terminate_process(pid: int, *, grace_seconds: float = 2.0) -> bool:
+    target_pid = int(pid)
+    if target_pid <= 0:
+        return False
+    try:
+        os.kill(target_pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+    deadline = time.monotonic() + max(0.1, float(grace_seconds))
+    while time.monotonic() < deadline:
+        if not _pid_exists(target_pid):
+            return True
+        time.sleep(0.1)
+
+    try:
+        os.kill(target_pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        if not _pid_exists(target_pid):
+            return True
+        time.sleep(0.05)
+    return not _pid_exists(target_pid)
+
+
+def _cleanup_stale_web_server(settings: "Settings", port: int) -> Path:
+    pid_file = _web_runtime_pid_path(settings)
+    current_pid = os.getpid()
+    repo_root = Path(settings.work_dir).resolve().parent
+    candidate_pids: list[int] = []
+
+    tracked_pid = _read_pid_file(pid_file)
+    if tracked_pid is not None:
+        if tracked_pid == current_pid:
+            _remove_pid_file(pid_file)
+        elif not _pid_exists(tracked_pid):
+            _remove_pid_file(pid_file)
+        elif _looks_like_amiagi_web_process(tracked_pid, repo_root):
+            candidate_pids.append(tracked_pid)
+        else:
+            logger.warning(
+                "Web startup: pid file %s points to pid=%s, but the process does not look like amiagi web.",
+                pid_file,
+                tracked_pid,
+            )
+
+    port_pid = _find_listening_pid_on_port_linux(port)
+    if port_pid is not None and port_pid != current_pid and port_pid not in candidate_pids:
+        if _looks_like_amiagi_web_process(port_pid, repo_root):
+            candidate_pids.append(port_pid)
+        else:
+            logger.warning(
+                "Web startup: port %s is occupied by pid=%s, but the process does not look like amiagi web.",
+                port,
+                port_pid,
+            )
+
+    for stale_pid in candidate_pids:
+        logger.warning("Web startup: terminating stale amiagi web process pid=%s on port %s", stale_pid, port)
+        if not _terminate_process(stale_pid):
+            raise RuntimeError(f"Failed to terminate stale amiagi web process pid={stale_pid} on port {port}")
+
+    _write_pid_file(pid_file, current_pid)
+    return pid_file
 
 
 def run_web(
@@ -85,10 +291,12 @@ def run_web(
 
     from amiagi.application.event_bus import EventBus
     from amiagi.application.router_engine import RouterEngine
+    from amiagi.application.task_dossier_builder import TaskDossierBuilder
     from amiagi.application.shell_policy import default_shell_policy, load_shell_policy
     from amiagi.infrastructure.script_executor import ScriptExecutor
     from amiagi.interfaces.permission_manager import PermissionManager
     from amiagi.interfaces.web.app import create_app
+    from amiagi.interfaces.web.skills.runtime_skill_provider import RuntimeSkillProvider
     from amiagi.interfaces.web.web_adapter import WebAdapter
 
     # -- EventBus -----------------------------------------------------------
@@ -159,11 +367,14 @@ def run_web(
         event_bus=event_bus,
         router_engine=router_engine,
     )
+    task_dossier_builder = TaskDossierBuilder(runtime_skill_provider=RuntimeSkillProvider())
 
     # -- Starlette app ------------------------------------------------------
     app = create_app(
         settings=settings,
         web_adapter=web_adapter,
+        chat_service=chat_service,
+        task_dossier_builder=task_dossier_builder,
         agent_registry=agent_registry,
         agent_factory=agent_factory,
         task_queue=task_queue,
@@ -189,6 +400,7 @@ def run_web(
     # -- Start Uvicorn ------------------------------------------------------
     port = settings.dashboard_port
     url = f"http://localhost:{port}"
+    pid_file = _cleanup_stale_web_server(settings, port)
     logger.info("Starting amiagi web GUI on %s", url)
     print(f"\n  🌐 amiagi Web GUI: {url}\n")
 
@@ -203,4 +415,7 @@ def run_web(
 
     threading.Thread(target=_open_browser, daemon=True).start()
 
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    finally:
+        _remove_pid_file_if_owned(pid_file, os.getpid())

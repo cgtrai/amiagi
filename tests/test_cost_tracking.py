@@ -90,6 +90,21 @@ class TestTaskBudget:
         assert bm.task_summary()["task-3"]["spent_usd"] == pytest.approx(0.1)
         assert bm.session_summary()["spent_usd"] == pytest.approx(0.1)
 
+    def test_record_model_usage_uses_runtime_token_override(self) -> None:
+        bm = BudgetManager()
+        bm.token_cost_1k = 0.25
+
+        cost = bm.record_model_usage(
+            "polluks",
+            model="qwen3.5:27b",
+            input_tokens=1200,
+            output_tokens=800,
+        )
+
+        assert cost == pytest.approx(0.5)
+        assert bm.session_summary()["tokens_used"] == 2000
+        assert bm.session_summary()["spent_usd"] == pytest.approx(0.5)
+
 
 # ── GET /api/budget/tasks endpoint ──────────────────────────────
 

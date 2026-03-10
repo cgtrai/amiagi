@@ -1,9 +1,17 @@
 {# ── Command Rail — 64px icon-only navigation ─────────────── #}
 {# Icons: Lucide (https://lucide.dev) — 20×20, stroke-width 1.75 #}
-<aside class="command-rail app-rail" id="command-rail" aria-label="{{ _('nav.dashboard') }}">
+<aside class="command-rail app-rail" id="command-rail" aria-label="{{ _('nav.supervisor') }}">
 
   {# ── Primary navigation ────────────────────────────────────── #}
-  <span class="rail-group-label">{{ _("nav.group_system") }}</span>
+  <a href="/supervisor"
+     class="command-rail-item{% if request.url.path == '/supervisor' %} active{% endif %}"
+      data-tooltip="{{ _('nav.supervisor') }}"
+      title="{{ _('nav.supervisor') }}"
+      aria-label="{{ _('nav.supervisor') }}">
+    {# lucide: monitor #}
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+  </a>
+
   <a href="/dashboard"
      class="command-rail-item{% if request.url.path == '/dashboard' %} active{% endif %}"
       data-tooltip="{{ _('nav.dashboard') }}"
@@ -40,16 +48,6 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   </a>
 
-  <a href="/supervisor"
-     class="command-rail-item{% if request.url.path == '/supervisor' %} active{% endif %}"
-      data-tooltip="{{ _('nav.supervisor') }}"
-      title="{{ _('nav.supervisor') }}"
-      aria-label="{{ _('nav.supervisor') }}">
-    {# lucide: monitor #}
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-  </a>
-
-  <span class="rail-group-label">{{ _("nav.group_agents") }}</span>
   <a href="/inbox"
      class="command-rail-item{% if request.url.path == '/inbox' %} active{% endif %}"
       data-tooltip="{{ _('nav.inbox') }}"
@@ -132,7 +130,6 @@
   <div class="command-rail-divider"></div>
 
   {# ── Workspace & monitoring ────────────────────────────────── #}
-  <span class="rail-group-label">{{ _("nav.group_workspace") }}</span>
   <a href="/files"
      class="command-rail-item{% if request.url.path == '/files' %} active{% endif %}"
       data-tooltip="{{ _('workspace.title') }}"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import PurePosixPath
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -10,6 +11,11 @@ from typing import Any
 from amiagi.domain.permission_policy import AgentPermissionPolicy
 
 logger = logging.getLogger(__name__)
+
+_PROTECTED_WRITE_PATH_MARKERS = (
+    "src/amiagi/system_tools",
+    "/src/amiagi/system_tools",
+)
 
 
 @dataclass
@@ -75,6 +81,13 @@ class PermissionEnforcer:
         if policy is None:
             return self._deny(agent_id, f"path:{path}", "no policy registered for agent")
 
+        if write and self._is_protected_system_tool_path(path):
+            return self._deny(
+                agent_id,
+                f"path:{path}",
+                "write access denied for protected system tools path",
+            )
+
         if not policy.is_path_allowed(path, write=write):
             action = "write" if write else "read"
             return self._deny(agent_id, f"path:{path}", f"{action} access denied for path")
@@ -113,3 +126,8 @@ class PermissionEnforcer:
         self._denial_log.append(result)
         logger.warning("Permission denied: agent=%s tool=%s reason=%s", agent_id, tool_name, reason)
         return result
+
+    @staticmethod
+    def _is_protected_system_tool_path(path: str) -> bool:
+        normalized = PurePosixPath(path.replace("\\", "/")).as_posix().rstrip("/")
+        return any(marker in normalized for marker in _PROTECTED_WRITE_PATH_MARKERS)

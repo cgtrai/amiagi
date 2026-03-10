@@ -2,6 +2,8 @@
 
 {% block title %}{{ _("supervisor.title") }} — amiagi{% endblock %}
 
+{% block body_class %}page-supervisor page-low-gpu{% endblock %}
+
 {% block head %}
 <link rel="stylesheet" href="/static/css/supervisor.css"/>
 <script src="/static/js/components/live-stream.js" defer></script>
@@ -9,182 +11,155 @@
 {% endblock %}
 
 {% block content %}
-<div class="supervisor-main">
+<div class="supervisor-main" data-current-user-label="{{ current_user_label | e }}">
 
-  {# ── Toolbar ───────────────────────────────────────────── #}
-  <div class="dash-toolbar">
-    <h2>
-      {# lucide: monitor #}
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
-        <line x1="12" y1="17" x2="12" y2="21"/>
-      </svg>
-      {{ _("supervisor.title") }}
-    </h2>
-    <span class="supervisor-badge" id="supervisor-status-badge">{{ _("supervisor.live") }}</span>
-  </div>
-
-  {# ── Summary cards ─────────────────────────────────────── #}
-  <div class="supervisor-cards" id="supervisor-summary">
-    <div class="glass-card summary-card" data-metric="cycle">
-      <span class="summary-label">{{ _("supervisor.cycle") }}</span>
-      <span class="summary-value" id="sv-cycle-count">—</span>
+  {# ── Compact topbar ─────────────────────────────────────── #}
+  <header class="glass-card supervisor-topbar" id="supervisor-summary">
+    <div class="supervisor-topbar__identity">
+      <h2>
+        {# lucide: monitor #}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        {{ _("supervisor.title") }}
+      </h2>
+      <span class="supervisor-badge" id="supervisor-status-badge">{{ _("supervisor.live") }}</span>
     </div>
-    <div class="glass-card summary-card" data-metric="tokens">
-      <span class="summary-label">{{ _("supervisor.tokens_session") }}</span>
-      <span class="summary-value" id="sv-tokens-count">—</span>
-    </div>
-    <div class="glass-card summary-card" data-metric="cost">
-      <span class="summary-label">{{ _("supervisor.cost_session") }}</span>
-      <span class="summary-value" id="sv-session-cost">—</span>
-    </div>
-    <div class="glass-card summary-card" data-metric="errors">
-      <span class="summary-label">{{ _("supervisor.errors") }}</span>
-      <span class="summary-value" id="sv-errors-count">—</span>
-    </div>
-  </div>
-
-  {# ── Current Task Panel (S3) ───────────────────────────── #}
-  <section class="supervisor-section glass-card u-hidden" id="current-task-panel">
-    <h3>{{ _("supervisor.current_task") }}</h3>
-    <div class="current-task-content">
-      <div class="current-task-info">
-        <span id="ct-task-title" class="current-task-title"></span>
-        <span id="ct-agent" class="meta-tag"></span>
-        <span id="ct-model" class="meta-tag"></span>
+    <div class="supervisor-topbar__metrics">
+      <div class="supervisor-metric-group supervisor-metric-group--technical">
+        <span class="supervisor-metric">
+          <span class="supervisor-metric__label">{{ _("supervisor.gpu_ram") }}</span>
+          <span class="supervisor-metric__value supervisor-metric__value--fixed" id="sv-gpu-ram">--%</span>
+        </span>
+        <span class="supervisor-metric">
+          <span class="supervisor-metric__label">{{ _("supervisor.gpu_usage") }}</span>
+          <span class="supervisor-metric__value supervisor-metric__value--fixed" id="sv-gpu-usage">--%</span>
+        </span>
       </div>
-      <div class="current-task-progress">
-        <div class="progress-bar glass-card ct-progress-bar">
-          <div id="ct-progress-fill" class="progress-fill ct-progress-fill"></div>
+      <div class="supervisor-metric-group supervisor-metric-group--financial">
+        <span class="supervisor-metric">
+          <span class="supervisor-metric__label">{{ _("supervisor.tokens_session") }}</span>
+          <span class="supervisor-metric__value" id="sv-tokens-count">—</span>
+        </span>
+        <span class="supervisor-metric">
+          <span class="supervisor-metric__label">{{ _("supervisor.cost_session") }}</span>
+          <span class="supervisor-metric__value" id="sv-session-cost">—</span>
+        </span>
+      </div>
+    </div>
+    <div class="supervisor-topbar__actions">
+      <button class="glass-btn glass-btn--sm supervisor-topbar__icon-action" id="btn-sv-refresh" title="{{ _('supervisor.refresh_view') }}" aria-label="{{ _('supervisor.refresh_view') }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 2v6h-6"/>
+          <path d="M3 12a9 9 0 0 1 15.55-6.36L21 8"/>
+          <path d="M3 22v-6h6"/>
+          <path d="M21 12a9 9 0 0 1-15.55 6.36L3 16"/>
+        </svg>
+      </button>
+      <button class="glass-btn glass-btn--sm" id="btn-sv-commands" title="{{ _('supervisor.system_commands') }}">{{ _("supervisor.system_commands") }}</button>
+      <inbox-badge poll-interval="15000"></inbox-badge>
+      <button class="glass-btn glass-btn--danger glass-btn--sm" id="btn-sv-reset" title="{{ _('supervisor.reset_session') }}">{{ _("supervisor.reset_session") }}</button>
+    </div>
+  </header>
+
+  <div class="supervisor-connection-banner" id="supervisor-connection-banner" hidden></div>
+
+  <div class="supervisor-workspace">
+    <div class="supervisor-primary">
+      {# ── Current Task Panel (S3) ───────────────────────────── #}
+      <section class="supervisor-section glass-card u-hidden" id="current-task-panel">
+        <h3>{{ _("supervisor.current_task") }}</h3>
+        <div class="current-task-content">
+          <div class="current-task-info">
+            <span id="ct-task-title" class="current-task-title"></span>
+            <span id="ct-agent" class="meta-tag"></span>
+            <span id="ct-model" class="meta-tag"></span>
+          </div>
+          <div class="current-task-progress">
+            <div class="progress-bar glass-card ct-progress-bar">
+              <div id="ct-progress-fill" class="progress-fill ct-progress-fill"></div>
+            </div>
+            <span id="ct-progress-text" class="progress-text meta-tag"></span>
+          </div>
+          <div class="current-task-actions">
+            <button class="glass-btn glass-btn--sm" id="ct-btn-pause">{{ _("common.pause") }}</button>
+            <button class="glass-btn glass-btn--sm glass-btn--danger" id="ct-btn-stop">{{ _("common.stop") }}</button>
+            <button class="glass-btn glass-btn--sm glass-btn--primary" id="ct-btn-retry">{{ _("common.retry") }}</button>
+          </div>
         </div>
-        <span id="ct-progress-text" class="progress-text meta-tag"></span>
-      </div>
-      <div class="current-task-actions">
-        <button class="glass-btn glass-btn--sm" id="ct-btn-pause">{{ _("common.pause") }}</button>
-        <button class="glass-btn glass-btn--sm glass-btn--danger" id="ct-btn-stop">{{ _("common.stop") }}</button>
-        <button class="glass-btn glass-btn--sm glass-btn--primary" id="ct-btn-retry">{{ _("common.retry") }}</button>
-      </div>
+      </section>
+
+      {# ── Supervisor screen + command panel ───────────────── #}
+      <section class="glass-card supervisor-section" id="supervisor-console">
+        <div class="supervisor-section-header">
+          <h3>{{ _("supervisor.live_stream") }}</h3>
+          <button type="button" class="glass-btn glass-btn--ghost glass-btn--sm" id="btn-sv-history"
+                  title="{{ _('supervisor.history') }}" aria-label="{{ _('supervisor.history') }}">
+            {{ _("supervisor.history") }}
+          </button>
+        </div>
+        <div class="supervisor-stream-controls">
+          <label class="supervisor-stream-control">
+            <span>{{ _("supervisor.stream_filter_channel") }}</span>
+            <select id="sv-stream-channel-filter" class="operator-input-select">
+              <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
+              <option value="user">{{ _("supervisor.stream_filter_user") }}</option>
+              <option value="executor">{{ _("supervisor.stream_filter_executor") }}</option>
+              <option value="supervisor">{{ _("supervisor.stream_filter_supervisor") }}</option>
+              <option value="system">{{ _("supervisor.stream_filter_system") }}</option>
+            </select>
+          </label>
+          <label class="supervisor-stream-control">
+            <span>{{ _("supervisor.stream_filter_level") }}</span>
+            <select id="sv-stream-level-filter" class="operator-input-select">
+              <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
+          </label>
+          <button class="glass-btn glass-btn--sm" id="btn-sv-stream-clear" type="button">{{ _("supervisor.stream_clear") }}</button>
+        </div>
+        <live-stream id="supervisor-live-stream" max-entries="500" ws-path="/ws/events" thread-owner="supervisor"></live-stream>
+        <div class="supervisor-command-panel">
+          <h3>{{ _("supervisor.command_panel") }}</h3>
+          <form class="operator-input-form" id="operator-input-form">
+            <div class="operator-input-row">
+              <input type="text" id="operator-input-text"
+                     class="operator-input-field"
+                     placeholder="{{ _('supervisor.input_placeholder') }}"
+                     autocomplete="off" />
+              <select id="operator-input-target" class="operator-input-select" aria-label="{{ _("supervisor.input_target_all") }}">
+                <option value="">{{ _("supervisor.input_target_all") }}</option>
+              </select>
+              <button type="submit" class="glass-btn glass-btn--primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                {{ _("supervisor.send") }}
+              </button>
+            </div>
+            <div class="operator-input-status" id="operator-input-status"></div>
+          </form>
+        </div>
+      </section>
     </div>
-  </section>
 
-  {# ── Two-column layout ─────────────────────────────────── #}
-  <div class="supervisor-grid">
-
-    {# ── Agent control panel ───────────────────────────────── #}
-    <section class="glass-card supervisor-section" id="agent-control">
-      <h3>{{ _("supervisor.agents_heading") }}</h3>
-      <div class="agent-control-list" id="agent-control-list">
-        <p class="text-muted">{{ _("supervisor.loading") }}</p>
-      </div>
-    </section>
-
-    {# ── Live stream ─────────────────────────────────────── #}
-    <section class="glass-card supervisor-section" id="live-stream-section">
-      <h3>{{ _("supervisor.live_stream") }}</h3>
-      <div class="supervisor-stream-summary" id="supervisor-stream-summary">
-        <span class="meta-tag" id="sv-stream-source">{{ _("supervisor.stream_source") }}: —</span>
-        <span class="meta-tag" id="sv-stream-target">{{ _("supervisor.stream_target") }}: —</span>
-        <span class="meta-tag" id="sv-stream-event">{{ _("supervisor.stream_event") }}: —</span>
-        <span class="meta-tag" id="sv-stream-issue">{{ _("supervisor.stream_issue") }}: —</span>
-      </div>
-      <div class="supervisor-stream-controls">
-        <label class="supervisor-stream-control">
-          <span>{{ _("supervisor.stream_filter_channel") }}</span>
-          <select id="sv-stream-channel-filter" class="operator-input-select">
-            <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
-            <option value="user">{{ _("supervisor.stream_filter_user") }}</option>
-            <option value="executor">{{ _("supervisor.stream_filter_executor") }}</option>
-            <option value="supervisor">{{ _("supervisor.stream_filter_supervisor") }}</option>
-            <option value="system">{{ _("supervisor.stream_filter_system") }}</option>
-          </select>
-        </label>
-        <label class="supervisor-stream-control">
-          <span>{{ _("supervisor.stream_filter_level") }}</span>
-          <select id="sv-stream-level-filter" class="operator-input-select">
-            <option value="all">{{ _("supervisor.stream_filter_all") }}</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
-        </label>
-        <button class="glass-btn glass-btn--sm" id="btn-sv-stream-clear" type="button">{{ _("supervisor.stream_clear") }}</button>
-      </div>
-      <live-stream id="supervisor-live-stream" max-entries="500" ws-path="/ws/events"></live-stream>
-    </section>
-
-  </div><!-- /supervisor-grid -->
-
-  {# ── Quick actions ─────────────────────────────────────── #}
-  <div class="supervisor-actions">
-    <button class="glass-btn" id="btn-sv-refresh" title="{{ _('supervisor.refresh') }}">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-        <path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-        <path d="M16 16h5v5"/>
-      </svg>
-      {{ _("supervisor.refresh") }}
-    </button>
-    <button class="glass-btn glass-btn--primary" id="btn-sv-new-prompt" title="{{ _('supervisor.new_prompt') }}">
-      {{ _("supervisor.new_prompt") }}
-    </button>
-    <button class="glass-btn" id="btn-sv-commands" title="{{ _('supervisor.commands') }}">
-      {{ _("supervisor.commands") }}
-    </button>
-    <inbox-badge poll-interval="15000"></inbox-badge>
-    <button class="glass-btn" id="btn-sv-queue" title="{{ _('supervisor.queue') }}">
-      {{ _("supervisor.queue") }} (<span id="sv-queue-count">0</span>)
-    </button>
-    <button class="glass-btn glass-btn--danger" id="btn-sv-reset" title="{{ _('supervisor.reset_session') }}">
-      {{ _("supervisor.reset_session") }}
-    </button>
+    <aside class="supervisor-sidebar">
+      <section class="glass-card supervisor-section" id="agent-control">
+        <div class="supervisor-section-header supervisor-section-header--agents">
+          <h3>{{ _("supervisor.agents_heading") }}</h3>
+          <button type="button" class="glass-btn glass-btn--sm glass-btn--success" id="btn-sv-add-agent">{{ _("supervisor.spawn_agent") }}</button>
+        </div>
+        <div class="agent-control-list" id="agent-control-list">
+          <p class="text-muted">{{ _("supervisor.loading") }}</p>
+        </div>
+      </section>
+    </aside>
   </div>
-
-  {# ── Operator input form (2.1) ─────────────────────────── #}
-  <section class="glass-card supervisor-section" id="operator-input-section">
-    <h3>{{ _("supervisor.operator_input") }}</h3>
-    <form class="operator-input-form" id="operator-input-form">
-      <div class="operator-input-row">
-        <input type="text" id="operator-input-text"
-               class="operator-input-field"
-               placeholder="{{ _('supervisor.input_placeholder') }}"
-               autocomplete="off" />
-        <select id="operator-input-target" class="operator-input-select" aria-label="{{ _("supervisor.input_target_all") }}">
-          <option value="">{{ _("supervisor.input_target_all") }}</option>
-        </select>
-        <button type="submit" class="glass-btn glass-btn--primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-          {{ _("supervisor.send") }}
-        </button>
-      </div>
-      <div class="operator-input-status" id="operator-input-status"></div>
-    </form>
-  </section>
-
-  {# ── Spawn agent form (2.11, 2.12) ─────────────────────── #}
-  <section class="glass-card supervisor-section" id="spawn-agent-section">
-    <h3>{{ _("supervisor.spawn_agent") }}</h3>
-    <form class="spawn-form" id="spawn-agent-form">
-      <div class="spawn-form-row">
-        <input type="text" id="spawn-name" class="operator-input-field"
-               placeholder="{{ _('supervisor.spawn_name') }}" required />
-        <select id="spawn-role" class="operator-input-select" aria-label="Agent role">
-          <option value="executor">executor</option>
-          <option value="reviewer">reviewer</option>
-          <option value="researcher">researcher</option>
-          <option value="planner">planner</option>
-        </select>
-        <button type="submit" class="glass-btn glass-btn--success">
-          {{ _("supervisor.spawn") }}
-        </button>
-      </div>
-      <div class="spawn-status" id="spawn-status"></div>
-    </form>
-  </section>
 
 </div><!-- /supervisor-main -->
 

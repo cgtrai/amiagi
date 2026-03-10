@@ -16,6 +16,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from amiagi.interfaces.web.runtime_metrics import apply_budget_config, get_session_usage_metrics
+from amiagi.interfaces.web.stream_contract import normalize_stream_payload
+
 from amiagi.application.agent_wizard import AgentWizardService, SensitivePermissionError
 from amiagi.domain.blueprint import AgentBlueprint
 
@@ -174,7 +177,7 @@ async def _broadcast_web_event(request: Request, event_type: str, payload: dict[
     if hub is None:
         return
     try:
-        await hub.broadcast(event_type, payload)
+        await hub.broadcast(event_type, normalize_stream_payload(event_type, payload))
     except Exception:
         logger.debug("Failed to broadcast %s", event_type, exc_info=True)
 
@@ -991,32 +994,22 @@ async def get_budget_tasks(request: Request) -> JSONResponse:
 
 async def get_budget_config(request: Request) -> JSONResponse:
     """``GET /api/budget/config`` — return cost configuration."""
-    bm = getattr(request.app.state, "budget_manager", None)
-    config: dict[str, Any] = {}
-    if bm is not None:
-        config = {
-            "currency": getattr(bm, "currency", "USD"),
-            "energy_price_kwh": getattr(bm, "energy_price_kwh", 0.0),
-            "token_cost_1k": getattr(bm, "token_cost_1k", 0.0),
-        }
-    return JSONResponse(config)
+    return JSONResponse(apply_budget_config(request.app.state))
 
 
 async def update_budget_config(request: Request) -> JSONResponse:
     """``PUT /api/budget/config`` — update cost configuration."""
     body = await request.json()
-    bm = getattr(request.app.state, "budget_manager", None)
-    if bm is not None:
-        if "currency" in body:
-            bm.currency = body["currency"]
-        if "energy_price_kwh" in body:
-            bm.energy_price_kwh = float(body["energy_price_kwh"])
-        if "token_cost_1k" in body:
-            bm.token_cost_1k = float(body["token_cost_1k"])
+    config = apply_budget_config(
+        request.app.state,
+        currency=body.get("currency"),
+        energy_price_kwh=body.get("energy_price_kwh"),
+        token_cost_1k=body.get("token_cost_1k"),
+    )
 
     from amiagi.interfaces.web.audit.log_helpers import log_action
     await log_action(request, "budget.config.update", body)
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "config": config})
 
 
 # ------------------------------------------------------------------
@@ -1041,24 +1034,28 @@ async def get_status_bar(request: Request) -> JSONResponse:
 
     # ── Budget (session) ──
     budget_mgr = getattr(state, "budget_manager", None)
+    session_metrics = get_session_usage_metrics(state)
     if budget_mgr is not None:
         try:
             sb = budget_mgr.session_budget
             result["budget_pct"] = round(sb.utilization_pct, 1)
-            result["budget_used"] = f"{sb.spent_usd:.2f}"
+            result["budget_used"] = f"{session_metrics['total_cost']:.2f}"
             lim = sb.limit_usd
             result["budget_limit"] = f"{lim:.2f}" if lim > 0 else "∞"
-            result["token_count"] = sb.tokens_used
+            result["token_count"] = session_metrics["tokens_used"]
+            result["budget_currency"] = session_metrics["currency"]
         except Exception:
             result["budget_pct"] = 0
             result["budget_used"] = "0.00"
             result["budget_limit"] = "∞"
             result["token_count"] = 0
+            result["budget_currency"] = "USD"
     else:
         result["budget_pct"] = 0
         result["budget_used"] = "0.00"
         result["budget_limit"] = "∞"
         result["token_count"] = 0
+        result["budget_currency"] = session_metrics["currency"]
 
     # ── Active tasks ──
     result.update(_get_status_bar_task_counts(getattr(state, "task_queue", None)))

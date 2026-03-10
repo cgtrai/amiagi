@@ -45,7 +45,7 @@ def test_supervisor_service_applies_repair_and_then_accepts() -> None:
 
 
 def test_supervisor_service_ignores_invalid_json() -> None:
-    client = FakeSupervisorClient(responses=["to nie jest json"])
+    client = FakeSupervisorClient(responses=["to nie jest json", "to dalej nie jest json"])
     service = SupervisorService(model_client=client, max_repair_rounds=2)
 
     original = "Niepoprawna odpowiedź wykonawcy"
@@ -57,6 +57,26 @@ def test_supervisor_service_ignores_invalid_json() -> None:
 
     assert result.answer == original
     assert result.reason_code == "SUPERVISOR_INVALID_JSON"
+
+
+def test_supervisor_service_retries_after_invalid_json_and_recovers() -> None:
+    client = FakeSupervisorClient(
+        responses=[
+            "to nie jest json",
+            '{"status":"ok","reason_code":"OK","repaired_answer":"","notes":"działaj dalej"}',
+        ]
+    )
+    service = SupervisorService(model_client=client, max_repair_rounds=2)
+
+    result = service.refine(
+        user_message="kontynuuj",
+        model_answer="```tool_call\n{\"tool\":\"fetch_web\",\"args\":{\"url\":\"https://example.com\"},\"intent\":\"scan\"}\n```",
+        stage="tool_flow",
+    )
+
+    assert result.reason_code == "OK"
+    assert result.status == "ok"
+    assert result.notes == "działaj dalej"
 
 
 def test_supervisor_service_accepts_protocol_client() -> None:
@@ -224,6 +244,32 @@ def test_review_prompt_contains_rule_16_premature_completion() -> None:
     )
     assert "ZAKOŃCZENIE PLANU vs ZADANIE SPONSORA" in prompt
     assert "PREMATURE_COMPLETION" in prompt
+
+
+def test_sponsor_review_prompt_includes_task_dossier_block() -> None:
+    client = FakeSupervisorClient(responses=[])
+    service = SupervisorService(
+        model_client=client,
+        max_repair_rounds=0,
+        sponsor_task="Przygotuj raport cenowy.",
+        task_dossier_provider=lambda sponsor_task, current_prompt: {
+            "task_class": "price_report",
+            "recommended_executor_skills": ["web-research", "xlsx-export"],
+            "required_tools": ["search_web", "run_python"],
+            "environment_gaps": [],
+        },
+    )
+
+    prompt = service._build_review_prompt(
+        user_message="Zaplanuj wykonanie raportu.",
+        model_answer="test answer",
+        stage="user_turn",
+        attempt=1,
+    )
+
+    assert "[TASK_DOSSIER]" in prompt
+    assert "price_report" in prompt
+    assert "recommended_executor_skills" in prompt
 
 
 def test_fallback_coaching_notes_premature_completion() -> None:

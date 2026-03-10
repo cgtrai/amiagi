@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/static/css/responsive.css"/>
   {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <div class="app-shell" id="app-shell">
 
     {% include "partials/nav.html" %}

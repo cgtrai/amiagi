@@ -59,11 +59,28 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--glass-border);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
   font-size: var(--font-size-sm);
 }
-.agent-overview-row:last-child { border-bottom: none; }
+.agent-overview-row:last-child { margin-bottom: 0; }
+.agent-overview-row--link {
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.agent-overview-row--link:hover,
+.agent-overview-row--link:focus-visible {
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--glass-shadow-sm);
+  transform: translateY(-1px);
+  outline: none;
+}
 .agent-overview-name {
   flex: 1;
   font-weight: var(--font-weight-medium);

@@ -1,4 +1,4 @@
-"""Admin skill & trait management routes.
+"""Admin skill, project-skill & trait management routes.
 
 Routes:
 - GET    /admin/skills           — list skills (filter by category, role)
@@ -30,6 +30,23 @@ logger = logging.getLogger(__name__)
 
 def _get_skill_repo(request: Request):
     return getattr(request.app.state, "skill_repository", None)
+
+
+def _get_runtime_skill_provider(request: Request):
+    return getattr(request.app.state, "runtime_skill_provider", None)
+
+
+def _get_project_skill_repo(request: Request):
+    return getattr(request.app.state, "project_skill_repository", None)
+
+
+async def _refresh_runtime_skill_provider(request: Request) -> None:
+    repo = _get_skill_repo(request)
+    project_repo = _get_project_skill_repo(request)
+    provider = _get_runtime_skill_provider(request)
+    if repo is None or provider is None:
+        return
+    await provider.refresh(repo, project_repo)
 
 
 async def _skill_preview_payload(repo, skill_id: str) -> dict[str, Any] | None:
@@ -77,6 +94,25 @@ def _parse_import_payload(body: bytes, content_type: str) -> list[dict]:
     if not isinstance(data, list):
         raise ValueError("Expected a JSON/YAML array of skill objects")
     return data
+
+
+def _parse_project_skill_payload(body: dict[str, Any]) -> dict[str, Any]:
+    role = str(body.get("role", "") or "").strip()
+    name = str(body.get("name", "") or "").strip()
+    content = str(body.get("content", "") or "")
+    if not role or not name or not content.strip():
+        raise ValueError("role_name_and_content_required")
+    return {
+        "role": role,
+        "name": name,
+        "display_name": str(body.get("display_name", "") or "").strip(),
+        "description": str(body.get("description", "") or "").strip(),
+        "content": content,
+        "trigger_keywords": list(body.get("trigger_keywords", []) or []),
+        "compatible_tools": list(body.get("compatible_tools", []) or []),
+        "compatible_roles": list(body.get("compatible_roles", []) or []),
+        "priority": int(body.get("priority", 50) or 50),
+    }
 
 
 # ── Skills ─────────────────────────────────────────────────────
@@ -129,6 +165,7 @@ async def admin_create_skill(request: Request) -> Response:
         return JSONResponse({"error": "name_and_content_required"}, status_code=400)
 
     skill = await repo.create_skill(**body)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse(skill.to_dict(), status_code=201)
 
 
@@ -154,6 +191,7 @@ async def admin_update_skill(request: Request) -> Response:
     skill = await repo.update_skill(request.path_params["id"], **body)
     if skill is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse(skill.to_dict())
 
 
@@ -166,6 +204,7 @@ async def admin_delete_skill(request: Request) -> Response:
     ok = await repo.delete_skill(request.path_params["id"])
     if not ok:
         return JSONResponse({"error": "not_found"}, status_code=404)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse({"status": "deleted"})
 
 
@@ -199,6 +238,98 @@ async def admin_skill_usage_map(request: Request) -> Response:
 
     usage = await repo.skill_usage_map()
     return JSONResponse({"skills": usage})
+
+
+# ── Project Skills (file-based) ───────────────────────────────
+
+@require_permission("admin.settings")
+async def admin_list_project_skills(request: Request) -> Response:
+    accept = request.headers.get("accept", "")
+    templates = getattr(request.app.state, "templates", None)
+    if templates is not None and "text/html" in accept:
+        return templates.TemplateResponse(
+            request,
+            "admin/project_skills.html",
+            {"user": request.state.user},
+        )
+
+    repo = _get_project_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "project_skill_repository_not_available"}, status_code=503)
+
+    role = request.query_params.get("role")
+    skills = repo.list_skills(role=role)
+    return JSONResponse({"skills": [skill.to_dict() for skill in skills]})
+
+
+@require_permission("admin.settings")
+async def admin_create_project_skill(request: Request) -> Response:
+    repo = _get_project_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "project_skill_repository_not_available"}, status_code=503)
+    try:
+        payload = _parse_project_skill_payload(await request.json())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    skill = repo.upsert_skill(**payload)
+    await _refresh_runtime_skill_provider(request)
+    return JSONResponse(skill.to_dict(), status_code=201)
+
+
+@require_permission("admin.settings")
+async def admin_get_project_skill(request: Request) -> Response:
+    repo = _get_project_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "project_skill_repository_not_available"}, status_code=503)
+    role = request.path_params["role"]
+    name = request.path_params["name"]
+    skill = repo.get_skill(role, name)
+    if skill is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(skill.to_dict())
+
+
+@require_permission("admin.settings")
+async def admin_update_project_skill(request: Request) -> Response:
+    repo = _get_project_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "project_skill_repository_not_available"}, status_code=503)
+    role = request.path_params["role"]
+    name = request.path_params["name"]
+    existing = repo.get_skill(role, name)
+    if existing is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    body = await request.json()
+    payload = {
+        "role": role,
+        "name": str(body.get("name", existing.name) or existing.name),
+        "display_name": str(body.get("display_name", existing.display_name) or existing.display_name),
+        "description": str(body.get("description", existing.description) or existing.description),
+        "content": str(body.get("content", existing.content) or existing.content),
+        "trigger_keywords": list(body.get("trigger_keywords", existing.trigger_keywords) or existing.trigger_keywords),
+        "compatible_tools": list(body.get("compatible_tools", existing.compatible_tools) or existing.compatible_tools),
+        "compatible_roles": list(body.get("compatible_roles", existing.compatible_roles) or existing.compatible_roles),
+        "priority": int(body.get("priority", existing.priority) or existing.priority),
+    }
+    if payload["name"] != existing.name:
+        repo.delete_skill(role, existing.name)
+    skill = repo.upsert_skill(**payload)
+    await _refresh_runtime_skill_provider(request)
+    return JSONResponse(skill.to_dict())
+
+
+@require_permission("admin.settings")
+async def admin_delete_project_skill(request: Request) -> Response:
+    repo = _get_project_skill_repo(request)
+    if repo is None:
+        return JSONResponse({"error": "project_skill_repository_not_available"}, status_code=503)
+    role = request.path_params["role"]
+    name = request.path_params["name"]
+    ok = repo.delete_skill(role, name)
+    if not ok:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    await _refresh_runtime_skill_provider(request)
+    return JSONResponse({"status": "deleted"})
 
 
 # ── Traits ─────────────────────────────────────────────────────
@@ -239,6 +370,7 @@ async def admin_create_trait(request: Request) -> Response:
         return JSONResponse({"error": "missing_required_fields"}, status_code=400)
 
     trait = await repo.create_trait(**body)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse(trait.to_dict(), status_code=201)
 
 
@@ -264,6 +396,7 @@ async def admin_update_trait(request: Request) -> Response:
     trait = await repo.update_trait(request.path_params["id"], **body)
     if trait is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse(trait.to_dict())
 
 
@@ -276,6 +409,7 @@ async def admin_delete_trait(request: Request) -> Response:
     ok = await repo.delete_trait(request.path_params["id"])
     if not ok:
         return JSONResponse({"error": "not_found"}, status_code=404)
+    await _refresh_runtime_skill_provider(request)
     return JSONResponse({"status": "deleted"})
 
 
@@ -308,6 +442,9 @@ async def admin_import_skills(request: Request) -> Response:
         except Exception as exc:
             errors.append({"index": idx, "error": str(exc)})
 
+    if created:
+        await _refresh_runtime_skill_provider(request)
+
     return JSONResponse(
         {"imported": len(created), "errors": errors, "skills": created},
         status_code=201 if created else 400,
@@ -318,13 +455,18 @@ async def admin_import_skills(request: Request) -> Response:
 
 skill_admin_routes = [
     Route("/admin/skills", admin_list_skills, methods=["GET"]),
+    Route("/admin/project-skills", admin_list_project_skills, methods=["GET"]),
     Route("/admin/skills/{id}/edit", admin_skill_edit_page, methods=["GET"]),
     Route("/admin/skills", admin_create_skill, methods=["POST"]),
+    Route("/admin/project-skills", admin_create_project_skill, methods=["POST"]),
     Route("/admin/skills/import", admin_import_skills, methods=["POST"]),
     Route("/admin/skills/usage-map", admin_skill_usage_map, methods=["GET"]),
     Route("/admin/skills/{id}", admin_get_skill, methods=["GET"]),
     Route("/admin/skills/{id}", admin_update_skill, methods=["PUT"]),
     Route("/admin/skills/{id}", admin_delete_skill, methods=["DELETE"]),
+    Route("/admin/project-skills/{role}/{name}", admin_get_project_skill, methods=["GET"]),
+    Route("/admin/project-skills/{role}/{name}", admin_update_project_skill, methods=["PUT"]),
+    Route("/admin/project-skills/{role}/{name}", admin_delete_project_skill, methods=["DELETE"]),
     Route("/admin/skills/{id}/stats", admin_skill_stats, methods=["GET"]),
     Route("/admin/skills/{id}/preview", admin_skill_preview, methods=["GET"]),
     Route("/admin/traits", admin_list_traits, methods=["GET"]),

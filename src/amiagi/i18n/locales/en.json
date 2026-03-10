@@ -662,7 +662,7 @@
 
   "_comment_main": "=== main.py ===",
   "main.arg.description": "amiagi CLI",
-  "main.arg.cold_start": "Clear conversation history and start with startup context.",
+  "main.arg.cold_start": "Delete the work directory and persistent runtime artifacts before a fresh start.",
   "main.arg.auto": "Enable autonomous mode for this run.",
   "main.arg.vram_off": "Disable VRAM control and model queue on runtime side.",
   "main.arg.startup_dialogue": "Path to startup instructions file (markdown).",

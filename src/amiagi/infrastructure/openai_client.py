@@ -10,6 +10,7 @@ import json
 import socket
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -59,6 +60,7 @@ class OpenAIClient:
     max_retries: int = 2
     retry_backoff_seconds: float = 1.0
     usage_tracker: UsageTracker | None = None
+    usage_callback: Callable[[str, str, int, int], None] | None = None
 
     # Used by ChatService.is_api_model() for detection.
     _is_api_client: bool = True
@@ -248,23 +250,31 @@ class OpenAIClient:
 
         # Track token usage
         usage = result.get("usage")
-        if isinstance(usage, dict) and self.usage_tracker is not None:
+        if isinstance(usage, dict):
             prompt_tokens = int(usage.get("prompt_tokens", 0))
             completion_tokens = int(usage.get("completion_tokens", 0))
-            self.usage_tracker.record(self.model, prompt_tokens, completion_tokens)
-            if self.activity_logger:
-                snap = self.usage_tracker.snapshot()
-                self.activity_logger.log(
-                    action="openai.usage.record",
-                    intent="Zarejestrowanie zużycia tokenów i kosztów.",
-                    details={
-                        "request_id": request_id,
-                        "model": self.model,
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "cost_usd": snap.last_request_cost_usd,
-                        "cumulative_cost_usd": snap.total_cost_usd,
-                    },
+            if self.usage_tracker is not None:
+                self.usage_tracker.record(self.model, prompt_tokens, completion_tokens)
+                if self.activity_logger:
+                    snap = self.usage_tracker.snapshot()
+                    self.activity_logger.log(
+                        action="openai.usage.record",
+                        intent="Zarejestrowanie zużycia tokenów i kosztów.",
+                        details={
+                            "request_id": request_id,
+                            "model": self.model,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "cost_usd": snap.last_request_cost_usd,
+                            "cumulative_cost_usd": snap.total_cost_usd,
+                        },
+                    )
+            if self.usage_callback is not None and (prompt_tokens > 0 or completion_tokens > 0):
+                self.usage_callback(
+                    self.model,
+                    self.client_role,
+                    prompt_tokens,
+                    completion_tokens,
                 )
 
         if self.activity_logger:

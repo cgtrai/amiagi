@@ -60,7 +60,10 @@ from amiagi.i18n import _
 from amiagi.infrastructure.activity_logger import ActivityLogger
 from amiagi.infrastructure.ollama_client import OllamaClientError
 from amiagi.infrastructure.script_executor import ScriptExecutor
+from amiagi.system_tools.workspace_inventory import analyze_workspace as build_workspace_report
+from amiagi.system_tools.workspace_inventory import render_report as render_workspace_report
 from amiagi.interfaces.web.stream_contract import (
+    infer_agent_id,
     stream_meta_for_actor,
     stream_meta_for_panel,
     summarize_actor_state,
@@ -81,6 +84,7 @@ __all__ = ["RouterEngine"]
 # ---------------------------------------------------------------------------
 
 SUPPORTED_TOOLS: frozenset[str] = frozenset({
+    "analyze_workspace",
     "read_file",
     "list_dir",
     "run_shell",
@@ -141,7 +145,7 @@ _TOOL_CALL_RESOLUTION_FAILED_MESSAGE = (
 # --- Detection helpers for malformed model answers ---
 
 _PSEUDO_TOOL_USAGE_PATTERN = re.compile(
-    r"\b(read_file|list_dir|run_shell|run_command|run_python|check_python_syntax"
+    r"\b(analyze_workspace|read_file|list_dir|run_shell|run_command|run_python|check_python_syntax"
     r"|fetch_web|write_file|append_file)\s*\(",
     re.IGNORECASE,
 )
@@ -357,6 +361,31 @@ _MODEL_QUESTION_MARKERS: tuple[str, ...] = (
 )
 
 _COMPLETION_SIGNAL = "zakończyłem zadanie"
+_EMAIL_ADDRESS_PATTERN = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
+_EMAIL_DELIVERY_PATTERN = re.compile(
+    r"\b(wysyłam|wysłałem|wysłano|przesyłam|przesłałem|przesłano|mailuj(?:ę|e)?|emailed|sent)\b",
+    re.IGNORECASE,
+)
+_COMPLETION_CLAIM_PATTERN = re.compile(
+    r"\b(zakończyłem zadanie|raport został przygotowany|raport jest gotowy|plik został przygotowany|"
+    r"gotowy raport|zadanie zakończone|report is ready|task completed)\b",
+    re.IGNORECASE,
+)
+_ARTIFACT_NOUN_PATTERN = re.compile(
+    r"\b(raport|plik|arkusz|xlsx|excel|csv|zestawienie|załącznik|załączono|zalacznik)\b",
+    re.IGNORECASE,
+)
+_ARTIFACT_VERB_PATTERN = re.compile(
+    r"\b(przygotowan\w*|gotow\w*|utworzon\w*|wygenerowan\w*|zapisan\w*|stworz\w*|"
+    r"dołączon\w*|dolaczon\w*|created|generated|saved)\b",
+    re.IGNORECASE,
+)
+_ARTIFACT_PATH_PATTERN = re.compile(
+    r"(?<![\w/.-])([\w./-]+\.(?:xlsx|xls|csv|pdf|md|txt))(?![\w.-])",
+    re.IGNORECASE,
+)
+_DELIVERABLE_SUFFIXES: frozenset[str] = frozenset({".xlsx", ".xls", ".csv", ".pdf", ".md", ".txt"})
+_EMAIL_DELIVERY_TOOL_MARKERS: frozenset[str] = frozenset({"send_email", "email_delivery", "smtp_send", "mail_send"})
 
 
 def canonical_tool_name(name: str) -> str:
@@ -557,6 +586,7 @@ class RouterEngine:
         self._max_idle_autoreactivations: int = 2
         self._last_work_state: str = "RUNNING"
         self._user_turns_without_plan_update: int = 0
+        self._verified_artifact_paths: deque[str] = deque(maxlen=32)
 
     # ------------------------------------------------------------------
     # Public read-only properties
@@ -1756,6 +1786,135 @@ class RouterEngine:
             )
         return "Wykonałem krok operacyjny i kontynuuję realizację zadania."
 
+    def _remember_verified_artifact(self, path_value: str) -> None:
+        raw_path = str(path_value or "").strip()
+        if not raw_path:
+            return
+        try:
+            resolved = Path(raw_path).resolve()
+        except Exception:
+            return
+        if not is_path_within_work_dir(resolved, self.work_dir):
+            return
+        if not resolved.exists() or not resolved.is_file():
+            return
+        normalized = str(resolved)
+        if normalized in self._verified_artifact_paths:
+            return
+        self._verified_artifact_paths.append(normalized)
+
+    def _remember_verified_artifacts_from_results(self, aggregated_results: list[dict[str, Any]]) -> None:
+        for item in aggregated_results:
+            result = item.get("result", {})
+            if not isinstance(result, dict) or not bool(result.get("ok")):
+                continue
+            for key in ("path", "output_path"):
+                path_value = result.get(key)
+                if isinstance(path_value, str):
+                    self._remember_verified_artifact(path_value)
+
+    def _is_deliverable_artifact_path(self, path: Path) -> bool:
+        if path.suffix.lower() not in _DELIVERABLE_SUFFIXES:
+            return False
+        if not is_path_within_work_dir(path, self.work_dir):
+            return False
+        try:
+            relative = path.resolve().relative_to(self.work_dir.resolve())
+        except Exception:
+            return False
+        relative_posix = relative.as_posix()
+        if relative_posix == _PLAN_TRACKING_RELATIVE_PATH:
+            return False
+        if relative.parts and relative.parts[0] in {"notes", "state", "logs"}:
+            return False
+        return path.exists() and path.is_file()
+
+    def _verified_deliverable_artifacts(self) -> list[Path]:
+        artifacts: list[Path] = []
+        for raw_path in self._verified_artifact_paths:
+            path = Path(raw_path)
+            if self._is_deliverable_artifact_path(path):
+                artifacts.append(path)
+        return artifacts
+
+    @staticmethod
+    def _text_claims_email_delivery(text: str) -> bool:
+        if not text.strip():
+            return False
+        lowered = text.lower()
+        has_email_target = bool(_EMAIL_ADDRESS_PATTERN.search(text)) or "e-mail" in lowered or "mail" in lowered
+        return has_email_target and bool(_EMAIL_DELIVERY_PATTERN.search(text))
+
+    @staticmethod
+    def _text_claims_completion(text: str) -> bool:
+        normalized = " ".join(text.strip().lower().split())
+        return _COMPLETION_SIGNAL in normalized or bool(_COMPLETION_CLAIM_PATTERN.search(text))
+
+    @staticmethod
+    def _text_claims_artifact_ready(text: str) -> bool:
+        return bool(_ARTIFACT_NOUN_PATTERN.search(text) and _ARTIFACT_VERB_PATTERN.search(text))
+
+    def _extract_verified_artifact_mentions(self, text: str) -> list[Path]:
+        mentioned: list[Path] = []
+        for match in _ARTIFACT_PATH_PATTERN.finditer(text):
+            try:
+                candidate = self._resolve_model_path(match.group(1)).resolve()
+            except Exception:
+                continue
+            if self._is_deliverable_artifact_path(candidate):
+                mentioned.append(candidate)
+        return mentioned
+
+    def _has_email_delivery_capability(self) -> bool:
+        supported = {name.lower() for name in self.runtime_supported_tool_names()}
+        return any(marker in supported for marker in _EMAIL_DELIVERY_TOOL_MARKERS)
+
+    def _sponsor_evidence_failure_reason(self, text: str) -> str | None:
+        requires_completion = self._text_claims_completion(text)
+        requires_artifact = self._text_claims_artifact_ready(text)
+        requires_email = self._text_claims_email_delivery(text)
+        if not any((requires_completion, requires_artifact, requires_email)):
+            return None
+
+        plan_snapshot = self._plan_persistence_snapshot()
+        if not bool(plan_snapshot.get("exists")) or not bool(plan_snapshot.get("has_tasks")):
+            return "plan_missing"
+
+        if requires_completion or requires_artifact or requires_email:
+            explicit_artifacts = self._extract_verified_artifact_mentions(text)
+            if not explicit_artifacts and not self._verified_deliverable_artifacts():
+                return "artifact_missing"
+
+        if requires_email and not self._has_email_delivery_capability():
+            return "email_capability_missing"
+
+        return None
+
+    @staticmethod
+    def _build_sponsor_evidence_fallback(reason: str) -> str:
+        if reason == "plan_missing":
+            return "Praca trwa. Najpierw muszę utrwalić plan i potwierdzić wynik przed komunikatem końcowym."
+        if reason == "artifact_missing":
+            return "Praca trwa. Nie mam jeszcze potwierdzonego artefaktu raportu."
+        if reason == "email_capability_missing":
+            return "Praca trwa. Raport nie ma jeszcze potwierdzonego kanału dostarczenia."
+        return "Praca trwa. Nie mam jeszcze twardego potwierdzenia zakończenia zadania."
+
+    def _apply_sponsor_evidence_gate(self, text: str, *, context: str) -> tuple[str, bool]:
+        reason = self._sponsor_evidence_failure_reason(text)
+        if reason is None:
+            return text, False
+        self._log_activity(
+            action="sponsor_message.blocked",
+            intent="Zablokowano sponsor-facing deklarację bez potwierdzonego planu lub artefaktu.",
+            details={"context": context, "reason": reason, "excerpt": text[:240]},
+        )
+        self._emit_log(
+            "supervisor_log",
+            f"[Router] Zablokowano komunikat sponsor-facing ({context}): {reason}.",
+        )
+        return self._build_sponsor_evidence_fallback(reason), True
+
     @staticmethod
     def _render_single_tool_call_block(tool_call: ToolCall) -> str:
         canonical = canonical_tool_name(tool_call.tool)
@@ -2446,6 +2605,8 @@ class RouterEngine:
             for block in blocks:
                 target_panels = panels_for_target(block.target, panel_map)
                 label = f"[{block.sender} -> {block.target}]" if block.sender else ""
+                sender_agent_id = infer_agent_id(actor=str(block.sender or "").lower())
+                sender_label = str(block.sender or "").strip() or None
 
                 # Sanitize content for user panel
                 sponsor_targeted = "user_model_log" in target_panels
@@ -2453,15 +2614,34 @@ class RouterEngine:
                 if sponsor_targeted:
                     sanitized = strip_tool_call_blocks(block_content)
                     if not sanitized or not is_sponsor_readable(sanitized):
-                        self._emit_log("executor_log", f"{label} {block_content}" if label else block_content)
+                        self._emit_log(
+                            "executor_log",
+                            f"{label} {block_content}" if label else block_content,
+                            agent_id=sender_agent_id,
+                            source_label=sender_label,
+                        )
                         self._emit_log("supervisor_log", _("coordinator.tool_redirected"))
                         continue
                     if sanitized != block_content:
-                        self._emit_log("executor_log", f"{label} {block_content}" if label else block_content)
+                        self._emit_log(
+                            "executor_log",
+                            f"{label} {block_content}" if label else block_content,
+                            agent_id=sender_agent_id,
+                            source_label=sender_label,
+                        )
                     block_content = sanitized
+                    block_content, _ = self._apply_sponsor_evidence_gate(
+                        block_content,
+                        context=f"addressed:{sender_label or 'unknown'}->{block.target or 'unknown'}",
+                    )
 
                 for panel_id in target_panels:
-                    self._emit_log(panel_id, f"{label} {block_content}" if label else block_content)
+                    self._emit_log(
+                        panel_id,
+                        f"{label} {block_content}" if label else block_content,
+                        agent_id=sender_agent_id,
+                        source_label=sender_label,
+                    )
                 if sponsor_targeted:
                     routed_to_user_panel = True
 
@@ -2513,7 +2693,8 @@ class RouterEngine:
                     self._reminder_count += 1
 
         if not routed_to_user_panel:
-            self._emit_log("user_model_log", f"Model: {display_answer}")
+            gated_display, _ = self._apply_sponsor_evidence_gate(display_answer, context="unaddressed:model")
+            self._emit_log("user_model_log", f"Model: {gated_display}", agent_id="polluks", source_label="Polluks")
 
 
     def execute_tool_call(self, tool_call: ToolCall, *, agent_id: str = "") -> dict[str, Any]:
@@ -2535,7 +2716,7 @@ class RouterEngine:
                         approved_by="permission_enforcer",
                     )
                 return {"ok": False, "error": f"permission_denied:{result.reason}"}
-            if tool in ("read_file", "list_dir", "check_python_syntax", "run_python"):
+            if tool in ("analyze_workspace", "read_file", "list_dir", "check_python_syntax", "run_python"):
                 path_arg = str(args.get("path", ""))
                 if path_arg:
                     path_result = self._permission_enforcer.check_path(
@@ -2551,6 +2732,28 @@ class RouterEngine:
                     )
                     if not path_result.allowed:
                         return {"ok": False, "error": f"permission_denied:{path_result.reason}"}
+
+        if tool == "analyze_workspace":
+            if not self._ensure_resource("disk.read", "Tool analyze_workspace wymaga odczytu katalogu"):
+                return {"ok": False, "error": "permission_denied:disk.read"}
+            raw_path = str(args.get("path", ".")).strip() or "."
+            output_format = str(args.get("format", "txt")).strip().lower() or "txt"
+            if output_format not in {"txt", "json"}:
+                return {"ok": False, "error": "invalid_format", "format": output_format}
+            path = self._resolve_model_path(raw_path)
+            if not path.exists() or not path.is_dir():
+                return {"ok": False, "error": "dir_not_found", "path": str(path)}
+            report = build_workspace_report(path)
+            report_dict = report.to_dict()
+            rendered = render_workspace_report(report)
+            return {
+                "ok": True,
+                "tool": "analyze_workspace",
+                "path": str(path),
+                "format": output_format,
+                "content": json.dumps(report_dict, ensure_ascii=False, indent=2) if output_format == "json" else rendered,
+                "report": report_dict,
+            }
 
         if tool == "read_file":
             if not self._ensure_resource("disk.read", "Tool read_file wymaga odczytu pliku"):
@@ -3383,6 +3586,8 @@ class RouterEngine:
                         + "\nTeraz zwróć WYŁĄCZNIE blok tool_call realizujący ten krok weryfikacji/testu."
                     )
 
+            self._remember_verified_artifacts_from_results(aggregated_results)
+
             # --- Known tools: followup with compact results ---
             followup = (
                 "[TOOL_RESULT]\n"
@@ -3673,6 +3878,7 @@ class RouterEngine:
                 self._pause_for_user_decision(answer, "model_awaits_user", "watchdog")
 
         display_answer = self._format_user_facing_answer(answer)
+        display_answer, _ = self._apply_sponsor_evidence_gate(display_answer, context="watchdog:auto")
         self._emit_log("user_model_log", f"Model(auto): {display_answer}")
         self._emit_log("executor_log", f"[watchdog] {answer}")
         self._emit_cycle_finished("Router zakończył cykl watchdog")
@@ -3763,6 +3969,7 @@ class RouterEngine:
         answer = self.resolve_tool_calls(answer)
         self._last_model_answer = answer
         display_answer = self._format_user_facing_answer(answer)
+        display_answer, _ = self._apply_sponsor_evidence_gate(display_answer, context="auto_resume")
         self._emit_log("user_model_log", f"Model(auto): {display_answer}")
         self._emit_log("executor_log", f"[auto_resume] {answer}")
         if self.has_supported_tool_call(answer):
@@ -3879,6 +4086,10 @@ class RouterEngine:
                                         continue
                                 else:
                                     poll_content = sanitized
+                                    poll_content, _ = self._apply_sponsor_evidence_gate(
+                                        poll_content,
+                                        context=f"supervision_dialogue:{poll_block.sender or 'unknown'}->{poll_block.target or 'unknown'}",
+                                    )
                             for poll_panel_id in poll_extra:
                                 self._emit_log(poll_panel_id, f"{poll_label} {poll_content}" if poll_label else poll_content)
 

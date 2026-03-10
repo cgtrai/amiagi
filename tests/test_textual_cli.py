@@ -1430,11 +1430,12 @@ def test_canonical_tool_name_maps_new_aliases() -> None:
 
 
 def test_download_file_and_convert_pdf_in_supported_tools() -> None:
-    """download_file and convert_pdf_to_markdown should be in _SUPPORTED_TEXTUAL_TOOLS."""
+    """download_file, convert_pdf_to_markdown and analyze_workspace should be in _SUPPORTED_TEXTUAL_TOOLS."""
     from amiagi.interfaces.textual_cli import _SUPPORTED_TEXTUAL_TOOLS
 
     assert "download_file" in _SUPPORTED_TEXTUAL_TOOLS
     assert "convert_pdf_to_markdown" in _SUPPORTED_TEXTUAL_TOOLS
+    assert "analyze_workspace" in _SUPPORTED_TEXTUAL_TOOLS
 
 
 # ---------------------------------------------------------------------------

@@ -57,6 +57,10 @@ body::before {
         "status status status";
 }
 
+.app-shell.drawer-open.drawer-wide {
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) min(calc(var(--drawer-width) + 30vw), 80vw);
+}
+
 .app-nav     { grid-area: nav; }
 .app-rail    { grid-area: rail; }
 .app-main    { grid-area: main; padding: var(--space-6); overflow-y: auto; }

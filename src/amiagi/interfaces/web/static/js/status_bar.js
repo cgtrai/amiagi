@@ -79,10 +79,6 @@
     var ip = $('inbox-pending-count');
     if (ip) ip.textContent = d.inbox_pending != null ? d.inbox_pending : 0;
 
-    // Token counter
-    var tc = $('token-counter');
-    if (tc) tc.textContent = d.token_count != null ? d.token_count : 0;
-
     // Uptime
     var up = $('uptime-label');
     if (up) up.textContent = d.uptime || '0m';
@@ -199,14 +195,6 @@
     });
 
     bindStatusAction('inbox-pending-count', function () { window.location = '/inbox'; });
-
-    bindStatusAction('token-counter', function () {
-      fetch('/api/budget').then(function (r) { return r.json(); }).then(function (data) {
-        if (typeof openDetailDrawer === 'function') {
-          openDetailDrawer(t('status.tokens', 'Tokens'), '<pre style="font-size:.8rem;overflow-x:auto">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>');
-        }
-      });
-    });
 
     bindStatusAction('model-status-dot', function () { window.location = '/model-hub'; });
   }

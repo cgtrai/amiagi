@@ -9,11 +9,24 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from amiagi.application.communication_protocol import (
+    is_sponsor_readable,
+    parse_addressed_blocks,
+    strip_tool_call_blocks,
+)
+from amiagi.application.tool_calling import parse_tool_calls
 from amiagi.interfaces.web.stream_contract import (
+    agent_thread_owner,
     infer_agent_id,
+    normalize_stream_payload,
+    routing_for_actor,
+    routing_for_panel,
+    routing_for_supervisor_report,
+    routing_for_system_event,
     stream_meta_for_actor,
     stream_meta_for_panel,
     summarize_actor_state,
@@ -26,6 +39,65 @@ if TYPE_CHECKING:
     from amiagi.interfaces.web.ws.event_hub import EventHub
 
 logger = logging.getLogger(__name__)
+
+_SUPERVISOR_SUMMARY_DEDUP_WINDOW_S = 15.0
+
+
+def _tool_call_summary(answer: str) -> str:
+    calls = parse_tool_calls(answer or "")
+    if not calls:
+        return ""
+    first = calls[0]
+    intent = str(first.intent or "krok operacyjny").strip() or "krok operacyjny"
+    return f"Kastor zasugerował krok: {first.tool} ({intent})"
+
+
+def _sponsor_visible_text(answer: str) -> str:
+    cleaned_answer = str(answer or "").strip()
+    if not cleaned_answer:
+        return ""
+
+    blocks = parse_addressed_blocks(cleaned_answer)
+    addressed_blocks = [block for block in blocks if block.sender and block.target]
+    if addressed_blocks:
+        for block in addressed_blocks:
+            if block.target not in {"Sponsor", "all"}:
+                continue
+            cleaned = strip_tool_call_blocks(block.content)
+            if cleaned and is_sponsor_readable(cleaned):
+                return cleaned
+        return ""
+
+    cleaned = strip_tool_call_blocks(cleaned_answer)
+    if cleaned and is_sponsor_readable(cleaned):
+        return cleaned
+    return ""
+
+
+def _internal_supervisor_text(notes: str, answer: str) -> str:
+    cleaned_notes = str(notes or "").strip()
+    if cleaned_notes:
+        return cleaned_notes
+
+    cleaned_answer = str(answer or "").strip()
+    if not cleaned_answer:
+        return ""
+
+    blocks = parse_addressed_blocks(cleaned_answer)
+    addressed_blocks = [block for block in blocks if block.sender and block.target]
+    if addressed_blocks:
+        internal_chunks: list[str] = []
+        for block in addressed_blocks:
+            if block.target in {"Sponsor", "all"}:
+                continue
+            cleaned = strip_tool_call_blocks(block.content)
+            internal_chunks.append(cleaned or block.content.strip())
+        return "\n\n".join(chunk for chunk in internal_chunks if chunk).strip()
+
+    cleaned = strip_tool_call_blocks(cleaned_answer)
+    if cleaned and cleaned != cleaned_answer:
+        return cleaned
+    return _tool_call_summary(cleaned_answer)
 
 
 
@@ -41,6 +113,7 @@ class WebAdapter:
         self._router_engine = router_engine
         self._event_hub: "EventHub | None" = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_supervisor_summary_by_target: dict[str, tuple[str, float]] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -113,6 +186,7 @@ class WebAdapter:
         agent_id = event.agent_id or stream_meta.get("agent_id")
         if agent_id is not None:
             payload["agent_id"] = agent_id
+        payload.update(routing_for_panel(event.panel, agent_id=agent_id))
         self._schedule_broadcast("log", payload)
 
     def _on_actor_state(self, event: Any) -> None:
@@ -129,19 +203,63 @@ class WebAdapter:
         agent_id = event.agent_id or stream_meta.get("agent_id")
         if agent_id is not None:
             payload["agent_id"] = agent_id
+        payload.update(routing_for_actor(event.actor, agent_id=agent_id))
         self._schedule_broadcast("actor_state", payload)
 
     def _on_cycle(self, event: Any) -> None:
-        self._schedule_broadcast("cycle_finished", {
+        payload = {
             "event": event.event,
             "channel": "system",
             "source_kind": "system",
             "source_label": "Router",
             "summary": f"Cycle finished · {event.event}",
-        })
+        }
+        payload.update(routing_for_system_event(agent_id="router"))
+        self._schedule_broadcast("cycle_finished", payload)
 
     def _on_supervisor(self, event: Any) -> None:
-        self._schedule_broadcast("supervisor_message", {
+        sponsor_text = _sponsor_visible_text(event.answer)
+        internal_text = _internal_supervisor_text(event.notes, event.answer)
+
+        if internal_text and not self._is_duplicate_supervisor_summary("polluks", internal_text):
+            internal_payload = {
+                "channel": "supervisor",
+                "agent_id": "kastor",
+                "source_kind": "agent",
+                "source_label": "Kastor",
+                "stage": event.stage,
+                "reason_code": event.reason_code,
+                "notes": event.notes,
+                "answer": event.answer,
+                "summary": internal_text,
+                "target_agent": "polluks",
+                "to": "Polluks",
+                "thread_owners": [agent_thread_owner("polluks")],
+                "direction_per_owner": {agent_thread_owner("polluks"): "incoming"},
+            }
+            self._schedule_broadcast("supervisor_message", internal_payload)
+
+        if sponsor_text and not self._is_duplicate_supervisor_summary("sponsor", sponsor_text):
+            report_payload = {
+                "channel": "supervisor",
+                "agent_id": "kastor",
+                "source_kind": "agent",
+                "source_label": "Kastor",
+                "stage": event.stage,
+                "reason_code": event.reason_code,
+                "notes": event.notes,
+                "answer": event.answer,
+                "summary": sponsor_text,
+                "to": "Sponsor",
+            }
+            report_payload.update(routing_for_supervisor_report("kastor"))
+            self._schedule_broadcast("supervisor_message", report_payload)
+            return
+
+        if internal_text:
+            return
+
+        fallback_payload = {
             "channel": "supervisor",
             "agent_id": "kastor",
             "source_kind": "agent",
@@ -150,17 +268,37 @@ class WebAdapter:
             "reason_code": event.reason_code,
             "notes": event.notes,
             "answer": event.answer,
-            "summary": event.notes or event.answer or event.reason_code or event.stage,
-        })
+            "summary": event.reason_code or event.stage,
+        }
+        fallback_payload.update(routing_for_supervisor_report("kastor"))
+        self._schedule_broadcast("supervisor_message", fallback_payload)
+
+    def _is_duplicate_supervisor_summary(self, target: str, summary: str) -> bool:
+        normalized_target = str(target or "").strip().lower() or "unknown"
+        normalized_summary = str(summary or "").strip()
+        if not normalized_summary:
+            return False
+
+        now = time.monotonic()
+        last = self._last_supervisor_summary_by_target.get(normalized_target)
+        if last is not None:
+            last_summary, last_ts = last
+            if last_summary == normalized_summary and now - last_ts <= _SUPERVISOR_SUMMARY_DEDUP_WINDOW_S:
+                return True
+
+        self._last_supervisor_summary_by_target[normalized_target] = (normalized_summary, now)
+        return False
 
     def _on_error(self, event: Any) -> None:
-        self._schedule_broadcast("error", {
+        payload = {
             "channel": "system",
             "source_kind": "system",
             "source_label": "System",
             "message": event.message,
             "summary": event.message,
-        })
+        }
+        payload.update(routing_for_system_event())
+        self._schedule_broadcast("error", payload)
 
     # ------------------------------------------------------------------
     # Thread-safe broadcast helper
@@ -171,6 +309,7 @@ class WebAdapter:
         if self._event_hub is None or self._loop is None:
             return
         payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+        payload = normalize_stream_payload(event_type, payload)
         hub = self._event_hub
         asyncio.run_coroutine_threadsafe(
             hub.broadcast(event_type, payload),

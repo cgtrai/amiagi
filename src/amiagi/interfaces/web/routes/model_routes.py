@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 _MODEL_CONFIG_PATH = Path("data/model_config.json")
 
 
+def _resolve_model_config_path(request: Request | None = None) -> Path:
+    if request is not None:
+        settings = getattr(request.app.state, "settings", None)
+        configured = getattr(settings, "model_config_path", None)
+        if isinstance(configured, (str, Path)) and configured:
+            return Path(configured)
+    return _MODEL_CONFIG_PATH
+
+
 def _apply_live_model(request: Request, agent_id: str, model_name: str) -> None:
     """Hot-swap the running OllamaClient model so the change is immediate."""
     if agent_id != "polluks":
@@ -63,7 +72,7 @@ async def list_models(request: Request) -> Response:
 
 async def get_model_config(request: Request) -> Response:
     """Return the current model_config.json contents."""
-    config = _read_model_config()
+    config = _read_model_config(request)
     if config is None:
         return JSONResponse({"error": "config_not_found"}, status_code=404)
     return JSONResponse(_normalize_model_config(config))
@@ -83,9 +92,9 @@ async def update_model_config(request: Request) -> Response:
         return JSONResponse({"error": "no_valid_keys"}, status_code=400)
 
     # Merge with existing config
-    existing = _read_model_config() or {}
+    existing = _read_model_config(request) or {}
     existing.update(filtered)
-    _write_model_config(existing)
+    _write_model_config(existing, request)
 
     _apply_registry_model_updates(request, existing, filtered)
 
@@ -163,7 +172,7 @@ async def assign_agent_model(request: Request) -> Response:
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
-    _persist_agent_model(agent_id, model_name, model_backend or getattr(agent, "model_backend", "ollama"))
+    _persist_agent_model(request, agent_id, model_name, model_backend or getattr(agent, "model_backend", "ollama"))
 
     # Update the live OllamaClient so the change takes effect immediately
     _apply_live_model(request, agent_id, model_name)
@@ -195,20 +204,22 @@ async def assign_agent_model(request: Request) -> Response:
 # Helpers
 # ------------------------------------------------------------------
 
-def _read_model_config() -> dict[str, Any] | None:
+def _read_model_config(request: Request | None = None) -> dict[str, Any] | None:
     """Read model_config.json from disk."""
-    if not _MODEL_CONFIG_PATH.exists():
+    path = _resolve_model_config_path(request)
+    if not path.exists():
         return None
     try:
-        return json.loads(_MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
 
-def _write_model_config(config: dict[str, Any]) -> None:
+def _write_model_config(config: dict[str, Any], request: Request | None = None) -> None:
     """Write model_config.json to disk."""
-    _MODEL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _MODEL_CONFIG_PATH.write_text(
+    path = _resolve_model_config_path(request)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(config, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
@@ -244,12 +255,12 @@ def _normalize_model_config(config: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _persist_agent_model(agent_id: str, model_name: str, model_backend: str) -> None:
+def _persist_agent_model(request: Request | None, agent_id: str, model_name: str, model_backend: str) -> None:
     """Persist agent model assignment to disk so it survives reloads."""
-    config = _read_model_config() or {}
+    config = _read_model_config(request) or {}
     config[f"{agent_id}_model"] = model_name
     config[f"{agent_id}_source"] = model_backend or "ollama"
-    _write_model_config(config)
+    _write_model_config(config, request)
 
 
 def _apply_registry_model_updates(

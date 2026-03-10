@@ -1,7 +1,7 @@
 {# ── Detail Drawer — 400px slide-in panel (right) ─────────── #}
 
 {# Overlay backdrop #}
-<div class="detail-drawer-overlay" id="drawer-overlay" onclick="closeDetailDrawer()"></div>
+<div class="detail-drawer-overlay" id="drawer-overlay"></div>
 
 {# Drawer panel #}
 <aside class="detail-drawer app-drawer" id="detail-drawer" role="complementary" aria-label="{{ _('drawer.title') }}">
@@ -41,8 +41,18 @@ function closeDetailDrawer() {
   var shell   = document.querySelector('.app-shell');
 
   drawer.classList.remove('open');
+  drawer.classList.remove('detail-drawer--wide');
+  drawer.style.width = '';
   overlay.classList.remove('active');
-  if (shell) shell.classList.remove('drawer-open');
+  if (shell) {
+    shell.classList.remove('drawer-open');
+    shell.classList.remove('drawer-wide');
+  }
+}
+
+function isDetailDrawerOpen() {
+  var drawer = document.getElementById('detail-drawer');
+  return !!(drawer && drawer.classList.contains('open'));
 }
 
 /* Close drawer on Escape */
@@ -54,4 +64,44 @@ document.addEventListener('keydown', function(e) {
     }
   }
 });
+
+(function attachDetailDrawerEvents() {
+  var drawer = document.getElementById('detail-drawer');
+  var overlay = document.getElementById('drawer-overlay');
+  if (!drawer || !overlay) {
+    return;
+  }
+
+  drawer.addEventListener('click', function (e) {
+    e.stopPropagation();
+  });
+
+  drawer.addEventListener('mousedown', function (e) {
+    e.stopPropagation();
+  });
+
+  function closeOnOutsidePointer(e) {
+    if (!isDetailDrawerOpen()) {
+      return;
+    }
+    if (drawer.contains(e.target)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+      e.stopImmediatePropagation();
+    }
+    closeDetailDrawer();
+  }
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay && isDetailDrawerOpen()) {
+      closeDetailDrawer();
+    }
+  });
+
+  document.addEventListener('mousedown', closeOnOutsidePointer, true);
+  document.addEventListener('touchstart', closeOnOutsidePointer, true);
+})();
 </script>

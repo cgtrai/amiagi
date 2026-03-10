@@ -22,9 +22,11 @@ Covers checklist items 5.1–5.17:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -419,6 +421,26 @@ class TestHumanInteractionBridge:
     def test_router_engine_supports_review_request(self):
         from amiagi.application.router_engine import SUPPORTED_TOOLS
         assert "review_request" in SUPPORTED_TOOLS
+
+    def test_bridge_schedules_inbox_broadcast_on_loop(self):
+        from amiagi.application.human_tools import HumanInteractionBridge
+
+        loop = asyncio.new_event_loop()
+        try:
+            hub = MagicMock()
+            hub.broadcast = AsyncMock()
+            bridge = HumanInteractionBridge(inbox_service=MagicMock(), event_hub=hub, loop=loop)
+
+            bridge._broadcast_inbox_event("item-1", "review_request", "nova")
+            loop.run_until_complete(asyncio.sleep(0.05))
+
+            hub.broadcast.assert_awaited_once()
+            event_name, payload = hub.broadcast.await_args.args
+            assert event_name == "inbox.new"
+            assert payload["agent_id"] == "nova"
+            assert payload["item_type"] == "review_request"
+        finally:
+            loop.close()
 
 
 # ═══════════════════════════════════════════════════════════════

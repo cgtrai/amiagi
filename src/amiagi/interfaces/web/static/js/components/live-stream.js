@@ -8,7 +8,7 @@
  */
 class LiveStream extends HTMLElement {
   static get observedAttributes() {
-    return ["max-entries", "ws-path"];
+    return ["max-entries", "ws-path", "thread-owner"];
   }
 
   constructor() {
@@ -17,7 +17,16 @@ class LiveStream extends HTMLElement {
     this._ws = null;
     this._reconnectTimer = null;
     this._entries = [];
+    this._nextEntryId = 1;
     this._filter = { channel: 'all', level: 'all' };
+    this._entriesContainer = null;
+    this._scrollFrame = null;
+    this._reconnectAttempts = 0;
+    this._maxReconnectDelay = 30000;
+    this._lastEventId = 0;
+    this._seenServerEventIds = new Set();
+    this._lastRenderedSignature = null;
+    this._lastRenderedAtMs = 0;
   }
 
   connectedCallback() {
@@ -41,18 +50,48 @@ class LiveStream extends HTMLElement {
     return this.getAttribute("ws-path") || "/ws/events";
   }
 
+  get threadOwner() {
+    return String(this.getAttribute("thread-owner") || "").trim();
+  }
+
+  _currentUserLabel() {
+    const root = this.closest('.supervisor-main');
+    if (!root || !root.dataset) {
+      return 'Operator';
+    }
+    return String(root.dataset.currentUserLabel || '').trim() || 'Operator';
+  }
+
+  _resolveDisplayLabel(label) {
+    const normalized = String(label || '').trim();
+    if (!normalized) {
+      return '';
+    }
+    if (normalized === 'Sponsor' || normalized === 'Operator') {
+      return this._currentUserLabel();
+    }
+    return normalized;
+  }
+
   render() {
     this.shadowRoot.innerHTML = `
       <style>
         :host {
           display: block;
+          width: 100%;
+          min-height: var(--supervisor-screen-height, calc(var(--stream-row-height, 1.35rem) * 18));
+          height: var(--supervisor-screen-height, calc(var(--stream-row-height, 1.35rem) * 18));
+          box-sizing: border-box;
           font-family: var(--font-mono, 'JetBrains Mono', monospace);
           font-size: 0.78rem;
-          overflow-y: auto;
-          max-height: 400px;
+          overflow: hidden;
           padding: 0.5rem;
           background: rgba(0,0,0,0.15);
           border-radius: 8px;
+        }
+        .entries {
+          height: 100%;
+          overflow-y: auto;
         }
         .entry {
           padding: 2px 0;
@@ -104,6 +143,10 @@ class LiveStream extends HTMLElement {
           background: rgba(167, 139, 250, 0.12);
           color: #ddd6fe;
         }
+        .entry-chip--status {
+          background: rgba(250, 204, 21, 0.12);
+          color: #fde68a;
+        }
         .entry--info .entry-text { color: var(--color-info, #60a5fa); }
         .entry--warn .entry-text { color: var(--color-warning, #facc15); }
         .entry--error .entry-text { color: var(--color-error, #ef4444); }
@@ -118,16 +161,19 @@ class LiveStream extends HTMLElement {
         .entry:hover .entry-save { opacity: 0.7; }
         .entry-save:hover { opacity: 1 !important; }
       </style>
-      <div id="entries"></div>
+      <div id="entries" class="entries"></div>
     `;
+    this._entriesContainer = this.shadowRoot.getElementById("entries");
   }
 
   _formatMessage(msg) {
-    const type = String((msg && msg.type) || "event");
+    const type = String((msg && (msg.message_type || msg.type)) || "event");
     const message = String((msg && msg.message) || "").trim();
     const summary = String((msg && msg.summary) || "").trim();
     const agentId = String((msg && msg.agent_id) || "").trim();
-    const targetAgent = String((msg && msg.target_agent) || "").trim();
+    const targetAgent = String((msg && (msg.to || msg.target_agent)) || "").trim();
+    const sourceLabel = this._resolveDisplayLabel((msg && (msg.from || msg.source_label)) || 'Operator');
+    const targetLabel = this._resolveDisplayLabel(targetAgent);
 
     if (summary) {
       return summary;
@@ -151,9 +197,9 @@ class LiveStream extends HTMLElement {
       return notes || answer || reasonCode || "Supervisor update";
     }
     if (type === "operator.input.accepted") {
-      return targetAgent
-        ? `Operator → ${targetAgent}: ${message}`
-        : `Operator → all: ${message}`;
+      return targetLabel
+        ? `${sourceLabel} → ${targetLabel}: ${message}`
+        : `${sourceLabel} → all: ${message}`;
     }
     if (type === "agent.lifecycle") {
       const action = String((msg && msg.action) || "").trim();
@@ -179,10 +225,11 @@ class LiveStream extends HTMLElement {
 
   _buildMetaChips(meta) {
     const chips = [];
-    const sourceLabel = String((meta && meta.source_label) || '').trim();
-    const targetAgent = String((meta && meta.target_agent) || '').trim();
+    const sourceLabel = this._resolveDisplayLabel((meta && (meta.from || meta.source_label)) || '');
+    const targetAgent = this._resolveDisplayLabel((meta && (meta.to || meta.target_agent)) || '');
     const targetScope = String((meta && meta.target_scope) || '').trim();
-    const type = String((meta && meta.type) || '').trim();
+    const type = String((meta && (meta.message_type || meta.type)) || '').trim();
+    const status = String((meta && meta.status) || '').trim();
     const agentId = String((meta && meta.agent_id) || '').trim();
 
     if (sourceLabel) {
@@ -195,6 +242,9 @@ class LiveStream extends HTMLElement {
     }
     if (type) {
       chips.push({ text: type, className: 'entry-chip entry-chip--type' });
+    }
+    if (status) {
+      chips.push({ text: status, className: 'entry-chip entry-chip--status' });
     }
     if (agentId && !sourceLabel) {
       chips.push({ text: agentId, className: 'entry-chip' });
@@ -209,7 +259,73 @@ class LiveStream extends HTMLElement {
 
   clearEntries() {
     this._entries = [];
+    this._seenServerEventIds.clear();
+    this._lastRenderedSignature = null;
+    this._lastRenderedAtMs = 0;
     this._renderEntries();
+  }
+
+  _buildDedupSignature(text, level, channel, meta) {
+    const normalizedMeta = {
+      type: String((meta && (meta.message_type || meta.type)) || '').trim(),
+      source: String((meta && (meta.from || meta.source_label)) || '').trim(),
+      target: String((meta && (meta.to || meta.target_agent || meta.target_scope)) || '').trim(),
+      status: String((meta && meta.status) || '').trim(),
+      threadOwners: Array.isArray(meta && meta.thread_owners)
+        ? meta.thread_owners.map((value) => String(value || '').trim()).filter(Boolean)
+        : [],
+    };
+    return JSON.stringify({
+      text: String(text || '').trim(),
+      level: String(level || '').trim(),
+      channel: String(channel || '').trim(),
+      meta: normalizedMeta,
+    });
+  }
+
+  _isConsecutiveDuplicate(text, level, channel, meta, timestampText) {
+    const signature = this._buildDedupSignature(text, level, channel, meta);
+    const parsedTimestamp = timestampText ? new Date(timestampText) : null;
+    const entryTimestampMs = parsedTimestamp && !Number.isNaN(parsedTimestamp.getTime())
+      ? parsedTimestamp.getTime()
+      : Date.now();
+    if (
+      this._lastRenderedSignature === signature
+      && entryTimestampMs - this._lastRenderedAtMs <= 5000
+    ) {
+      return true;
+    }
+    this._lastRenderedSignature = signature;
+    this._lastRenderedAtMs = entryTimestampMs;
+    return false;
+  }
+
+  _normalizeEventId(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return 0;
+    }
+    return Math.trunc(numeric);
+  }
+
+  _rememberServerEvent(meta) {
+    const eventId = this._normalizeEventId(meta && meta.event_id);
+    if (!eventId) {
+      return 0;
+    }
+    this._seenServerEventIds.add(eventId);
+    if (eventId > this._lastEventId) {
+      this._lastEventId = eventId;
+    }
+    return eventId;
+  }
+
+  _hasSeenServerEvent(meta) {
+    const eventId = this._normalizeEventId(meta && meta.event_id);
+    if (!eventId) {
+      return false;
+    }
+    return this._seenServerEventIds.has(eventId);
   }
 
   _matchesFilter(entry) {
@@ -224,14 +340,40 @@ class LiveStream extends HTMLElement {
     return true;
   }
 
+  _matchesThreadOwner(msg) {
+    const owner = this.threadOwner;
+    if (!owner) {
+      return true;
+    }
+    const owners = [];
+    if (msg && Array.isArray(msg.thread_owners)) {
+      msg.thread_owners.forEach((value) => {
+        const normalized = String(value || '').trim();
+        if (normalized) {
+          owners.push(normalized);
+        }
+      });
+    }
+    if (!owners.length && msg && msg.thread_owner) {
+      const legacyOwner = String(msg.thread_owner || '').trim();
+      if (legacyOwner) {
+        owners.push(legacyOwner);
+      }
+    }
+    if (!owners.length) {
+      return false;
+    }
+    return owners.includes(owner);
+  }
+
   _renderEntries() {
-    const container = this.shadowRoot.getElementById("entries");
+    const container = this._entriesContainer || this.shadowRoot.getElementById("entries");
     if (!container) return;
     container.innerHTML = '';
     this._entries.filter((entry) => this._matchesFilter(entry)).forEach((entry) => {
       container.appendChild(this._renderEntryElement(entry));
     });
-    this.scrollTop = this.scrollHeight;
+    this._scheduleScrollToBottom();
   }
 
   _renderEntryElement(entry) {
@@ -243,6 +385,7 @@ class LiveStream extends HTMLElement {
     }[entry.channel] || '';
 
     const el = document.createElement("div");
+    el.dataset.entryId = String(entry.id);
     el.className = "entry" + (entry.level ? " entry--" + entry.level : "") + (sourceClass ? " " + sourceClass : "");
 
     const ts = document.createElement("span");
@@ -293,27 +436,74 @@ class LiveStream extends HTMLElement {
     return el;
   }
 
-  append(text, level, channel, meta) {
-    this._entries.push({
+  _scheduleScrollToBottom() {
+    if (this._scrollFrame != null) {
+      cancelAnimationFrame(this._scrollFrame);
+    }
+    this._scrollFrame = requestAnimationFrame(() => {
+      this._scrollFrame = null;
+      if (this._entriesContainer) {
+        this._entriesContainer.scrollTop = this._entriesContainer.scrollHeight;
+      }
+    });
+  }
+
+  _appendRenderedEntry(entry) {
+    const container = this._entriesContainer || this.shadowRoot.getElementById("entries");
+    if (!container || !this._matchesFilter(entry)) {
+      return;
+    }
+    container.appendChild(this._renderEntryElement(entry));
+    this._scheduleScrollToBottom();
+  }
+
+  _removeRenderedEntry(entry) {
+    const container = this._entriesContainer || this.shadowRoot.getElementById("entries");
+    if (!container || !entry) {
+      return;
+    }
+    const node = container.querySelector('[data-entry-id="' + String(entry.id) + '"]');
+    if (node) {
+      node.remove();
+    }
+  }
+
+  append(text, level, channel, meta, timestampText) {
+    this._rememberServerEvent(meta);
+    if (this._isConsecutiveDuplicate(text, level, channel, meta, timestampText)) {
+      return;
+    }
+    const parsedTimestamp = timestampText ? new Date(timestampText) : null;
+    const entry = {
+      id: this._nextEntryId++,
       text: text,
       level: level,
       channel: channel || 'system',
       meta: meta || {},
-      ts: new Date().toLocaleTimeString(),
-    });
+      ts: parsedTimestamp && !Number.isNaN(parsedTimestamp.getTime())
+        ? parsedTimestamp.toLocaleTimeString()
+        : new Date().toLocaleTimeString(),
+    };
+    this._entries.push(entry);
+    this._appendRenderedEntry(entry);
     while (this._entries.length > this.maxEntries) {
-      this._entries.shift();
+      const removed = this._entries.shift();
+      this._removeRenderedEntry(removed);
     }
-    this._renderEntries();
   }
 
   _connectWS() {
     this._closeWS();
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = proto + "//" + location.host + this.wsPath;
-    this._ws = new WebSocket(url);
+    const url = new URL(proto + "//" + location.host + this.wsPath);
+    if (this._lastEventId > 0) {
+      url.searchParams.set("since_id", String(this._lastEventId));
+    }
+    this._ws = new WebSocket(url.toString());
 
     this._ws.onopen = () => {
+      this._reconnectAttempts = 0;
+      this._notifyConnectionStatus("connected", { attempt: 0, delayMs: 0 });
       this.append("Connected", "info");
     };
 
@@ -321,8 +511,54 @@ class LiveStream extends HTMLElement {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "heartbeat") return;
+        if (msg.type === "stream.config") {
+          this.dispatchEvent(new CustomEvent("stream-config", {
+            bubbles: true,
+            detail: msg,
+          }));
+          return;
+        }
+        if (msg.type === "stream.history") {
+          const historyEvents = Array.isArray(msg.events) ? msg.events : [];
+          const truncated = !!msg.truncated;
+          if (truncated) {
+            this.append("Reconnect gap exceeded retention; replaying the latest available events", "warn", "system", {
+              type: "stream.history.truncated",
+            });
+          }
+          historyEvents.forEach((event) => {
+            if (!event || this._hasSeenServerEvent(event)) {
+              return;
+            }
+            if (this._matchesThreadOwner(event)) {
+              const channel = event.channel || "system";
+              this.append(
+                this._formatMessage(event),
+                this._eventLevel(event),
+                channel,
+                event,
+                event.timestamp || event.ts || event.created_at || event.time || null,
+              );
+            } else {
+              this._rememberServerEvent(event);
+            }
+            this.dispatchEvent(new CustomEvent("stream-event", {
+              bubbles: true,
+              detail: Object.assign({ replayed: true }, event),
+            }));
+          });
+          return;
+        }
+        if (msg.type === "ping") {
+          this._ws.send(JSON.stringify({ type: "pong" }));
+          return;
+        }
+        if (msg.type === "pong") return;
+        if (this._hasSeenServerEvent(msg)) return;
         const channel = msg.channel || "system";
-        this.append(this._formatMessage(msg), this._eventLevel(msg), channel, msg);
+        if (this._matchesThreadOwner(msg)) {
+          this.append(this._formatMessage(msg), this._eventLevel(msg), channel, msg);
+        }
 
         // Dispatch custom event so parent JS can react
         this.dispatchEvent(new CustomEvent("stream-event", {
@@ -333,9 +569,20 @@ class LiveStream extends HTMLElement {
     };
 
     this._ws.onclose = () => {
-      this.append("Disconnected — retrying in 5s", "warn");
-      this._reconnectTimer = setTimeout(() => this._connectWS(), 5000);
+      const attempt = this._reconnectAttempts + 1;
+      const delayMs = Math.min(1000 * Math.pow(2, this._reconnectAttempts), this._maxReconnectDelay);
+      this._reconnectAttempts = attempt;
+      this.append("Disconnected — retrying", "warn");
+      this._notifyConnectionStatus("reconnecting", { attempt: attempt, delayMs: delayMs });
+      this._reconnectTimer = setTimeout(() => this._connectWS(), delayMs);
     };
+  }
+
+  _notifyConnectionStatus(status, extra) {
+    this.dispatchEvent(new CustomEvent("stream-connection", {
+      bubbles: true,
+      detail: Object.assign({ status: status }, extra || {}),
+    }));
   }
 
   _closeWS() {

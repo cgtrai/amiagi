@@ -280,6 +280,7 @@ class TestToolHelpers:
         assert canonical_tool_name("pdf_to_md") == "convert_pdf_to_markdown"
 
     def test_supported_tools_constant(self) -> None:
+        assert "analyze_workspace" in SUPPORTED_TOOLS
         assert "read_file" in SUPPORTED_TOOLS
         assert "run_shell" in SUPPORTED_TOOLS
         assert "nonexistent" not in SUPPORTED_TOOLS
@@ -386,6 +387,34 @@ class TestExecuteToolCall:
         result = engine.execute_tool_call(tc)
         assert result["ok"] is True
         assert "afile.txt" in result["items"]
+
+    def test_analyze_workspace_txt(self, tmp_path: Path) -> None:
+        engine = _make_engine(tmp_path=tmp_path)
+        engine.permission_manager.allow_all = True
+        (tmp_path / "script.py").write_text("print('ok')\n", encoding="utf-8")
+        tc = ToolCall(tool="analyze_workspace", args={"path": ".", "format": "txt"}, intent="audit")
+        result = engine.execute_tool_call(tc)
+        assert result["ok"] is True
+        assert result["tool"] == "analyze_workspace"
+        assert "Kodowanie" in result["content"]
+
+    def test_analyze_workspace_json(self, tmp_path: Path) -> None:
+        engine = _make_engine(tmp_path=tmp_path)
+        engine.permission_manager.allow_all = True
+        (tmp_path / "items.json").write_text('[{"id":1},{"id":2}]', encoding="utf-8")
+        tc = ToolCall(tool="analyze_workspace", args={"path": ".", "format": "json"}, intent="audit")
+        result = engine.execute_tool_call(tc)
+        assert result["ok"] is True
+        assert result["format"] == "json"
+        assert result["report"]["sections"][0]["title"] == "Dane JSON"
+
+    def test_analyze_workspace_invalid_format(self, tmp_path: Path) -> None:
+        engine = _make_engine(tmp_path=tmp_path)
+        engine.permission_manager.allow_all = True
+        tc = ToolCall(tool="analyze_workspace", args={"path": ".", "format": "yaml"}, intent="audit")
+        result = engine.execute_tool_call(tc)
+        assert result["ok"] is False
+        assert result["error"] == "invalid_format"
 
     def test_write_file(self, tmp_path: Path) -> None:
         engine = _make_engine(tmp_path=tmp_path)

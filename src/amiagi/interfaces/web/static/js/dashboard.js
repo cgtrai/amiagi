@@ -268,17 +268,23 @@
         container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.empty", "No agents registered.") + '</div>';
         return;
       }
+      const openAgentSettingsLabel = window.t("dashboard.agent_settings_open", "Open agent settings");
       container.innerHTML = agents.map(function (a) {
         const stateColor = {idle: "muted", working: "success", paused: "idle", error: "error", terminated: "danger"}[a.state] || "muted";
-        return '<div class="agent-overview-row">' +
+        const agentUrl = buildAgentDetailUrl(a);
+        return '<a class="agent-overview-row agent-overview-row--link" href="' + esc(agentUrl) + '" title="' + esc(openAgentSettingsLabel) + '">' +
           '<span class="agent-overview-name">' + esc(a.name || a.agent_id) + '</span>' +
           '<span class="glass-badge glass-badge--' + stateColor + '">' + esc(a.state) + '</span>' +
           '<span class="agent-overview-model">' + esc(a.model_name || "—") + '</span>' +
-          '</div>';
+          '</a>';
       }).join("");
     } catch (err) {
       container.innerHTML = '<div class="sidebar-empty">' + window.t("dashboard.agents.load_failed", "Failed to load agent data.") + '</div>';
     }
+  }
+
+  function buildAgentDetailUrl(agent) {
+    return '/agents/' + encodeURIComponent(agent.agent_id || "");
   }
 
   // -------------------------------------------------------------------

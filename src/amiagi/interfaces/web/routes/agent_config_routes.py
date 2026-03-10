@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 _MODEL_CONFIG_PATH = Path("data/model_config.json")
 
 
+def _resolve_model_config_path(request: Request | None = None) -> Path:
+    if request is not None:
+        settings = getattr(request.app.state, "settings", None)
+        configured = getattr(settings, "model_config_path", None)
+        if isinstance(configured, (str, Path)) and configured:
+            return Path(configured)
+    return _MODEL_CONFIG_PATH
+
+
 def _apply_live_model(request: Request, agent_id: str, model_name: str) -> None:
     """Hot-swap the running OllamaClient model so the change is immediate."""
     if agent_id != "polluks":
@@ -42,16 +51,17 @@ def _apply_live_model(request: Request, agent_id: str, model_name: str) -> None:
         logger.warning("_apply_live_model error: %s", exc)
 
 
-def _persist_model_config(agent_id: str, model_name: str, model_backend: str) -> None:
+def _persist_model_config(request: Request | None, agent_id: str, model_name: str, model_backend: str) -> None:
     """Write agent model changes to model_config.json for persistence."""
     try:
+        path = _resolve_model_config_path(request)
         config: dict = {}
-        if _MODEL_CONFIG_PATH.exists():
-            config = json.loads(_MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
+        if path.exists():
+            config = json.loads(path.read_text(encoding="utf-8"))
         config[f"{agent_id}_model"] = model_name
         config[f"{agent_id}_source"] = model_backend or "ollama"
-        _MODEL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _MODEL_CONFIG_PATH.write_text(
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             json.dumps(config, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
@@ -113,7 +123,7 @@ async def update_agent_config(request: Request) -> Response:
             logger.exception("registry.update_model failed for %s", agent_id)
             return JSONResponse({"error": str(exc)}, status_code=500)
         # Persist to model_config.json so change survives restart
-        _persist_model_config(agent_id, body["model_name"], model_backend)
+        _persist_model_config(request, agent_id, body["model_name"], model_backend)
         # Update the live OllamaClient so the change takes effect immediately
         _apply_live_model(request, agent_id, body["model_name"])
         changed.append("model")

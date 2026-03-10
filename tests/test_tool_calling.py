@@ -133,6 +133,16 @@ def test_parse_colon_style_tool_call_list_dir() -> None:
     assert call.args["path"] == "amiagi-my-work"
 
 
+def test_parse_colon_style_tool_call_analyze_workspace() -> None:
+    text = 'tool_call: analyze_workspace(path=".", format="json")'
+    call = parse_tool_call(text)
+
+    assert call is not None
+    assert call.tool == "analyze_workspace"
+    assert call.args["path"] == "."
+    assert call.args["format"] == "json"
+
+
 def test_parse_colon_style_tool_call_fetch_web_multiline() -> None:
     text = '''tool_call: fetch_web(
     url="https://capterra.com/business-software",

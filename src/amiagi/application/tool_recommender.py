@@ -6,6 +6,7 @@ from amiagi.application.model_client_protocol import ChatCompletionClient
 
 # Built-in tool names (from textual_cli._SUPPORTED_TEXTUAL_TOOLS)
 BUILTIN_TOOLS: frozenset[str] = frozenset({
+    "analyze_workspace",
     "read_file", "list_dir", "run_shell", "run_python",
     "check_python_syntax", "fetch_web", "search_web", "download_file",
     "convert_pdf_to_markdown", "capture_camera_frame",
@@ -74,6 +75,9 @@ class ToolRecommender:
 
         # Always include read_file and list_dir
         recommended.extend(["read_file", "list_dir"])
+
+        if any(w in query for w in ("audit", "review", "inventory", "raport", "report", "analysis")):
+            recommended.append("analyze_workspace")
 
         if any(w in query for w in ("code", "python", "program", "develop", "backend")):
             recommended.extend(["run_python", "check_python_syntax", "write_file"])

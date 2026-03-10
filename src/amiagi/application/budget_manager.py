@@ -153,6 +153,9 @@ class BudgetManager:
         self._on_exhausted = on_exhausted
         self._warned: set[str] = set()  # agents already warned at 80 %
         self._exhausted: set[str] = set()  # agents already notified at 100 %
+        self.currency: str = "USD"
+        self.energy_price_kwh: float = 0.0
+        self.token_cost_1k: float = 0.0
 
     # ---- budget configuration ----
 
@@ -257,6 +260,51 @@ class BudgetManager:
                 "requests_count": rec.requests_count,
             }
         return result
+
+    def agent_token_count(self, agent_id: str) -> int:
+        """Return tokens used by a specific agent in the current session."""
+        rec = self._budgets.get(agent_id)
+        if rec is None:
+            return 0
+        return rec.tokens_used
+
+    def estimate_tracked_cost(
+        self,
+        *,
+        model: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> float:
+        """Estimate cost using runtime override or built-in model pricing."""
+        total_tokens = max(0, int(input_tokens)) + max(0, int(output_tokens))
+        override = max(0.0, float(getattr(self, "token_cost_1k", 0.0) or 0.0))
+        if total_tokens > 0 and override > 0:
+            return (total_tokens / 1000.0) * override
+        return estimate_cost(model, input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def record_model_usage(
+        self,
+        agent_id: str,
+        *,
+        model: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        task_id: str = "",
+    ) -> float:
+        """Record model usage based on observed token counters."""
+        total_tokens = max(0, int(input_tokens)) + max(0, int(output_tokens))
+        cost = self.estimate_tracked_cost(
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        self.record_usage_full(
+            agent_id,
+            task_id=task_id,
+            cost_usd=cost,
+            tokens=total_tokens,
+        )
+        return cost
 
     # ================================================================
     # Per-task budgets

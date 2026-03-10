@@ -128,6 +128,8 @@ async def inbox_approve(request: Request) -> JSONResponse:
     if hub is not None:
         await hub.broadcast("inbox.resolved", {
             "item_id": item.id,
+            "item_type": item.item_type,
+            "agent_id": item.agent_id,
             "resolution": "approved",
         })
 
@@ -159,6 +161,8 @@ async def inbox_reject(request: Request) -> JSONResponse:
     if hub is not None:
         await hub.broadcast("inbox.resolved", {
             "item_id": item.id,
+            "item_type": item.item_type,
+            "agent_id": item.agent_id,
             "resolution": "rejected",
         })
 
@@ -193,6 +197,8 @@ async def inbox_reply(request: Request) -> JSONResponse:
     if hub is not None:
         await hub.broadcast("inbox.resolved", {
             "item_id": item.id,
+            "item_type": item.item_type,
+            "agent_id": item.agent_id,
             "resolution": "replied",
             "message": message,
         })
@@ -367,6 +373,7 @@ async def inbox_grant_secret(request: Request) -> JSONResponse:
             "secret_id": secret_id,
             "entity_type": entity_type,
             "entity_id": entity_id,
+            "agent_id": item.agent_id,
         })
 
     from amiagi.interfaces.web.audit.log_helpers import log_action
