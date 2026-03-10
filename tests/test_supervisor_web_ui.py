@@ -143,6 +143,9 @@ def test_supervisor_template_exposes_updated_state_cards_and_actions() -> None:
     assert 'id="supervisor-console"' in html
     assert 'class="supervisor-command-panel"' in html
     assert 'id="btn-sv-add-agent"' in html
+    assert 'href="/agents"' in html
+    assert 'supervisor-agent-management-link' in html
+    assert 'title="Zarządzanie agentami"' in html
     assert 'id="spawn-agent-section"' not in html
     assert 'class="supervisor-actions"' not in html
     assert 'class="supervisor-cards"' not in html
@@ -236,8 +239,6 @@ def test_supervisor_js_renders_extended_state_and_agent_models() -> None:
     assert "stream-connection" in js
     assert "setStreamConnectionState" in js
     assert "Connection lost. Reconnecting in " in js
-    assert "renderSpawnAgentDrawer" in js
-    assert "submitSpawnAgent" in js
     assert "AGENT_THREAD_ENTRY_LIMIT = 80" in js
     assert "actorStateSnapshot = new Map()" in js
     assert "agent_id: 'router'" in js
@@ -297,10 +298,7 @@ def test_supervisor_js_renders_extended_state_and_agent_models() -> None:
     assert "thread_owners" in js
     assert "agent-thread-screen__list" in js
     assert "supervisor.agent_waiting" in js
-    assert "btn-sv-add-agent" in js
-    assert "spawn-agent-drawer-form" in js
     assert "runSingleFlight('operator-input'" in js
-    assert "runSingleFlight('spawn-agent'" in js
     assert "runSingleFlight('session-reset'" in js
     assert "runSingleFlight('agent:' + id + ':' + action" in js
     assert "bindCurrentTaskAction('ct-btn-pause'" in js
@@ -383,6 +381,9 @@ def test_supervisor_css_supports_expandable_drawer_and_model_warning() -> None:
     assert ".supervisor-sidebar" in css
     assert "position: sticky;" in css
     assert ".supervisor-command-panel" in css
+    assert ".supervisor-agent-management-link" in css
+    assert "width: 2.25rem;" in css
+    assert "height: 2.25rem;" in css
     assert "#agent-control" in css
     assert "overflow: hidden;" in css
     assert ".agent-control-list" in css

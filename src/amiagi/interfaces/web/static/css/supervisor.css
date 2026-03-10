@@ -238,6 +238,20 @@ body.page-supervisor .command-rail {
   align-items: flex-start;
 }
 
+.supervisor-agent-management-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.supervisor-agent-management-link svg {
+  flex: 0 0 auto;
+}
+
 .supervisor-badge {
   display: inline-flex;
   align-items: center;
@@ -762,6 +776,11 @@ body.page-supervisor .operator-input-select[aria-busy="true"] {
   .supervisor-topbar__actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .supervisor-agent-management-link {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 
   .detail-drawer.detail-drawer--wide {

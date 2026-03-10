@@ -29,7 +29,6 @@
   const inputText     = document.getElementById('operator-input-text');
   const inputTarget   = document.getElementById('operator-input-target');
   const inputStatus   = document.getElementById('operator-input-status');
-  const btnAddAgent   = document.getElementById('btn-sv-add-agent');
   const detailDrawer  = document.getElementById('detail-drawer');
   const drawerBody    = document.getElementById('drawer-body');
   const appShell      = document.querySelector('.app-shell');
@@ -860,90 +859,6 @@
     );
   }
 
-  function renderSpawnAgentDrawer() {
-    return (
-      '<div class="supervisor-drawer-content supervisor-drawer-content--spawn">' +
-        '<div class="supervisor-drawer-toolbar">' +
-          '<strong>' + escapeHtml(window.t('supervisor.spawn_agent', 'Add Agent')) + '</strong>' +
-          '<button type="button" class="glass-btn glass-btn--ghost glass-btn--sm" data-supervisor-drawer-toggle="spawn">' + escapeHtml(window.t('supervisor.drawer_expand', 'Expand')) + '</button>' +
-        '</div>' +
-        '<form class="spawn-form" id="spawn-agent-drawer-form">' +
-          '<div class="spawn-form-row">' +
-            '<input type="text" id="spawn-drawer-name" class="operator-input-field" placeholder="' + escapeAttr(window.t('supervisor.spawn_name', 'Agent name')) + '" required />' +
-            '<select id="spawn-drawer-role" class="operator-input-select" aria-label="Agent role">' +
-              '<option value="executor">executor</option>' +
-              '<option value="reviewer">reviewer</option>' +
-              '<option value="researcher">researcher</option>' +
-              '<option value="planner">planner</option>' +
-            '</select>' +
-          '</div>' +
-          '<div class="spawn-form-row">' +
-            '<button type="submit" class="glass-btn glass-btn--success">' + escapeHtml(window.t('supervisor.spawn', 'Spawn')) + '</button>' +
-          '</div>' +
-          '<div class="spawn-status" id="spawn-drawer-status"></div>' +
-        '</form>' +
-      '</div>'
-    );
-  }
-
-  function submitSpawnAgent(name, role, statusElement) {
-    var normalizedName = String(name || '').trim();
-    if (!normalizedName) {
-      if (statusElement) {
-        statusElement.textContent = 'Error: name required';
-        statusElement.className = 'spawn-status spawn-status--err';
-      }
-      return Promise.resolve();
-    }
-
-    if (statusElement) {
-      statusElement.textContent = '…';
-      statusElement.className = 'spawn-status';
-    }
-
-    return fetch('/api/agents/spawn', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: normalizedName,
-        role: role || 'executor',
-      }),
-    })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, body: d }; }); })
-      .then(function (result) {
-        var d = result.body || {};
-        if (result.ok && d.ok) {
-          if (statusElement) {
-            statusElement.textContent = 'Spawned: ' + d.agent_id;
-            statusElement.className = 'spawn-status spawn-status--ok';
-          }
-          if (liveStream && liveStream.append) {
-            liveStream.append('Agent spawned: ' + d.agent_id, 'info', 'user', {
-              type: 'agent.spawn.manual',
-              source_label: getCurrentUserLabel(),
-              target_agent: d.agent_id,
-              target_scope: 'agent',
-            });
-          }
-          refresh();
-          if (typeof closeDetailDrawer === 'function') {
-            closeDetailDrawer();
-          }
-          return;
-        }
-        if (statusElement) {
-          statusElement.textContent = 'Error: ' + (d.error || 'failed');
-          statusElement.className = 'spawn-status spawn-status--err';
-        }
-      })
-      .catch(function () {
-        if (statusElement) {
-          statusElement.textContent = 'Error: network error';
-          statusElement.className = 'spawn-status spawn-status--err';
-        }
-      });
-  }
-
   function executeSlashCommand(command) {
     return fetch('/api/system/commands/execute', {
       method: 'POST',
@@ -1203,27 +1118,6 @@
             inputStatus.textContent = 'Error: network error';
             inputStatus.className = 'operator-input-status operator-input-status--err';
           });
-      });
-    });
-  }
-
-  /* ── Spawn agent via drawer (2.11, 2.12) ────────────────── */
-  if (btnAddAgent) {
-    btnAddAgent.addEventListener('click', function () {
-      renderExpandableDrawer(window.t('supervisor.spawn_agent', 'Add Agent'), renderSpawnAgentDrawer());
-    });
-  }
-
-  if (drawerBody) {
-    drawerBody.addEventListener('submit', function (e) {
-      if (!e.target || e.target.id !== 'spawn-agent-drawer-form') return;
-      e.preventDefault();
-      var nameInput = document.getElementById('spawn-drawer-name');
-      var roleInput = document.getElementById('spawn-drawer-role');
-      var submitButton = e.target.querySelector('button[type="submit"]');
-      var statusEl = document.getElementById('spawn-drawer-status');
-      runSingleFlight('spawn-agent', [submitButton, nameInput, roleInput], function () {
-        return submitSpawnAgent(nameInput ? nameInput.value : '', roleInput ? roleInput.value : 'executor', statusEl);
       });
     });
   }
