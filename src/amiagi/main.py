@@ -310,7 +310,6 @@ def main(argv: list[str] | None = None) -> None:
     ollama = OllamaClient(
         base_url=settings.ollama_base_url,
         model="",  # Placeholder — the UI wizard will set the actual model.
-        fallback_models=(settings.ollama_model, settings.supervisor_model),
         io_logger=io_logger,
         activity_logger=activity_logger,
         request_timeout_seconds=settings.ollama_request_timeout_seconds,
