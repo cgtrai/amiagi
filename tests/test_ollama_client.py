@@ -67,6 +67,71 @@ def test_chat_does_not_retry_http_error(monkeypatch) -> None:
     assert attempts["count"] == 1
 
 
+def test_chat_retries_with_default_num_ctx_after_runner_stop(monkeypatch) -> None:
+    seen_num_ctx: list[int] = []
+
+    def fake_post(self, path, payload):  # type: ignore[no-untyped-def]
+        seen_num_ctx.append(int(payload["options"]["num_ctx"]))
+        if len(seen_num_ctx) == 1:
+            raise OllamaClientError(
+                'HTTP 500: {"error":"model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details"}'
+            )
+        return {"message": {"content": "ok"}}
+
+    monkeypatch.setattr(OllamaClient, "_post_json", fake_post)
+
+    client = OllamaClient(
+        base_url="http://127.0.0.1:11434",
+        model="dummy",
+        io_logger=None,
+        activity_logger=None,
+        default_num_ctx=4096,
+        max_retries=0,
+        retry_backoff_seconds=0.0,
+    )
+
+    response = client.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        system_prompt="sys",
+        num_ctx=8192,
+    )
+
+    assert response == "ok"
+    assert seen_num_ctx == [8192, 4096]
+
+
+def test_chat_logs_reduced_num_ctx_retry(monkeypatch) -> None:
+    logger = DummyLogger()
+
+    def fake_post(self, path, payload):  # type: ignore[no-untyped-def]
+        if int(payload["options"]["num_ctx"]) == 8192:
+            raise OllamaClientError(
+                'HTTP 500: {"error":"model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details"}'
+            )
+        return {"message": {"content": "ok"}}
+
+    monkeypatch.setattr(OllamaClient, "_post_json", fake_post)
+
+    client = OllamaClient(
+        base_url="http://127.0.0.1:11434",
+        model="dummy",
+        io_logger=None,
+        activity_logger=logger,
+        default_num_ctx=4096,
+        max_retries=0,
+        retry_backoff_seconds=0.0,
+    )
+
+    response = client.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        system_prompt="sys",
+        num_ctx=8192,
+    )
+
+    assert response == "ok"
+    assert any(record["action"] == "model.chat.retry.reduced_ctx" for record in logger.records)
+
+
 def test_is_retryable_error_handles_connectivity_markers() -> None:
     assert OllamaClient._is_retryable_error(OllamaClientError("Cannot connect to Ollama: timed out"))
     assert OllamaClient._is_retryable_error(OllamaClientError("Ollama request timeout after 30s"))

@@ -19,6 +19,12 @@ class OllamaClientError(RuntimeError):
     pass
 
 
+_RUNNER_STOPPED_MARKERS = (
+    "model runner has unexpectedly stopped",
+    "runner has unexpectedly stopped",
+)
+
+
 @dataclass(frozen=True)
 class OllamaClient:
     base_url: str
@@ -81,6 +87,11 @@ class OllamaClient:
             "temporarily unavailable",
         ]
         return any(marker in message for marker in retry_markers)
+
+    @staticmethod
+    def _is_runner_stopped_error(error: OllamaClientError) -> bool:
+        message = str(error).lower()
+        return any(marker in message for marker in _RUNNER_STOPPED_MARKERS)
 
     def ping(self) -> bool:
         try:
@@ -171,12 +182,39 @@ class OllamaClient:
             attempts = max(1, self.max_retries + 1)
             result: dict | None = None
             last_error: OllamaClientError | None = None
-            for attempt in range(1, attempts + 1):
+            current_num_ctx = int(effective_num_ctx)
+            reduced_ctx_retry_used = False
+            attempt = 0
+            while attempt < attempts:
+                attempt += 1
+                payload["options"]["num_ctx"] = current_num_ctx
                 try:
                     result = self._post_json(endpoint, payload)
                     break
                 except OllamaClientError as error:
                     last_error = error
+                    if (
+                        not reduced_ctx_retry_used
+                        and current_num_ctx > self.default_num_ctx
+                        and self._is_runner_stopped_error(error)
+                    ):
+                        reduced_ctx_retry_used = True
+                        current_num_ctx = int(self.default_num_ctx)
+                        if self.activity_logger:
+                            self.activity_logger.log(
+                                action="model.chat.retry.reduced_ctx",
+                                intent="Ponowienie wywołania Ollama z mniejszym num_ctx po zatrzymaniu runnera.",
+                                details={
+                                    "request_id": request_id,
+                                    "attempt": attempt,
+                                    "previous_num_ctx": effective_num_ctx,
+                                    "reduced_num_ctx": current_num_ctx,
+                                    "error": str(error),
+                                    "client_role": self.client_role,
+                                },
+                            )
+                        attempts = max(attempts, attempt + 1)
+                        continue
                     is_retryable = self._is_retryable_error(error)
                     if self.activity_logger:
                         self.activity_logger.log(
