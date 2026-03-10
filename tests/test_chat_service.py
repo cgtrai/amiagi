@@ -23,6 +23,10 @@ class FakeOllamaClient:
         return self.next_response
 
 
+class FakeAPIClient(FakeOllamaClient):
+    _is_api_client = True
+
+
 def test_chat_service_stores_interaction(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "chat.db")
     client = FakeOllamaClient()
@@ -137,6 +141,40 @@ def test_build_system_prompt_contains_work_dir_protocol(tmp_path: Path) -> None:
     assert "KATALOG ROBOCZY MODELU" in prompt
     assert str(work_dir.resolve()) in prompt
     assert "write_file/append_file -> run_python" in prompt
+
+
+def test_build_system_prompt_uses_compact_profile_for_local_models(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeOllamaClient()
+    service = ChatService(memory_repository=repository, model_client=client)
+
+    prompt = service.build_system_prompt("utwórz narzędzie")
+
+    assert "Kompatybilne formaty odpowiedzi tool_call" not in prompt
+    assert "Główne narzędzia:" in prompt
+
+
+def test_build_system_prompt_keeps_full_profile_for_api_models(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "chat.db")
+    client = FakeAPIClient()
+    service = ChatService(memory_repository=repository, model_client=client)
+
+    prompt = service.build_system_prompt("utwórz narzędzie")
+
+    assert "Kompatybilne formaty odpowiedzi tool_call" in prompt
+    assert "Główne narzędzia:" not in prompt
+
+
+def test_local_prompt_profile_is_shorter_than_api_prompt(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "chat.db")
+
+    local_service = ChatService(memory_repository=repository, model_client=FakeOllamaClient())
+    api_service = ChatService(memory_repository=repository, model_client=FakeAPIClient())
+
+    local_prompt = local_service.build_system_prompt("hello")
+    api_prompt = api_service.build_system_prompt("hello")
+
+    assert len(local_prompt) < len(api_prompt)
 
 
 def test_build_system_prompt_includes_persisted_main_plan_context(tmp_path: Path) -> None:

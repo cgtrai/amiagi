@@ -29,6 +29,7 @@ _RUNNER_STOPPED_MARKERS = (
 class OllamaClient:
     base_url: str
     model: str
+    fallback_models: tuple[str, ...] = ()
     io_logger: ModelIOLogger | None = None
     activity_logger: ActivityLogger | None = None
     default_num_ctx: int = 4096
@@ -117,6 +118,17 @@ class OllamaClient:
             names.append(name)
         return names
 
+    def _dedupe_fallback_models(self, current_model: str) -> list[str]:
+        names: list[str] = []
+        seen = {current_model}
+        for item in self.fallback_models:
+            name = str(item).strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            names.append(name)
+        return names
+
     def chat(self, messages: list[dict[str, str]], system_prompt: str, num_ctx: int | None = None) -> str:
         endpoint = "/api/chat"
         request_id = str(uuid.uuid4())
@@ -148,8 +160,11 @@ class OllamaClient:
                     )
 
             effective_num_ctx = num_ctx if num_ctx is not None else self.default_num_ctx
+            current_model = self.model
+            fallback_models = self._dedupe_fallback_models(current_model)
+            fallback_index = 0
             payload = {
-                "model": self.model,
+                "model": current_model,
                 "stream": False,
                 "messages": [
                     {"role": "system", "content": system_prompt},
@@ -165,6 +180,7 @@ class OllamaClient:
                     intent="Wysłanie zapytania do modelu z parametrami bezpiecznymi względem VRAM.",
                     details={
                         "request_id": request_id,
+                        "model": current_model,
                         "num_ctx": effective_num_ctx,
                         "messages": len(messages),
                         "client_role": self.client_role,
@@ -173,7 +189,7 @@ class OllamaClient:
             if self.io_logger:
                 self.io_logger.log_input(
                     request_id=request_id,
-                    model=self.model,
+                    model=current_model,
                     base_url=self.base_url,
                     endpoint=endpoint,
                     payload=payload,
@@ -187,6 +203,7 @@ class OllamaClient:
             attempt = 0
             while attempt < attempts:
                 attempt += 1
+                payload["model"] = current_model
                 payload["options"]["num_ctx"] = current_num_ctx
                 try:
                     result = self._post_json(endpoint, payload)
@@ -215,6 +232,28 @@ class OllamaClient:
                             )
                         attempts = max(attempts, attempt + 1)
                         continue
+                    if self._is_runner_stopped_error(error) and fallback_index < len(fallback_models):
+                        previous_model = current_model
+                        current_model = fallback_models[fallback_index]
+                        fallback_index += 1
+                        current_num_ctx = int(self.default_num_ctx)
+                        reduced_ctx_retry_used = True
+                        if self.activity_logger:
+                            self.activity_logger.log(
+                                action="model.chat.retry.fallback_model",
+                                intent="Ponowienie wywołania Ollama na modelu awaryjnym po zatrzymaniu runnera.",
+                                details={
+                                    "request_id": request_id,
+                                    "attempt": attempt,
+                                    "previous_model": previous_model,
+                                    "fallback_model": current_model,
+                                    "num_ctx": current_num_ctx,
+                                    "error": str(error),
+                                    "client_role": self.client_role,
+                                },
+                            )
+                        attempts = max(attempts, attempt + 1)
+                        continue
                     is_retryable = self._is_retryable_error(error)
                     if self.activity_logger:
                         self.activity_logger.log(
@@ -237,7 +276,7 @@ class OllamaClient:
                         if self.io_logger:
                             self.io_logger.log_error(
                                 request_id=request_id,
-                                model=self.model,
+                                model=current_model,
                                 base_url=self.base_url,
                                 endpoint=endpoint,
                                 error=str(error),
@@ -253,7 +292,7 @@ class OllamaClient:
             if self.io_logger:
                 self.io_logger.log_output(
                     request_id=request_id,
-                    model=self.model,
+                    model=current_model,
                     base_url=self.base_url,
                     endpoint=endpoint,
                     response=result,
@@ -274,7 +313,7 @@ class OllamaClient:
             if self.usage_callback is not None and (prompt_tokens > 0 or completion_tokens > 0):
                 try:
                     self.usage_callback(
-                        self.model,
+                        current_model,
                         self.client_role,
                         prompt_tokens,
                         completion_tokens,
@@ -289,6 +328,9 @@ class OllamaClient:
                                 "client_role": self.client_role,
                             },
                         )
+
+            if current_model != self.model:
+                object.__setattr__(self, "model", current_model)
 
             message = result.get("message", {})
             content = message.get("content")

@@ -110,11 +110,20 @@ def load_communication_rules(path: Path | None = None) -> CommunicationRules:
 # Prompt builders (to be injected into system prompts)
 # ---------------------------------------------------------------------------
 
+_GREETING_PREVIEW_CHARS = 240
+
+
+def _greeting_preview(text: str) -> str:
+    cleaned = text.strip()
+    if len(cleaned) <= _GREETING_PREVIEW_CHARS:
+        return cleaned
+    return cleaned[:_GREETING_PREVIEW_CHARS].rstrip() + "..."
+
 def build_polluks_communication_prompt(rules: CommunicationRules) -> str:
     """Build the KOMUNIKACJA section for Polluks' system prompt."""
     lines = [
         "PROTOKÓŁ KOMUNIKACJI (OBOWIĄZKOWY):",
-        f"[Koordynator -> Polluks] {rules.greeting_text[:600]}" if rules.greeting_text else "",
+        f"[Koordynator -> Polluks] {_greeting_preview(rules.greeting_text)}" if rules.greeting_text else "",
         "",
         "Twoje zasady komunikacji:",
     ]
@@ -140,7 +149,7 @@ def build_kastor_communication_prompt(rules: CommunicationRules) -> str:
     """Build the KOMUNIKACJA section for Kastor's system prompt."""
     lines = [
         "PROTOKÓŁ KOMUNIKACJI (OBOWIĄZKOWY):",
-        f"[Koordynator -> Kastor] {rules.greeting_text[:600]}" if rules.greeting_text else "",
+        f"[Koordynator -> Kastor] {_greeting_preview(rules.greeting_text)}" if rules.greeting_text else "",
         "",
         "Twoje zasady komunikacji:",
     ]

@@ -81,6 +81,15 @@ FRAMEWORK_CAPABILITIES_MAP = (
     "- Rozbudowa frameworka: dozwolona w postaci dodatkowych narzędzi."
 )
 
+FRAMEWORK_CAPABILITIES_MAP_COMPACT = (
+    "MAPA MOŻLIWOŚCI FRAMEWORKA amiagi (SKRÓT):\n"
+    "- Pamięć trwała i stan sesji: historia, notatki, podsumowania, SQLite.\n"
+    "- Operacje robocze: read_file, list_dir, analyze_workspace, write_file, append_file, run_python, check_python_syntax.\n"
+    "- Dostęp zewnętrzny: search_web, fetch_web, download_file, convert_pdf_to_markdown, shell read-only wg polityki.\n"
+    "- Diagnostyka i sensoryka: check_capabilities, kamera, mikrofon.\n"
+    "- Ochrona OOM: dynamiczne num_ctx zależne od VRAM."
+)
+
 TOOL_CALLING_GUIDE = (
     "PROTOKÓŁ TOOL_CALLING (DO REALIZACJI ZADAŃ):\n"
     "- Jeżeli potrzebujesz narzędzia frameworka, zwróć WYŁĄCZNIE blok:\n"
@@ -149,6 +158,21 @@ TOOL_CALLING_GUIDE = (
     "7) Użyj nowego narzędzia do realizacji zadania."
 )
 
+TOOL_CALLING_GUIDE_COMPACT = (
+    "PROTOKÓŁ TOOL_CALLING (OBOWIĄZKOWY):\n"
+    "- Jeżeli potrzebujesz narzędzia frameworka, zwróć WYŁĄCZNIE blok:\n"
+    "```tool_call\n"
+    "{\"tool\":\"<nazwa>\",\"args\":{...},\"intent\":\"<po co>\"}\n"
+    "```\n"
+    "- Gdy nie używasz narzędzia, odpowiadaj zwykłym tekstem bez JSON.\n"
+    "- Główne narzędzia: read_file, list_dir, analyze_workspace, write_file, append_file, run_python, check_python_syntax, run_shell(read-only), search_web, fetch_web, download_file, convert_pdf_to_markdown, check_capabilities, capture_camera_frame, record_microphone_clip.\n"
+    "- `run_command` traktuj jako alias `run_shell`.\n"
+    "- Po [TOOL_RESULT] odpowiadaj wyłącznie na podstawie potwierdzonego wyniku; nie symuluj sukcesu.\n"
+    "- Nie pytaj o zgody w tekście; wykonaj tool_call i poczekaj na decyzję runtime.\n"
+    "- Po `write_file` wykonaj `read_file`, a dla `.py` najpierw `check_python_syntax`, dopiero potem `run_python`.\n"
+    "- Gdy brak narzędzia, zaplanuj je w notes/tool_design_plan.json, zbuduj w amiagi-my-work/src/, sprawdź składnię, przetestuj i zarejestruj."
+)
+
 AUTONOMY_EXECUTION_GUIDE = (
     "TRYB AUTONOMICZNY (WAŻNE):\n"
     "- Polecenia typu: 'kontynuuj', 'działaj', 'nie zatrzymuj się' oznaczają rozpoczęcie realnych działań, nie pytanie o dalsze instrukcje.\n"
@@ -156,6 +180,15 @@ AUTONOMY_EXECUTION_GUIDE = (
     "- Nie zadawaj pytań o oczywiste ścieżki, jeśli są podane w rozmowie (np. wprowadzenie.md).\n"
     "- Przed dłuższym eksperymentem możesz wykonać check_capabilities, aby zweryfikować gotowość narzędzi.\n"
     "- Po każdym kroku zapisuj artefakty w amiagi-my-work i raportuj faktyczne wyniki z TOOL_RESULT."
+)
+
+AUTONOMY_EXECUTION_GUIDE_COMPACT = (
+    "TRYB AUTONOMICZNY (WAŻNE):\n"
+    "- Polecenia typu: 'kontynuuj', 'działaj', 'nie zatrzymuj się' oznaczają realne działania, nie pytanie o dalsze instrukcje.\n"
+    "- Gdy użytkownik odwołuje się do `wprowadzenie.md`, najpierw odczytaj ten plik przez read_file.\n"
+    "- Nie pytaj o oczywiste ścieżki podane w rozmowie.\n"
+    "- Przy dłuższej pracy możesz użyć check_capabilities.\n"
+    "- Zapisuj artefakty w amiagi-my-work i raportuj tylko fakty potwierdzone przez TOOL_RESULT."
 )
 
 WORK_PROGRESS_GUIDE = (
@@ -169,6 +202,14 @@ WORK_PROGRESS_GUIDE = (
     "- Każda praca/badanie/akcja MUSI mieć status: rozpoczęta, w trakcie realizacji, zakończona.\n"
     "- Przy wznowieniu sesji najpierw zrób przegląd: co zrobiono, co zostało, jaki jest wynik i jaki jest następny krok.\n"
     "- Używaj formatów prostych do automatycznej obróbki: JSON/JSONL, bez wolnego tekstu jako jedynego źródła stanu."
+)
+
+WORK_PROGRESS_GUIDE_COMPACT = (
+    "ZARZĄDZANIE PRACĄ I STATUSAMI (OBOWIĄZKOWE):\n"
+    "- Prowadź plan w amiagi-my-work/notes/main_plan.json z goal, current_stage i listą tasks.\n"
+    "- Odkrycia zapisuj do amiagi-my-work/state/research_log.jsonl.\n"
+    "- Każda akcja musi mieć status: rozpoczęta, w trakcie realizacji albo zakończona.\n"
+    "- Po każdym TOOL_RESULT aktualizuj plan i raportuj wyłącznie potwierdzone fakty."
 )
 
 BOOTSTRAP_USER_PROMPT = (
@@ -273,6 +314,59 @@ class ChatService:
             "- Dla operacji plikowych preferuj ścieżki względne; framework rozwiązuje je względem tego katalogu.\n"
             "- Typowy cykl: write_file/append_file -> run_python -> analiza wyniku -> odpowiedź.\n"
             "- Nie twierdź, że coś zapisano/uruchomiono, dopóki nie otrzymasz [TOOL_RESULT] z ok=true."
+        )
+
+    def _use_compact_prompt_profile(self) -> bool:
+        return not self.is_api_model()
+
+    def _build_prompt_sections(self, user_message: str) -> list[tuple[str, str]]:
+        compact = self._use_compact_prompt_profile()
+        plan_context = self._build_plan_context()
+        memory_context = self._build_memory_context(user_message)
+        comm_prompt = build_polluks_communication_prompt(self.comm_rules)
+        skills_section = self._build_skills_section("polluks", user_message)
+        lang_directive = get_language_directive()
+
+        sections: list[tuple[str, str]] = [
+            ("identity", SYSTEM_PROMPT),
+            ("language", lang_directive),
+            ("communication", comm_prompt),
+            ("runtime", FRAMEWORK_RUNTIME_GUIDE),
+            (
+                "capabilities",
+                FRAMEWORK_CAPABILITIES_MAP_COMPACT if compact else FRAMEWORK_CAPABILITIES_MAP,
+            ),
+            (
+                "tool_calling",
+                TOOL_CALLING_GUIDE_COMPACT if compact else TOOL_CALLING_GUIDE,
+            ),
+            (
+                "autonomy",
+                AUTONOMY_EXECUTION_GUIDE_COMPACT if compact else AUTONOMY_EXECUTION_GUIDE,
+            ),
+            (
+                "work_progress",
+                WORK_PROGRESS_GUIDE_COMPACT if compact else WORK_PROGRESS_GUIDE,
+            ),
+            ("workspace", self._workspace_guide()),
+            ("plan", plan_context),
+            ("skills", skills_section.strip()),
+            ("memory", memory_context),
+        ]
+        return [(name, content) for name, content in sections if content]
+
+    def _log_system_prompt_metrics(self, sections: list[tuple[str, str]]) -> None:
+        if self.activity_logger is None:
+            return
+        details = {
+            "compact_profile": self._use_compact_prompt_profile(),
+            "total_chars": sum(len(content) for _, content in sections),
+            "sections": {name: len(content) for name, content in sections},
+        }
+        self.activity_logger.log(
+            action="prompt.system.built",
+            intent="Pomiar rozmiaru sekcji system promptu przed wywołaniem modelu.",
+            details=details,
         )
 
     def _score_memory(self, user_message: str, memory_content: str) -> int:
@@ -646,26 +740,9 @@ class ChatService:
         return readiness
 
     def build_system_prompt(self, user_message: str) -> str:
-        memory_context = self._build_memory_context(user_message)
-        plan_context = self._build_plan_context()
-        comm_prompt = build_polluks_communication_prompt(self.comm_rules)
-        skills_section = self._build_skills_section("polluks", user_message)
-        lang_directive = get_language_directive()
-        lang_block = f"{lang_directive}\n\n" if lang_directive else ""
-        return (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"{lang_block}"
-            f"{comm_prompt}\n\n"
-            f"{FRAMEWORK_RUNTIME_GUIDE}\n\n"
-            f"{FRAMEWORK_CAPABILITIES_MAP}\n\n"
-            f"{TOOL_CALLING_GUIDE}\n\n"
-            f"{AUTONOMY_EXECUTION_GUIDE}\n\n"
-            f"{WORK_PROGRESS_GUIDE}\n\n"
-            f"{self._workspace_guide()}\n\n"
-            f"{plan_context}\n\n"
-            f"{skills_section}"
-            f"{memory_context}"
-        )
+        sections = self._build_prompt_sections(user_message)
+        self._log_system_prompt_metrics(sections)
+        return "\n\n".join(content for _, content in sections)
 
     def _build_skills_section(self, role: str, user_message: str = "") -> str:
         """Return skill prompts for *role* if using an API model; empty otherwise.
